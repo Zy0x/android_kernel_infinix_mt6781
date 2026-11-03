@@ -17,6 +17,8 @@
 #define DUMMY_GPIO_DTNAME "mediatek,flashlights_dummy_gpio"
 #define DUMMY_DTNAME      "mediatek,flashlights_dummy"
 #define DUMMY_DTNAME_I2C  "mediatek,flashlights_dummy_i2c"
+#define AW36515_DTNAME     "mediatek,flashlights_aw36515"
+#define AW36515_DTNAME_I2C "mediatek,strobe_main"
 #define LED191_DTNAME     "mediatek,flashlights_led191"
 #define LM3642_DTNAME     "mediatek,flashlights_lm3642"
 #define LM3642_DTNAME_I2C "mediatek,strobe_main"

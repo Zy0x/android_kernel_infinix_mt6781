@@ -1,0 +1,2 @@
+obj-$(CONFIG_AW8624_HAPTIC) 	+= aw8624.o
+obj-$(CONFIG_AW862xx_HAPTIC) 	+= aw8624.o

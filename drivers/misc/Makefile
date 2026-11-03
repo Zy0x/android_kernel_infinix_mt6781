@@ -64,6 +64,8 @@ obj-$(CONFIG_MEMORY_STATE_TIME)	+= memory_state_time.o
 obj-$(CONFIG_MEDIATEK_SOLUTION) += mediatek/
 #ifdef OPLUS_FEATURE_CHG_BASIC//Fanhong.Kong@ProDrv.CHG,add 2018/10/25 for vib aw8697				+= lis3lv02d/
 obj-$(CONFIG_AW8697_HAPTIC)		+= aw8697_haptic/
+obj-$(CONFIG_AW862xx_HAPTIC)		+= aw8624_haptic/
+obj-$(CONFIG_AW8624_HAPTIC)		+= aw8624_haptic/
 #endif
 #ifdef OPLUS_ARCH_EXTEND
 obj-$(CONFIG_MTK_FB)		+= oplus/

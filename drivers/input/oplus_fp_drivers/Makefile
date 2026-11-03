@@ -15,6 +15,7 @@ endif
 obj-$(CONFIG_OPLUS_FINGERPRINT_SILEAD_OPTICAL) += silead_optical_fp/
 obj-$(CONFIG_OPLUS_FINGERPRINT_EGIS_OPTICAL)   += egis_optical_fp/
 obj-$(CONFIG_OPLUS_FINGERPRINT_SILEAD) += silead/
+obj-$(CONFIG_TRAN_FINGERPRINT) += silead/
 obj-$(CONFIG_OPLUS_FINGERPRINT_JIIOV_OPTICAL)  += anc_driver/
 obj-$(CONFIG_OPLUS_FINGERPRINT_GOODIX_OPTICAL)	+= 	goodix_optical_fp/
 obj-$(CONFIG_OPLUS_FINGERPRINT_FOCALTECH) += focaltech_fp/

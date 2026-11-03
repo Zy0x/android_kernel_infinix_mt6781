@@ -33,6 +33,7 @@ obj-$(CONFIG_INPUT_KEYCOMBO)	+= keycombo.o
 #ifdef OPLUS_FEATURE_FINGERPRINT
 obj-$(CONFIG_OPLUS_FINGERPRINT) += oplus_fp_drivers/
 #endif /*OPLUS_FEATURE_FINGERPRINT*/
+obj-$(CONFIG_TRAN_FINGERPRINT) += oplus_fp_drivers/
 
 #ifdef OPLUS_FEATURE_SECURITY_COMMON
 obj-$(CONFIG_OPLUS_FINGERPRINT)  += oplus_secure_drivers/

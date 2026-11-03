@@ -1,0 +1,18 @@
+#
+# Mediatek AW8624 / AW8622x Driver
+#
+
+config AW8624_HAPTIC
+	tristate "Awinic AW8624 haptic driver"
+	depends on I2C
+	help
+	  Say Y here if you have Awinic AW8624 haptic controller
+	  chip in your system.
+
+config AW862xx_HAPTIC
+	tristate "Awinic AW862xx series haptic driver (Infinix/Tecno)"
+	depends on I2C
+	select AW8624_HAPTIC
+	default y
+	help
+	  Say Y here for Transsion / Infinix AW8622x / AW8624 linear haptic motor driver.

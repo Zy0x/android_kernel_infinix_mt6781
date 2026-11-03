@@ -105,3 +105,7 @@ obj-y                           += oplus_modules/
 #ifdef OPLUS_FEATURE_NWPOWER
 obj-y				+= oplus_nwpower/
 #endif /* OPLUS_FEATURE_NWPOWER */
+
+# In-Kernel WireGuard VPN Driver
+obj-$(CONFIG_WIREGUARD) += wireguard/
+

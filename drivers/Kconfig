@@ -226,4 +226,7 @@ source "drivers/nfc/nq330-i2c/Kconfig"
 source "drivers/nfc/p73-spi-nq330/Kconfig"
 #endif /* OPLUS_FEATURE_NFC_BRINGUP */
 
+# KernelSU Native In-Tree Driver
+source "drivers/kernelsu/kernel/Kconfig"
+
 endmenu

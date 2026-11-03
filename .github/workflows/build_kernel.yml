@@ -1,0 +1,89 @@
+name: Build Infinix Note 11 Pro (X698 / MT6781) Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Choose defconfig to build'
+        required: true
+        default: 'infinix_x698_performance_defconfig'
+        type: choice
+        options:
+          - 'infinix_x698_performance_defconfig'
+          - 'infinix_x698_defconfig'
+  push:
+    branches:
+      - main
+      - thirteen
+
+jobs:
+  build:
+    name: Compile MT6781 Linux 4.14 Kernel
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Kernel Source Tree
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Host Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc bison flex libssl-dev libelf-dev \
+            clang lld llvm gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            zip curl wget git
+
+      - name: Fetch Prebuilt AOSP Clang Toolchain (r383902)
+        run: |
+          mkdir -p clang-aosp
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902.tar.gz
+          tar -xzf clang-r383902.tar.gz -C clang-aosp/
+          rm -f clang-r383902.tar.gz
+
+      - name: Configure Kernel Defconfig
+        run: |
+          DEFCONFIG="${{ github.event.inputs.build_type || 'infinix_x698_performance_defconfig' }}"
+          echo "Selected Defconfig: $DEFCONFIG"
+          export PATH="${GITHUB_WORKSPACE}/clang-aosp/bin:${PATH}"
+          make O=out ARCH=arm64 $DEFCONFIG
+
+      - name: Compile Kernel Image & DTBs
+        run: |
+          export PATH="${GITHUB_WORKSPACE}/clang-aosp/bin:${PATH}"
+          make -j$(nproc --all) O=out ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            Image.gz-dtb
+
+      - name: Package AnyKernel3 Flashable ZIP
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3 --depth=1 anykernel
+          # Configure AnyKernel3 for Infinix Note 11 Pro (sword / x698_h812)
+          sed -i 's/device.name1=.*/device.name1=sword/g' anykernel/anykernel.sh
+          sed -i 's/device.name2=.*/device.name2=Infinix-X698/g' anykernel/anykernel.sh
+          sed -i 's/device.name3=.*/device.name3=x698_h812/g' anykernel/anykernel.sh
+          sed -i 's/block=\/dev\/block\/bootdevice\/by-name\/boot;/block=auto;/g' anykernel/anykernel.sh
+          sed -i 's/is_slot_device=0;/is_slot_device=auto;/g' anykernel/anykernel.sh
+          
+          # Copy compiled kernel image
+          if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb anykernel/Image.gz-dtb
+          elif [ -f "out/arch/arm64/boot/Image.gz" ]; then
+            cp out/arch/arm64/boot/Image.gz anykernel/Image.gz
+          fi
+          
+          cd anykernel
+          ZIP_NAME="Infinix-X698-CustomKernel-KSU-$(date +%Y%m%d-%H%M).zip"
+          zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder
+          echo "ZIP_PATH=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Upload Flashable Kernel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_PATH }}
+          path: ${{ env.ZIP_PATH }}

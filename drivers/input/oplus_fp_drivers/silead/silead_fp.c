@@ -1442,6 +1442,7 @@ static int silfp_remove(struct spi_device *spi)
 }
 
 static const struct of_device_id sildev_dt_ids[] = {
+    { .compatible = "tran_fp" },
     { .compatible = "sil,silead_fp" },
     { .compatible = "sil,silead-fp" },
     { .compatible = "sil,fingerprint" },
@@ -1453,12 +1454,20 @@ static const struct of_device_id sildev_dt_ids[] = {
 
 MODULE_DEVICE_TABLE(of, sildev_dt_ids);
 
+static const struct spi_device_id silfp_id[] = {
+    { "tran_fp", 0 },
+    { "silead_fp", 0 },
+    {}
+};
+MODULE_DEVICE_TABLE(spi, silfp_id);
+
 static struct spi_driver silfp_driver = {
     .driver = {
         .name  = "silead_fp",
         .owner = THIS_MODULE,
         .of_match_table = of_match_ptr(sildev_dt_ids),
     },
+    .id_table = silfp_id,
     .probe  = silfp_probe,
     .remove = silfp_remove,
 
@@ -1475,6 +1484,7 @@ static int __init silfp_dev_init(void)
 {
     int status = 0;
 
+#ifndef CONFIG_TRAN_FINGERPRINT
     if ((FP_SILEAD_OPTICAL_70 != get_fpsensor_type())
         && (FP_SILEAD_6157 != get_fpsensor_type())
         && FP_SILEAD_6150 != get_fpsensor_type()
@@ -1483,6 +1493,7 @@ static int __init silfp_dev_init(void)
         status = -EINVAL;
         return status;
     }
+#endif
 
     LOG_MSG_DEBUG(ERR_LOG, "SILEAD_FP Driver, Version: %s.\n", FP_DEV_VERSION);
     /* Claim our 256 reserved device numbers.  Then register a class

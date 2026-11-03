@@ -51,14 +51,20 @@ struct IMGSENSOR_SENSOR_LIST
 #if defined(OV64B40_MIPI_RAW_21690)
 {OV64B40_SENSOR_ID_21690, SENSOR_DRVNAME_OV64B40_MIPI_RAW_21690, OV64B40_MIPI_RAW_21690_SensorInit},
 #endif
-#if defined(S5KJN1_MIPI_RAW_21690)
+#if defined(S5KJN1_MIPI_RAW) || defined(S5KJN1_MIPI_RAW_21690)
 {S5KJN1_SENSOR_ID_21690, SENSOR_DRVNAME_S5KJN1_MIPI_RAW_21690, S5KJN1_MIPI_RAW_21690_SensorInit},
+{S5KJN1_SENSOR_ID_21690, "s5kjn1_mipi_raw", S5KJN1_MIPI_RAW_21690_SensorInit},
 #endif
-#if defined(HI1634Q_MIPI_RAW_21690)
+#if defined(HI1631Q_MIPI_RAW) || defined(HI1634Q_MIPI_RAW_21690)
 {HI1634Q_SENSOR_ID_21690, SENSOR_DRVNAME_HI1634Q_MIPI_RAW_21690, HI1634Q_MIPI_RAW_21690_SensorInit},
+{HI1634Q_SENSOR_ID_21690, "hi1631q_mipi_raw", HI1634Q_MIPI_RAW_21690_SensorInit},
 #endif
 #if defined(S5K3P9SP_MIPI_RAW_21690)
 {S5K3P9SP_SENSOR_ID_21690, SENSOR_DRVNAME_S5K3P9SP_MIPI_RAW_21690, S5K3P9SP_MIPI_RAW_21690_SensorInit},
+#endif
+#if defined(GC02M1_MIPI_RAW) || defined(GC02M1HLT_MIPI_RAW_21690) || defined(GC02M1_MIPI_RAW_20730)
+{GC02M1_SENSOR_ID_20730, SENSOR_DRVNAME_GC02M1_MIPI_RAW_20730, GC02M1_MIPI_RAW_20730_SensorInit},
+{GC02M1_SENSOR_ID_20730, "gc02m1_mipi_raw", GC02M1_MIPI_RAW_20730_SensorInit},
 #endif
 #if defined(GC02M1HLT_MIPI_RAW_21690)
 {GC02M1HLT_SENSOR_ID_21690, SENSOR_DRVNAME_GC02M1HLT_MIPI_RAW_21690, GC02M1HLT_MIPI_RAW_21690_SensorInit},
@@ -68,6 +74,10 @@ struct IMGSENSOR_SENSOR_LIST
 #endif
 #if defined(OV02B1B_MIPI_MONO_21690)
 {OV02B1B_SENSOR_ID_21690, SENSOR_DRVNAME_OV02B1B_MIPI_MONO_21690, OV02B1B_MIPI_MONO_21690_SensorInit},
+#endif
+#if defined(GC02M1B_MIPI_RAW) || defined(GC02M1BSY_MIPI_RAW_21690) || defined(GC02M1B_MIPI_RAW_20601)
+{GC02M1B_SENSOR_ID_20601, SENSOR_DRVNAME_GC02M1B_MIPI_RAW_20601, GC02M1B_MIPI_RAW_20601_SensorInit},
+{GC02M1B_SENSOR_ID_20601, "gc02m1b_mipi_raw", GC02M1B_MIPI_RAW_20601_SensorInit},
 #endif
 #if defined(GC02M1BSY_MIPI_RAW_21690)
 {GC02M1BSY_SENSOR_ID_21690, SENSOR_DRVNAME_GC02M1BSY_MIPI_RAW_21690, GC02M1BSY_MIPI_RAW_21690_SensorInit},
@@ -422,6 +432,11 @@ struct CAMERA_DEVICE_INFO gImgEepromInfo_21684 = {
 
 void oplus_imgsensor_hwcfg()
 {
+#if defined(CONFIG_CUSTOM_TRAN_PROJECT) || defined(CONFIG_TRAN_SPDK_SUPPORT)
+    oplus_gimgsensor_sensor_list = gimgsensor_sensor_list_21690;
+    oplus_imgsensor_custom_config = imgsensor_custom_config_21690;
+    oplus_sensor_power_sequence = sensor_power_sequence_21690;
+#else
     if(is_project(21690) || is_project(21691) || is_project(21692)
         || is_project(21684) || is_project(21685) || is_project(21686)) {
         oplus_gimgsensor_sensor_list = gimgsensor_sensor_list_21690;
@@ -434,5 +449,6 @@ void oplus_imgsensor_hwcfg()
         oplus_sensor_power_sequence = sensor_power_sequence_21684;
         //gImgEepromInfo = gImgEepromInfo_21684;
     }
+#endif
 }
 #endif

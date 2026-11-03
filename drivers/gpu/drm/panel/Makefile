@@ -166,3 +166,7 @@ obj-$(CONFIG_DRM_PANEL_RAYDIUM_RM692H0) += panel-raydium-rm692h0-cmd-120hz.o
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/
 ##endif /* OPLUS_BUG_STABILITY */
+
+# Infinix Note 11 Pro / Note 11S (X697 / X698) BOE 120Hz NT36672C Panel Driver
+obj-$(CONFIG_DRM_PANEL_NT36672C_FHDP_DSI_VDO_TXD_BOE_120HZ_X697) += panel-nt36672c-fhdp-dsi-vdo-txd-boe-120hz-x697.o
+

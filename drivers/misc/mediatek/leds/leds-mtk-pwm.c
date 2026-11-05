@@ -282,11 +282,10 @@ static int led_level_set(struct led_classdev *led_cdev,
 #endif
 #ifdef CONFIG_MTK_AAL_SUPPORT
 		disp_pq_notify_backlight_changed(trans_level);
-#else
+#endif
+	/* Authentic Transsion Hardware PWM Backlight: ALWAYS drive PWM controller */
 	led_level_pwm_set(led_dat, trans_level);
 	led_dat->last_level = trans_level;
-
-#endif
 	return 0;
 
 }

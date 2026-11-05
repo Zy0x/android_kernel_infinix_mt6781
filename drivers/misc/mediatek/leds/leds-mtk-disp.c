@@ -365,10 +365,10 @@ led_dat->brightness = brightness;
 #else
 	disp_pq_notify_backlight_changed(trans_level);
 #endif /* OPLUS_BUG_STABILITY */
-#else
+#endif
+	/* Authentic Transsion Display Backlight: ALWAYS drive display driver */
 	led_level_disp_set(led_dat, brightness);
 	led_dat->last_level = brightness;
-#endif
 	return 0;
 
 }

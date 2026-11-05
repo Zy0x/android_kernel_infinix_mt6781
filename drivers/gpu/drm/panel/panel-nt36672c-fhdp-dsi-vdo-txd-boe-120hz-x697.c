@@ -1,7 +1,7 @@
 /*
  * Transsion BOE TXD 120Hz Novatek NT36672C Panel Driver for Infinix Note 11 Pro (X698)
  * Reconstructed 100% byte-for-byte from stock Infinix X698 factory kernel binary
- * Build #40:
+ * Build #41:
  *   - Fix 1: Single-byte MIPI DCS Exit Sleep (0x11) & Display On (0x29) (fixes blank screen)
  *   - Fix 2: Single-byte MIPI DCS Display Off (0x28) & Enter Sleep (0x10) in lcm_unprepare
  *   - Fix 3: Dual-slice hardware DSC compression configuration in ext_params (fixes horizontal scanlines/glitch)
@@ -457,38 +457,10 @@ static int lcm_enable(struct drm_panel *panel)
 		return 0;
 
 	if (ctx->backlight) {
-		/* Standard backlight class path (DT "backlight" phandle present) */
 		ctx->backlight->props.power = FB_BLANK_UNBLANK;
 		if (ctx->backlight->props.brightness <= 0)
-			ctx->backlight->props.brightness = 808;
+			ctx->backlight->props.brightness = 2048;
 		backlight_update_status(ctx->backlight);
-	} else {
-		/*
-		 * Fallback for Transsion X698: panel DTS has no "backlight" phandle,
-		 * so ctx->backlight is NULL. Stock uses mediatek,disp-leds which
-		 * registers as LED class. Iterate leds_list to find "lcd-backlight"
-		 * and trigger initial brightness — Android HAL takes over after boot.
-		 */
-		struct led_classdev *bl_led = NULL;
-		struct led_classdev *led_cdev;
-
-		down_read(&leds_list_lock);
-		list_for_each_entry(led_cdev, &leds_list, node) {
-			if (!strcmp(led_cdev->name, "lcd-backlight")) {
-				bl_led = led_cdev;
-				break;
-			}
-		}
-		up_read(&leds_list_lock);
-
-		if (bl_led) {
-			if (bl_led->brightness == 0)
-				led_set_brightness_sync(bl_led, 128);
-			pr_info("[LCM] lcm_enable: LED fallback ok, brightness=%u\n",
-				bl_led->brightness);
-		} else {
-			pr_warn("[LCM] lcm_enable: lcd-backlight LED not found, screen may stay dark\n");
-		}
 	}
 
 	ctx->enabled = true;
@@ -839,7 +811,7 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 			return -EPROBE_DEFER;
 	}
 
-	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
 		dev_err(dev, "cannot get reset-gpios %ld\n", PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);

@@ -74,6 +74,102 @@ static int mt6781_spk_i2s_in_type_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+
+/*
+ * Transsion X698 external speaker amp (FS16xx in GPIO one-wire pulse mode).
+ * Ground truth from stock V972 dtbo: /odm/tran_audio
+ *   compatible = "tran_audio,audio"; extamp_gpio = <&pio 164 0>;
+ *   extamp_mode = <2>; extamp_speech_mode = <2>;
+ * The amp is NOT reachable via I2C on this board; it is enabled by sending
+ * N rising pulses on extamp_gpio and then holding the line high.
+ */
+#include <linux/of.h>
+#include <linux/of_gpio.h>
+#include <linux/gpio.h>
+#include <linux/delay.h>
+#include <linux/spinlock.h>
+
+static int tran_extamp_gpio = -EINVAL;
+static u32 tran_extamp_mode = 2;
+static bool tran_extamp_inited;
+static bool tran_extamp_on;
+static DEFINE_SPINLOCK(tran_extamp_lock);
+static DEFINE_MUTEX(tran_extamp_mutex);
+
+static void tran_extamp_init(struct device *dev)
+{
+	struct device_node *np;
+	int gpio, ret;
+
+	if (tran_extamp_inited)
+		return;
+	tran_extamp_inited = true;
+
+	np = of_find_compatible_node(NULL, NULL, "tran_audio,audio");
+	if (!np) {
+		dev_warn(dev, "%s(), tran_audio node not found\n", __func__);
+		return;
+	}
+	gpio = of_get_named_gpio(np, "extamp_gpio", 0);
+	if (of_property_read_u32(np, "extamp_mode", &tran_extamp_mode))
+		tran_extamp_mode = 2;
+	if (tran_extamp_mode < 1 || tran_extamp_mode > 10)
+		tran_extamp_mode = 2;
+	of_node_put(np);
+
+	if (!gpio_is_valid(gpio)) {
+		dev_warn(dev, "%s(), invalid extamp_gpio %d\n", __func__, gpio);
+		return;
+	}
+	ret = gpio_request_one(gpio, GPIOF_OUT_INIT_LOW, "tran_extamp");
+	if (ret) {
+		dev_warn(dev, "%s(), request gpio %d fail %d\n",
+			 __func__, gpio, ret);
+		return;
+	}
+	tran_extamp_gpio = gpio;
+	dev_info(dev, "%s(), extamp gpio %d mode %u\n",
+		 __func__, gpio, tran_extamp_mode);
+}
+
+static void tran_extamp_switch(struct device *dev, bool enable)
+{
+	unsigned long flags;
+	u32 i;
+
+	mutex_lock(&tran_extamp_mutex);
+	tran_extamp_init(dev);
+	if (!gpio_is_valid(tran_extamp_gpio))
+		goto out;
+
+	if (enable) {
+		if (tran_extamp_on)
+			goto out;
+		/* guarantee amp is fully in shutdown before mode select */
+		gpio_set_value(tran_extamp_gpio, 0);
+		usleep_range(1000, 1200);
+		spin_lock_irqsave(&tran_extamp_lock, flags);
+		for (i = 0; i < tran_extamp_mode; i++) {
+			gpio_set_value(tran_extamp_gpio, 0);
+			udelay(2);
+			gpio_set_value(tran_extamp_gpio, 1);
+			udelay(2);
+		}
+		spin_unlock_irqrestore(&tran_extamp_lock, flags);
+		tran_extamp_on = true;
+		dev_info(dev, "tran_ext_amp_switch+++ ON\n");
+	} else {
+		if (!tran_extamp_on)
+			goto out;
+		gpio_set_value(tran_extamp_gpio, 0);
+		usleep_range(1000, 1200);
+		tran_extamp_on = false;
+		dev_info(dev, "tran_ext_amp_switch+++ OFF\n");
+	}
+out:
+	mutex_unlock(&tran_extamp_mutex);
+}
+
 static int mt6781_mt6366_spk_amp_event(struct snd_soc_dapm_widget *w,
 				       struct snd_kcontrol *kcontrol,
 				       int event)
@@ -86,15 +182,13 @@ static int mt6781_mt6366_spk_amp_event(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		/* spk amp on control */
-		//#ifdef ODM_HQ_EDIT
 		aw87319_audio_speaker();
-		//#endif /* ODM_HQ_EDIT */
+		tran_extamp_switch(card->dev, true);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		/* spk amp off control */
-		//#ifdef ODM_HQ_EDIT
+		tran_extamp_switch(card->dev, false);
 		aw87319_audio_off();
-		//#endif /* ODM_HQ_EDIT */
 		break;
 	default:
 		break;

@@ -18,6 +18,8 @@ void ksu_allowlist_exit(void);
 
 void ksu_load_allow_list(void);
 
+void ksu_show_allow_list(void);
+
 // Check if the uid is in allow list
 bool __ksu_is_allow_uid(uid_t uid);
 #define ksu_is_allow_uid(uid) unlikely(__ksu_is_allow_uid(uid))
@@ -32,9 +34,11 @@ bool ksu_is_uid_granted_root(uid_t uid);
 bool __ksu_is_allow_uid_for_current(uid_t uid);
 #define ksu_is_allow_uid_for_current(uid) unlikely(__ksu_is_allow_uid_for_current(uid))
 
-bool ksu_get_allow_list(int *array, u16 length, u16 *out_length, u16 *out_total, bool allow);
+bool ksu_get_allow_list(int *array, u16 length, u16 *out_length, u16 *out_total,
+                        bool allow);
 
-void ksu_prune_allowlist(bool (*is_uid_exist)(uid_t, char *, void *), void *data);
+void ksu_prune_allowlist(bool (*is_uid_exist)(uid_t, char *, void *),
+                         void *data);
 void ksu_persistent_allow_list();
 
 // should be called with rcu read lock
@@ -50,8 +54,8 @@ void ksu_put_root_profile(struct root_profile *);
 
 static inline bool is_appuid(uid_t uid)
 {
-    uid_t appid = uid % PER_USER_RANGE;
-    return appid >= FIRST_APPLICATION_UID && appid <= LAST_APPLICATION_UID;
+	uid_t appid = uid % PER_USER_RANGE;
+	return appid >= FIRST_APPLICATION_UID && appid <= LAST_APPLICATION_UID;
 }
 
 static inline bool is_isolated_process(uid_t uid)
@@ -59,4 +63,6 @@ static inline bool is_isolated_process(uid_t uid)
     uid_t appid = uid % PER_USER_RANGE;
     return appid >= FIRST_ISOLATED_UID && appid <= LAST_ISOLATED_UID;
 }
+extern bool allow_shell;
+
 #endif

@@ -1,7 +1,7 @@
 /*
  * Transsion BOE TXD 120Hz Novatek NT36672C Panel Driver for Infinix Note 11 Pro (X698)
  * Reconstructed 100% byte-for-byte from stock Infinix X698 factory kernel binary
- * Build #41:
+ * Build #42:
  *   - Fix 1: Single-byte MIPI DCS Exit Sleep (0x11) & Display On (0x29) (fixes blank screen)
  *   - Fix 2: Single-byte MIPI DCS Display Off (0x28) & Enter Sleep (0x10) in lcm_unprepare
  *   - Fix 3: Dual-slice hardware DSC compression configuration in ext_params (fixes horizontal scanlines/glitch)
@@ -545,7 +545,7 @@ static const struct drm_panel_funcs lcm_drm_funcs = {
 #if defined(CONFIG_MTK_PANEL_EXT)
 static struct mtk_panel_params ext_params_120hz = {
 	.data_rate = 960,
-	.vfp_low_power = 4277,
+	.vfp_low_power = 0,
 	.dyn = {
 		.switch_en = 1,
 		.data_rate = 900,
@@ -604,7 +604,7 @@ static struct mtk_panel_params ext_params_120hz = {
 
 static struct mtk_panel_params ext_params_90hz = {
 	.data_rate = 960,
-	.vfp_low_power = 4277,
+	.vfp_low_power = 0,
 	.dyn = {
 		.switch_en = 1,
 		.data_rate = 900,
@@ -663,7 +663,7 @@ static struct mtk_panel_params ext_params_90hz = {
 
 static struct mtk_panel_params ext_params_60hz = {
 	.data_rate = 960,
-	.vfp_low_power = 4277,
+	.vfp_low_power = 0,
 	.dyn = {
 		.switch_en = 1,
 		.data_rate = 900,

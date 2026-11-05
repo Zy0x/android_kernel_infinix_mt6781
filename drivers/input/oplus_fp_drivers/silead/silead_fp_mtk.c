@@ -92,9 +92,6 @@ static int silfp_hw_poweron(struct silfp_data *fp_dev)
 	    if ( fp_dev->avdd_ldo ) {
 	        err = regulator_set_voltage(fp_dev->avdd_ldo, AVDD_MIN, AVDD_MAX);	/*set 2.8v*/
 		    LOG_MSG_DEBUG(INFO_LOG, "%s: set voltage :%d \n", __func__, err);
-	        if (err) {
-	            goto last;
-	        }
 	        err = regulator_enable(fp_dev->avdd_ldo);	/*enable regulator*/
 	        LOG_MSG_DEBUG(INFO_LOG, "%s: regulator_enable :%d \n", __func__, err);
 	        if (err) {
@@ -288,83 +285,95 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
 #ifdef CONFIG_OF
     struct device_node *node = NULL;
     struct platform_device *pdev = NULL;
+    struct device *dev = NULL;
     int  ret;
-//#ifdef VENDOR_EDIT
+
     node = of_find_compatible_node(NULL, NULL, FP_PINS_OF);
+    if (!node)
+        node = of_find_compatible_node(NULL, NULL, SIL_COMPATIBLE_NODE);
+    if (!node)
+        node = of_find_compatible_node(NULL, NULL, "tran_fp");
+    if (!node && fp_dev->spi && fp_dev->spi->dev.of_node)
+        node = fp_dev->spi->dev.of_node;
 
     if (node) {
-		pdev = of_find_device_by_node(node);
-		if (pdev == NULL) {
-            LOG_MSG_DEBUG(ERR_LOG, "%s can not find device by node \n", __func__);
-            return -1;
-        }
-    } else {
-    	node = of_find_compatible_node(NULL, NULL, SIL_COMPATIBLE_NODE);
-		pdev = of_find_device_by_node(node);
-		if (pdev == NULL) {
-            LOG_MSG_DEBUG(ERR_LOG, "%s can not find finger-fp device by node \n", __func__);
-            return -1;
-        }
-        LOG_MSG_DEBUG(ERR_LOG, "%s find compatible mediatek,finger-fp node \n", __func__);
-        //return -1;
+        pdev = of_find_device_by_node(node);
+    }
+    dev = pdev ? &pdev->dev : (fp_dev->spi ? &fp_dev->spi->dev : NULL);
+    if (!dev) {
+        LOG_MSG_DEBUG(ERR_LOG, "%s can not find valid device or spi dev \n", __func__);
+        return -1;
     }
 
 	ret = of_property_read_u32(node, "sil,ldo_disable", &SIL_LDO_DISBALE);
 	if (ret) {
-		LOG_MSG_DEBUG(ERR_LOG, "failed to request silfp,ldo_disable, ret = %d\n", ret);
 		SIL_LDO_DISBALE = 0;
 	}
 
     /* get silead irq_gpio resource */
-    fp_dev->irq_gpio = of_get_named_gpio(pdev->dev.of_node, "sil,silead_irq", 0);
+    fp_dev->irq_gpio = of_get_named_gpio(node, "sil,silead_irq", 0);
+    if (!gpio_is_valid(fp_dev->irq_gpio))
+        fp_dev->irq_gpio = of_get_named_gpio(node, "irq-gpio", 0);
+    if (!gpio_is_valid(fp_dev->irq_gpio))
+        fp_dev->irq_gpio = of_get_named_gpio(node, "irq-gpio-std", 0);
+    if (!gpio_is_valid(fp_dev->irq_gpio) && pdev && pdev->dev.of_node)
+        fp_dev->irq_gpio = of_get_named_gpio(pdev->dev.of_node, "sil,silead_irq", 0);
+
     if (!gpio_is_valid(fp_dev->irq_gpio)) {
 		LOG_MSG_DEBUG(ERR_LOG, "%s IRQ GPIO invalid \n", __func__);
 		return -1;
 	}
 
+    /* get reset gpio resource */
+    fp_dev->rst_port = of_get_named_gpio(node, "reset-gpio", 0);
+    if (!gpio_is_valid(fp_dev->rst_port))
+        fp_dev->rst_port = of_get_named_gpio(node, "reset-gpio-std", 0);
+
     /* get interrupt port from gpio */
     fp_dev->int_port = gpio_to_irq(fp_dev->irq_gpio);
-    LOG_MSG_DEBUG(INFO_LOG, "%s, irq = %d\n", __func__, fp_dev->int_port);
+    LOG_MSG_DEBUG(INFO_LOG, "%s, irq = %d, rst_port = %d\n", __func__, fp_dev->int_port, fp_dev->rst_port);
 
-    fp_dev->pin.pinctrl = devm_pinctrl_get(&pdev->dev);
+    fp_dev->pin.pinctrl = devm_pinctrl_get(dev);
+    if (IS_ERR(fp_dev->pin.pinctrl) && fp_dev->spi)
+        fp_dev->pin.pinctrl = devm_pinctrl_get(&fp_dev->spi->dev);
     if (IS_ERR(fp_dev->pin.pinctrl)) {
         ret = PTR_ERR(fp_dev->pin.pinctrl);
         LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp pinctrl\n", __func__);
         return ret;
     }
-//#endif VENDOR_EDIT
+
     fp_dev->pin.pins_irq = pinctrl_lookup_state(fp_dev->pin.pinctrl, "irq-init");
+    if (IS_ERR(fp_dev->pin.pins_irq))
+        fp_dev->pin.pins_irq = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_pin_irq");
     if (IS_ERR(fp_dev->pin.pins_irq)) {
         ret = PTR_ERR(fp_dev->pin.pins_irq);
-        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp irq-init\n", __func__);
+        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp pins_irq\n", __func__);
         return ret;
     }
 
     fp_dev->pin.pins_rst_h = pinctrl_lookup_state(fp_dev->pin.pinctrl, "rst-high");
+    if (IS_ERR(fp_dev->pin.pins_rst_h))
+        fp_dev->pin.pins_rst_h = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_reset_high");
     if (IS_ERR(fp_dev->pin.pins_rst_h)) {
         ret = PTR_ERR(fp_dev->pin.pins_rst_h);
         LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp rst-high\n", __func__);
         return ret;
     }
+
     fp_dev->pin.pins_rst_l = pinctrl_lookup_state(fp_dev->pin.pinctrl, "rst-low");
+    if (IS_ERR(fp_dev->pin.pins_rst_l))
+        fp_dev->pin.pins_rst_l = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_reset_low");
     if (IS_ERR(fp_dev->pin.pins_rst_l)) {
         ret = PTR_ERR(fp_dev->pin.pins_rst_l);
-        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp rst-high\n", __func__);
+        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp rst-low\n", __func__);
         return ret;
     }
+
 	if( SIL_LDO_DISBALE == 0 ) {
-	    // fp_dev->pin.spi_default = pinctrl_lookup_state(fp_dev->pin.pinctrl, "spi-default");
-	    // if (IS_ERR(fp_dev->pin.spi_default)) {
-	    //     ret = PTR_ERR(fp_dev->pin.spi_default);
-	    //     pr_info("%s can't find silfp spi-default\n", __func__);
-	    //     return ret;
-	    // }
 	    ret = of_property_read_u32(node,"vmch_enable",&vmch_enable );
 		if (ret) {
-	        pr_info("Error get vmch_enable\n");
-			vmch_enable = 0;
-	        }
-	    //pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.spi_default);
+			vmch_enable = 1;
+	    }
 	}
     /* Get power settings */
 
@@ -373,28 +382,26 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
 	    if (IS_ERR_OR_NULL(fp_dev->pin.pins_avdd_h)) {
 	        fp_dev->pin.pins_avdd_h = NULL;
 	        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp avdd-enable\n", __func__);
-	        // Ignore error
 	    }
 
 	    fp_dev->pin.pins_vddio_h = pinctrl_lookup_state(fp_dev->pin.pinctrl, "power_low");
 	    if (IS_ERR_OR_NULL(fp_dev->pin.pins_vddio_h)) {
 	        fp_dev->pin.pins_vddio_h = NULL;
 	        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp vddio-enable\n", __func__);
-	        // Ignore error
 	    }
 	}
 
 #ifdef BSP_SIL_POWER_SUPPLY_REGULATOR
 	if ( SIL_LDO_DISBALE == 0 ) {
-	    // Todo: use correct settings.
-		if (vmch_enable ==1) {
+		if (vmch_enable == 1) {
 		    fp_dev->avdd_ldo = regulator_get(&fp_dev->spi->dev, "vmch");
 		} else {
 	        fp_dev->avdd_ldo = regulator_get(&fp_dev->spi->dev, "dvdd");
 		}
+        if (IS_ERR_OR_NULL(fp_dev->avdd_ldo)) {
+            fp_dev->avdd_ldo = regulator_get(&fp_dev->spi->dev, "vmch");
+        }
 	}
-	//fp_dev->avdd_ldo = regulator_get(&fp_dev->spi->dev, "avdd");
-    //fp_dev->vddio_ldo= regulator_get(&fp_dev->spi->dev, "vddio");
 #endif /* BSP_SIL_POWER_SUPPLY_REGULATOR */
 
 #if (!defined(CONFIG_SILEAD_FP_PLATFORM))
@@ -428,16 +435,16 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
 /* -------------------------------------------------------------------- */
 static int silfp_set_spi_default_status (struct silfp_data *fp_dev)
 {
-    int ret;
+    int ret = 0;
 #ifdef BSP_SIL_CTRL_SPI
 	fp_dev->pin.spi_default = pinctrl_lookup_state(fp_dev->pin.pinctrl, "spi-default");
 	if (IS_ERR(fp_dev->pin.spi_default)) {
-		ret = PTR_ERR(fp_dev->pin.spi_default);
-		pr_info("%s can't find silfp spi-default\n", __func__);
-		return ret;
-	}
-	pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.spi_default);
-	LOG_MSG_DEBUG(DBG_LOG, "set spi default status");
+        fp_dev->pin.spi_default = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_spi_default");
+    }
+	if (!IS_ERR_OR_NULL(fp_dev->pin.spi_default)) {
+        pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.spi_default);
+        LOG_MSG_DEBUG(DBG_LOG, "set spi default status");
+    }
 #endif /* BSP_SIL_CTRL_SPI */
     return ret;
 }
@@ -535,13 +542,11 @@ static int silfp_resource_init(struct silfp_data *fp_dev, struct fp_dev_init_t *
     if (fp_dev->rst_port > 0 ) {
         ret = gpio_request(fp_dev->rst_port, "SILFP_RST_PIN");
         if (ret < 0) {
-            LOG_MSG_DEBUG(ERR_LOG, "[%s] Failed to request GPIO=%d, ret=%d",__func__,(s32)fp_dev->rst_port, ret);
-            status = -ENODEV;
-            goto err_rst;
-        } else {
-            //gpio_direction_output(fp_dev->rst_port, 1);
-            pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_rst_l);
+            LOG_MSG_DEBUG(ERR_LOG, "[%s] GPIO=%d request failed (%d), falling back to pinctrl\n",__func__,(s32)fp_dev->rst_port, ret);
         }
+    }
+    if (!IS_ERR_OR_NULL(fp_dev->pin.pins_rst_l)) {
+        pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_rst_l);
     }
 
     silfp_hw_poweron(fp_dev);

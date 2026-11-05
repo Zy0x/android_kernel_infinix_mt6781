@@ -1028,6 +1028,12 @@ silfp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     switch (cmd) {
     case SIFP_IOC_INIT:
+#ifdef BSP_SIL_NETLINK
+        if (!pid) {
+            pid = current->tgid;
+            pr_info("[+silead_fp-] captured PID=%d from IOC_INIT\n", pid);
+        }
+#endif
         silfp_resource_init(fp_dev,&silfp_dev_init_d);
         if (copy_to_user((void __user *)arg, (void *)&silfp_dev_init_d, sizeof(struct fp_dev_init_t))) {
             retval = -EFAULT;
@@ -1275,6 +1281,12 @@ static int silfp_open(struct inode *inode, struct file *filp)
         fp_dev->users++;
         filp->private_data = fp_dev;
         nonseekable_open(inode, filp);
+#ifdef BSP_SIL_NETLINK
+        if (!pid) {
+            pid = current->tgid;
+            pr_info("[+silead_fp-] captured PID=%d from open()\n", pid);
+        }
+#endif
     } else {
         LOG_MSG_DEBUG(ERR_LOG, "silfp: nothing for minor %d\n", iminor(inode));
     }

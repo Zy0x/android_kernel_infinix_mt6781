@@ -2131,3 +2131,91 @@ config ASN1
 	  functions to call on what tags.
 
 source "kernel/Kconfig.locks"
+
+menu "Transsion Custom Configuration"
+
+config CUSTOM_TRAN_PROJECT
+	string "Transsion Project Name"
+	default "tran_x698"
+
+config CUSTOM_TRAN_PCBA
+	string "Transsion PCBA Name"
+	default "tran_pcba_h812"
+
+config TRAN_CHIP_PLAT
+	string "Transsion Chip Platform"
+	default "MTK"
+
+config TRAN_MODEM_DUMP
+	bool "Transsion Modem Dump"
+	default y
+
+config TRAN_SPDK_SUPPORT
+	bool "Transsion SPDK Support"
+	default y
+
+config TRAN_SD_TRAY_SUPPORTED
+	bool "Transsion SD Tray Support"
+	default y
+
+config TRAN_BACKLIGHT_OPT
+	bool "Transsion Backlight Optimization"
+	default y
+
+config TRAN_FRE
+	bool "Transsion Fast Response Engine"
+	default y
+
+config TRAN_FINGERPRINT
+	bool "Transsion Fingerprint Support"
+	default y
+
+config TRAN_FP_DRV_MODE_SPI
+	bool "Transsion FP SPI Mode"
+	default y
+
+config TRAN_FP_POWER_CTRL_REGULATOR
+	bool "Transsion FP Power Control Regulator"
+	default y
+
+config TRAN_FP_VENDOR
+	string "Transsion FP Vendor"
+	default "silead"
+
+config TRAN_FP_LOG_LVL
+	string "Transsion FP Log Level"
+	default "DEBUG"
+
+config TRAN_CHARGER_AGING_SUPPORT
+	bool "Transsion Charger Aging Support"
+	default y
+
+config TRAN_CHARGER_DIR
+	bool "Transsion Charger DIR"
+	default y
+
+config TRAN_CHARGER_EXTERN_JEITA
+	bool "Transsion Charger Extern JEITA"
+	default y
+
+config TRAN_CHARGER_FUNCS_ADD
+	bool "Transsion Charger Funcs Add"
+	default y
+
+config TRAN_CHARGER_OTG_LPO_SUPPORT
+	bool "Transsion Charger OTG LPO Support"
+	default y
+
+config TRAN_CHARGER_SW_OTG_SUPPORT
+	bool "Transsion Charger SW OTG Support"
+	default y
+
+config TRAN_CHARGER_USB_SWITCH
+	bool "Transsion Charger USB Switch"
+	default y
+
+config TRAN_CHG_TYPE_DETECT_RETRY
+	bool "Transsion Charger Type Detect Retry"
+	default y
+
+endmenu

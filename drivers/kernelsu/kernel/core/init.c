@@ -86,11 +86,7 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
 struct cred *ksu_cred;
 bool ksu_late_loaded;
 
-#ifdef CONFIG_KSU_DEBUG
 bool allow_shell = true;
-#else
-bool allow_shell = false;
-#endif
 module_param(allow_shell, bool, 0);
 
 bool ksu_no_custom_rc = false;

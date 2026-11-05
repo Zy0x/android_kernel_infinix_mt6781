@@ -37,6 +37,8 @@ ifeq ($(CONFIG_OPLUS_FINGERPRINT_QCOM),y)
 else ifeq ($(CONFIG_OPLUS_FINGERPRINT_MTK),y)
 obj-y	+= silead_fp.o
 obj-$(CONFIG_SILEAD_FP_SPI)	+= silead_fp.o
+else ifeq ($(CONFIG_TRAN_FINGERPRINT),y)
+obj-y	+= silead_fp.o
 endif
 
 

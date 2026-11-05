@@ -438,6 +438,13 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 	for (i = 0; i < PLANE_PROP_MAX; i++)
 		state->pending.prop_val[i] = state->prop_val[i];
 
+	/* Auto-detect AFBC compression from framebuffer modifier */
+	if (fb->modifier[0] && fb->modifier[0] != DRM_FORMAT_MOD_LINEAR) {
+		state->pending.prop_val[PLANE_PROP_COMPRESS] = 1;
+		if (!state->pending.prop_val[PLANE_PROP_VPITCH])
+			state->pending.prop_val[PLANE_PROP_VPITCH] = ALIGN_TO(dst_h, 16);
+	}
+
 	wmb(); /* Make sure the above parameters are set before update */
 	state->pending.dirty = true;
 

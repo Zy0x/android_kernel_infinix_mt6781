@@ -1771,6 +1771,14 @@ static bool compr_l_config_PVRIC_V3_1(struct mtk_ddp_comp *comp,
 	unsigned int domain_val = 0, domain_mask = 0;
 #endif
 
+	/* Auto-detect AFBC compression from framebuffer modifier */
+	if (!compress && pending->modifier && pending->modifier != DRM_FORMAT_MOD_LINEAR)
+		compress = 1;
+
+	/* Default vpitch if not populated by userspace */
+	if (vpitch == 0)
+		vpitch = ALIGN_TO(pending->height, 16);
+
 #ifdef CONFIG_MTK_LCM_PHYSICAL_ROTATION_HW
 	if (drm_crtc_index(&comp->mtk_crtc->base) == 0)
 		rotate = 1;
@@ -2122,6 +2130,14 @@ static bool compr_l_config_AFBC_V1_2(struct mtk_ddp_comp *comp,
 #ifdef CONFIG_MTK_SVP_ON_MTEE_SUPPORT
 	unsigned int domain_val = 0, domain_mask = 0;
 #endif
+
+	/* Auto-detect AFBC compression from framebuffer modifier */
+	if (!compress && pending->modifier && pending->modifier != DRM_FORMAT_MOD_LINEAR)
+		compress = 1;
+
+	/* Default vpitch if not populated by userspace */
+	if (vpitch == 0)
+		vpitch = ALIGN_TO(pending->height, 16);
 
 	DDPDBG("%s:%d, addr:0x%x, pitch:%d, vpitch:%d\n",
 		__func__, __LINE__, addr,

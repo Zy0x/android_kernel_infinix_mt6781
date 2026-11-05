@@ -18,13 +18,13 @@
 #include <linux/suspend.h>
 #include <linux/console.h>
 
-#include <mtk_sleep_internal.h>
+#include "mtk_sleep_internal.h"
 #include <mtk_spm_internal.h> /* mtk_idle_cond_check */
 #include <mtk_spm_suspend_internal.h>
 #include <mtk_idle_fs/mtk_idle_sysfs.h>
 #include <mtk_power_gs_api.h>
 #include <mtk_idle.h>
-#include <mtk_idle_internal.h>
+#include "mtk_idle_internal.h"
 #ifdef CONFIG_MTK_SND_SOC_NEW_ARCH
 #include <mtk-soc-afe-control.h>
 #endif /* CONFIG_MTK_SND_SOC_NEW_ARCH */
@@ -36,7 +36,7 @@
 
 #include <mtk_mcdi_api.h>
 
-#include <mtk_lp_dts.h>
+#include "mtk_lp_dts.h"
 static DEFINE_SPINLOCK(slp_lock);
 
 unsigned long slp_dp_cnt[NR_CPUS] = {0};

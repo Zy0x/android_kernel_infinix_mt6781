@@ -17,7 +17,7 @@
 
 #include <linux/list.h>
 #include <linux/kernel.h>
-#include <ged_bridge.h>
+#include "ged_bridge.h"
 #include "ged_type.h"
 #include <mt-plat/mtk_gpu_utility.h>
 

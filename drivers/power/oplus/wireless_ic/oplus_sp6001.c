@@ -29,7 +29,7 @@
 #include "../oplus_charger.h"
 #include "../charger_ic/oplus_mp2650.h"
 #include "../charger_ic/oplus_chargepump.h"
-#include <oplus_sp6001.h>
+#include "oplus_sp6001.h"
 
 int send_msg_timer = 0;
 int send_step_timer = 0;

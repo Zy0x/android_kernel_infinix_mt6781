@@ -44,7 +44,7 @@
 
 #include <mt-plat/perf_tracker.h>
 #include <linux/arch_topology.h>
-#include <perf_tracker_internal.h>
+#include "perf_tracker_internal.h"
 
 #ifdef CONFIG_MTK_SKB_OWNER
 #include <net/sock.h>

@@ -24,8 +24,8 @@
 #include "mali_kbase_timeline_priv.h"
 #include "mali_kbase_tracepoints.h"
 
-#include <mali_kbase.h>
-#include <mali_kbase_jm.h>
+#include "mali_kbase.h"
+#include "mali_kbase_jm.h"
 
 #include <linux/anon_inodes.h>
 #include <linux/atomic.h>

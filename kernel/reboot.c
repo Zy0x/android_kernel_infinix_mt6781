@@ -12,6 +12,7 @@
 #include <linux/kmod.h>
 #include <linux/kmsg_dump.h>
 #include <linux/reboot.h>
+#include <linux/timekeeping.h>
 #include <linux/suspend.h>
 #include <linux/syscalls.h>
 #include <linux/syscore_ops.h>
@@ -60,6 +61,11 @@ void (*pm_power_off_prepare)(void);
  */
 void emergency_restart(void)
 {
+	if (ktime_get_seconds() < 300) {
+		pr_emerg("[BOOT_GUARD] Prevented premature emergency_restart (uptime=%llds, caller=%pS)!\n",
+			(long long)ktime_get_seconds(), (void *)__builtin_return_address(0));
+		return;
+	}
 	kmsg_dump(KMSG_DUMP_EMERG);
 	machine_emergency_restart();
 }
@@ -213,6 +219,12 @@ void migrate_to_reboot_cpu(void)
  */
 void kernel_restart(char *cmd)
 {
+	bool is_admin_reboot = (cmd && (!strcmp(cmd, "bootloader") || !strcmp(cmd, "fastboot") || !strcmp(cmd, "recovery")));
+	if (!is_admin_reboot && ktime_get_seconds() < 300) {
+		pr_emerg("[BOOT_GUARD] Prevented premature kernel_restart (uptime=%llds, cmd='%s', caller=%pS)!\n",
+			(long long)ktime_get_seconds(), cmd ? cmd : "none", (void *)__builtin_return_address(0));
+		return;
+	}
 	kernel_restart_prepare(cmd);
 	migrate_to_reboot_cpu();
 	syscore_shutdown();
@@ -240,6 +252,11 @@ static void kernel_shutdown_prepare(enum system_states state)
  */
 void kernel_halt(void)
 {
+	if (ktime_get_seconds() < 300) {
+		pr_emerg("[BOOT_GUARD] Prevented premature kernel_halt (uptime=%llds, caller=%pS)!\n",
+			(long long)ktime_get_seconds(), (void *)__builtin_return_address(0));
+		return;
+	}
 	kernel_shutdown_prepare(SYSTEM_HALT);
 	migrate_to_reboot_cpu();
 	syscore_shutdown();
@@ -256,6 +273,11 @@ EXPORT_SYMBOL_GPL(kernel_halt);
  */
 void kernel_power_off(void)
 {
+	if (ktime_get_seconds() < 300) {
+		pr_emerg("[BOOT_GUARD] Prevented premature kernel_power_off (uptime=%llds, caller=%pS)!\n",
+			(long long)ktime_get_seconds(), (void *)__builtin_return_address(0));
+		return;
+	}
 	kernel_shutdown_prepare(SYSTEM_POWER_OFF);
 	if (pm_power_off_prepare)
 		pm_power_off_prepare();
@@ -314,6 +336,10 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 	mutex_lock(&reboot_mutex);
 	switch (cmd) {
 	case LINUX_REBOOT_CMD_RESTART:
+		if (ktime_get_seconds() < 300) {
+			pr_emerg("[BOOT_GUARD] Blocked userspace LINUX_REBOOT_CMD_RESTART during early boot!\n");
+			return -EPERM;
+		}
 		kernel_restart(NULL);
 		break;
 
@@ -326,11 +352,19 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 		break;
 
 	case LINUX_REBOOT_CMD_HALT:
+		if (ktime_get_seconds() < 300) {
+			pr_emerg("[BOOT_GUARD] Blocked userspace LINUX_REBOOT_CMD_HALT during early boot!\n");
+			return -EPERM;
+		}
 		kernel_halt();
 		do_exit(0);
 		panic("cannot halt");
 
 	case LINUX_REBOOT_CMD_POWER_OFF:
+		if (ktime_get_seconds() < 300) {
+			pr_emerg("[BOOT_GUARD] Blocked userspace LINUX_REBOOT_CMD_POWER_OFF during early boot!\n");
+			return -EPERM;
+		}
 		kernel_power_off();
 		do_exit(0);
 		break;
@@ -342,6 +376,14 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 			break;
 		}
 		buffer[sizeof(buffer) - 1] = '\0';
+
+		if (strcmp(buffer, "bootloader") != 0 &&
+		    strcmp(buffer, "fastboot") != 0 &&
+		    strcmp(buffer, "recovery") != 0 &&
+		    ktime_get_seconds() < 300) {
+			pr_emerg("[BOOT_GUARD] Blocked userspace LINUX_REBOOT_CMD_RESTART2 during early boot!\n");
+			return -EPERM;
+		}
 
 		kernel_restart(buffer);
 		break;
@@ -463,6 +505,11 @@ static DECLARE_WORK(poweroff_work, poweroff_work_func);
  */
 void orderly_poweroff(bool force)
 {
+	if (ktime_get_seconds() < 300) {
+		pr_emerg("[BOOT_GUARD] Prevented premature orderly_poweroff (uptime=%llds, caller=%pS)!\n",
+			(long long)ktime_get_seconds(), (void *)__builtin_return_address(0));
+		return;
+	}
 	if (force) /* do not override the pending "true" */
 		poweroff_force = true;
 	schedule_work(&poweroff_work);

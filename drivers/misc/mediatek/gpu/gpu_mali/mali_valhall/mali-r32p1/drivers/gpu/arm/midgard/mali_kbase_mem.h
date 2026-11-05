@@ -32,7 +32,7 @@
 
 #include <linux/kref.h>
 #include <uapi/gpu/arm/midgard/mali_base_kernel.h>
-#include <mali_kbase_hw.h>
+#include "mali_kbase_hw.h"
 #include "mali_kbase_pm.h"
 #include "mali_kbase_defs.h"
 /* Required for kbase_mem_evictable_unmake */

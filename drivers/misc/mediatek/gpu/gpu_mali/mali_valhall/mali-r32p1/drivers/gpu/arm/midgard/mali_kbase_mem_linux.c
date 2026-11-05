@@ -39,14 +39,14 @@
 #include <linux/cache.h>
 #include <linux/memory_group_manager.h>
 
-#include <mali_kbase.h>
-#include <mali_kbase_mem_linux.h>
+#include "mali_kbase.h"
+#include "mali_kbase_mem_linux.h"
 #include <tl/mali_kbase_tracepoints.h>
 #include <uapi/gpu/arm/midgard/mali_kbase_ioctl.h>
 #include <mmu/mali_kbase_mmu.h>
-#include <mali_kbase_caps.h>
-#include <mali_kbase_trace_gpu_mem.h>
-#include <mali_kbase_reset_gpu.h>
+#include "mali_kbase_caps.h"
+#include "mali_kbase_trace_gpu_mem.h"
+#include "mali_kbase_reset_gpu.h"
 
 #if IS_ENABLED(CONFIG_MTK_IOMMU_V2)
 #include <asm/cacheflush.h>

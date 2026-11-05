@@ -14,7 +14,7 @@
 #ifndef _TASK_TURBO_FUTEX_H_
 #define _TASK_TURBO_FUTEX_H_
 
-#include <turbo_common.h>
+#include "turbo_common.h"
 
 inline void futex_plist_add(struct futex_q *q, struct futex_hash_bucket *hb)
 {

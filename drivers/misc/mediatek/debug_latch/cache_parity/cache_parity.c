@@ -26,7 +26,7 @@
 #include <linux/device.h>
 #include <linux/sched/clock.h>
 #include <mt-plat/aee.h>
-#include <cache_parity.h>
+#include "cache_parity.h"
 #include <asm/cputype.h>
 #include <linux/irqchip/mtk-gic-extend.h>
 

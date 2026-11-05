@@ -6,7 +6,7 @@
 #include <linux/sysctl.h>
 #include <linux/reciprocal_div.h>
 #include <linux/topology.h>
-#include <../kernel/sched/sched.h>
+#include "../kernel/sched/sched.h"
 #include <linux/cpufreq.h>
 
 #include "prefer_silver.h"

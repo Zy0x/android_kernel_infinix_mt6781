@@ -24,14 +24,14 @@
 
 #include <trace/events/mtk_events.h>
 
-#include <slbc.h>
+#include "slbc.h"
 #define CREATE_TRACE_POINTS
-#include <slbc_events.h>
+#include "slbc_events.h"
 
 #include <linux/kthread.h>
 
 #ifdef CONFIG_MTK_SLBC_MMSRAM
-#include <mmsram.h>
+#include "mmsram.h"
 
 static struct mmsram_data mmsram;
 #endif /* CONFIG_MTK_SLBC_MMSRAM */

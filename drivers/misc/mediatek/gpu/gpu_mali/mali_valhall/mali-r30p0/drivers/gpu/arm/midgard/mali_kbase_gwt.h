@@ -42,8 +42,8 @@
 #if !defined(_KBASE_GWT_H)
 #define _KBASE_GWT_H
 
-#include <mali_kbase.h>
-#include <mali_kbase_ioctl.h>
+#include "mali_kbase.h"
+#include "mali_kbase_ioctl.h"
 
 /**
  * kbase_gpu_gwt_start - Start the GPU write tracking

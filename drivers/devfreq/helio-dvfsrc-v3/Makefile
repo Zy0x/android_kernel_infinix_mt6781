@@ -11,6 +11,7 @@
 # GNU General Public License for more details.
 #
 ccflags-y += -I$(srctree)/drivers/devfreq
+ccflags-y += -I$(srctree)/drivers/devfreq/helio-dvfsrc-v3
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/spm/$(MTK_PLATFORM)/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/dramc/$(MTK_PLATFORM)/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include/

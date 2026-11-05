@@ -29,7 +29,7 @@
 #include <linux/component.h>
 #include <linux/of_device.h>
 #include <linux/extcon.h>
-#include <../../../extcon/extcon.h>
+#include "../../../extcon/extcon.h"
 #include <linux/kthread.h>
 #include <linux/errno.h>
 

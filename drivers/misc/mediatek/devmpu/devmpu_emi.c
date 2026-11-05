@@ -15,8 +15,8 @@
 #include <linux/arm-smccc.h>
 #include <mt-plat/mtk_secure_api.h>
 #include <emi.h>
-#include <devmpu.h>
-#include <devmpu_emi.h>
+#include "devmpu.h"
+#include "devmpu_emi.h"
 
 #define LOG_TAG "[DEVMPU_ACP]"
 

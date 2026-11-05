@@ -16,7 +16,7 @@
 #include <linux/io.h>
 #include <linux/sched/clock.h>
 #include <apusys_secure.h>
-#include <apusys_plat.h>
+#include "apusys_plat.h"
 
 #define APUSYS_REG_SIZE (0x100000)
 #define APUSYS_BASE (0x19000000)

@@ -36,7 +36,7 @@
 #include <mtk_dbg_common_v1.h>
 #include <mt-plat/mtk_ccci_common.h>
 #include <uapi/linux/sched/types.h>
-#include "mt6781.h"
+#include "../mt6781.h"
 #include "mt6781_suspend.h"
 
 unsigned int mt6781_suspend_status;

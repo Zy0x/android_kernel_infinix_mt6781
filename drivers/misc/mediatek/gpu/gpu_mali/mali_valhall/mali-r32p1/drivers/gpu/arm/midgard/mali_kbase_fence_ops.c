@@ -21,8 +21,8 @@
 
 #include <linux/atomic.h>
 #include <linux/list.h>
-#include <mali_kbase_fence_defs.h>
-#include <mali_kbase.h>
+#include "mali_kbase_fence_defs.h"
+#include "mali_kbase.h"
 
 static const char *
 #if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)

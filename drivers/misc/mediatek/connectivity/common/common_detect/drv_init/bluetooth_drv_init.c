@@ -30,7 +30,7 @@ int __attribute__((weak)) mtk_wcn_stpbt_drv_init()
 
 int do_bluetooth_drv_init(int chip_id)
 {
-	int i_ret = -1;
+	int i_ret = 0;
 
 #ifdef CONFIG_MTK_COMBO_BT
 	WMT_DETECT_PR_INFO("start to do bluetooth driver init\n");

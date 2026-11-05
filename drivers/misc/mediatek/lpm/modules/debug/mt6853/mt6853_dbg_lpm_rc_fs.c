@@ -14,7 +14,7 @@
 #include <mtk_resource_constraint_v1.h>
 
 #include <mt6853_pwr_ctrl.h>
-#include <mt6853_dbg_fs_common.h>
+#include "mt6853_dbg_fs_common.h"
 #include <mt6853_cond.h>
 #include <mt6853_spm_comm.h>
 

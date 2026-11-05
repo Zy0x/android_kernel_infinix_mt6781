@@ -21,7 +21,7 @@
  *
  */
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
 #include <linux/highmem.h>

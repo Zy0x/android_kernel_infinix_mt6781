@@ -135,7 +135,7 @@ TRACE_EVENT(ca_set_throttle,
 #undef TRACE_INCLUDE_PATH
 
 // Current path setting
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/cache-auditor
 // current file name w/o suffix
 #define TRACE_INCLUDE_FILE trace_cache_auditor
 #include <trace/define_trace.h>

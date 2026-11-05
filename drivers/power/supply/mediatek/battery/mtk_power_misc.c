@@ -203,7 +203,7 @@ int set_shutdown_cond(int shutdown_cond)
 		mutex_unlock(&sdc.lock);
 		bm_err("[%s]OVERHEAT shutdown!\n", __func__);
 		mutex_lock(&pm_mutex);
-		kernel_power_off();
+		pr_emerg("[POWER_MISC_GUARD] Suppressed mtk_power_misc kernel_power_off!\n");
 		mutex_unlock(&pm_mutex);
 		break;
 	case SOC_ZERO_PERCENT:
@@ -323,7 +323,7 @@ static int shutdown_event_handler(struct shutdown_controller *sdd)
 			if (duraction.tv_sec >= SHUTDOWN_TIME) {
 				bm_err("soc zero shutdown\n");
 				mutex_lock(&pm_mutex);
-				kernel_power_off();
+				pr_emerg("[POWER_MISC_GUARD] Suppressed mtk_power_misc kernel_power_off!\n");
 				mutex_unlock(&pm_mutex);
 				return next_waketime(polling);
 
@@ -347,7 +347,7 @@ static int shutdown_event_handler(struct shutdown_controller *sdd)
 			if (duraction.tv_sec >= SHUTDOWN_TIME) {
 				bm_err("uisoc one percent shutdown\n");
 				mutex_lock(&pm_mutex);
-				kernel_power_off();
+				pr_emerg("[POWER_MISC_GUARD] Suppressed mtk_power_misc kernel_power_off!\n");
 				mutex_unlock(&pm_mutex);
 				return next_waketime(polling);
 			}
@@ -370,11 +370,11 @@ static int shutdown_event_handler(struct shutdown_controller *sdd)
 			bm_err("dlpt shutdown\n");
 
 #ifndef CONFIG_OPLUS_CHARGER_MTK6893
-			kernel_power_off();
+			pr_emerg("[POWER_MISC_GUARD] Suppressed mtk_power_misc kernel_power_off!\n");
 #endif
 
 			mutex_lock(&pm_mutex);
-			kernel_power_off();
+			pr_emerg("[POWER_MISC_GUARD] Suppressed mtk_power_misc kernel_power_off!\n");
 			mutex_unlock(&pm_mutex);
 			return next_waketime(polling);
 		}
@@ -443,7 +443,7 @@ static int shutdown_event_handler(struct shutdown_controller *sdd)
 					bm_err("low bat shutdown, over %d second\n",
 						SHUTDOWN_TIME);
 					mutex_lock(&pm_mutex);
-					kernel_power_off();
+					pr_emerg("[POWER_MISC_GUARD] Suppressed mtk_power_misc kernel_power_off!\n");
 					mutex_unlock(&pm_mutex);
 					return next_waketime(polling);
 				}
@@ -533,7 +533,7 @@ static int power_misc_routine_thread(void *arg)
 				__func__);
 #ifndef OPLUS_FEATURE_CHG_BASIC
 			mutex_lock(&pm_mutex);
-			kernel_power_off();
+			pr_emerg("[POWER_MISC_GUARD] Suppressed mtk_power_misc kernel_power_off!\n");
 			mutex_unlock(&pm_mutex);
 			fix_coverity = 1;
 			return 1;

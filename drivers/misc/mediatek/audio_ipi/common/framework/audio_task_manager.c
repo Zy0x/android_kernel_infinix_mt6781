@@ -32,7 +32,7 @@
 #include "audio_log.h"
 #include "audio_assert.h"
 
-#include <audio_ipi_dma.h>
+#include "audio_ipi_dma.h"
 
 #include "audio_ipi_queue.h"
 #include "audio_messenger_ipi.h"

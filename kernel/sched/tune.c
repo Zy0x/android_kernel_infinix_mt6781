@@ -692,7 +692,7 @@ int schedtune_task_boost(struct task_struct *p)
 }
 #ifdef CONFIG_MTK_SCHED_BOOST
 #include "eas_plus.h"
-#include <../../drivers/misc/mediatek/sched/sched_ctl.h>
+#include "../../drivers/misc/mediatek/sched/sched_ctl.h"
 /* For multi-scheduling boost support */
 extern int sysctl_animation_type;
 extern int sched_boost_type;

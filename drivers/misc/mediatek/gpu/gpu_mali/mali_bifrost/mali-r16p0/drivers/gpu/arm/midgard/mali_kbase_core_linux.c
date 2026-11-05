@@ -20,11 +20,11 @@
  *
  */
 
-#include <mali_kbase.h>
-#include <mali_kbase_config_defaults.h>
-#include <mali_midg_regmap.h>
-#include <mali_kbase_gator.h>
-#include <mali_kbase_mem_linux.h>
+#include "mali_kbase.h"
+#include "mali_kbase_config_defaults.h"
+#include "mali_midg_regmap.h"
+#include "mali_kbase_gator.h"
+#include "mali_kbase_mem_linux.h"
 #ifdef CONFIG_MALI_DEVFREQ
 #include <linux/devfreq.h>
 #include <backend/gpu/mali_kbase_devfreq.h>
@@ -44,9 +44,9 @@
 #include "mali_kbase_regs_dump_debugfs.h"
 #endif /* !MALI_CUSTOMER_RELEASE */
 #include "mali_kbase_regs_history_debugfs.h"
-#include <mali_kbase_hwaccess_backend.h>
-#include <mali_kbase_hwaccess_jm.h>
-#include <mali_kbase_ctx_sched.h>
+#include "mali_kbase_hwaccess_backend.h"
+#include "mali_kbase_hwaccess_jm.h"
+#include "mali_kbase_ctx_sched.h"
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include "mali_kbase_ioctl.h"
@@ -77,15 +77,15 @@
 #include <linux/compat.h>	/* is_compat_task/in_compat_syscall */
 #include <linux/mman.h>
 #include <linux/version.h>
-#include <mali_kbase_hw.h>
+#include "mali_kbase_hw.h"
 #if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
-#include <mali_kbase_sync.h>
+#include "mali_kbase_sync.h"
 #endif /* CONFIG_SYNC || CONFIG_SYNC_FILE */
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/log2.h>
 
-#include <mali_kbase_config.h>
+#include "mali_kbase_config.h"
 
 
 #if (KERNEL_VERSION(3, 13, 0) <= LINUX_VERSION_CODE)
@@ -94,9 +94,9 @@
 #include <linux/opp.h>
 #endif
 
-#include <mali_kbase_tlstream.h>
+#include "mali_kbase_tlstream.h"
 
-#include <mali_kbase_as_fault_debugfs.h>
+#include "mali_kbase_as_fault_debugfs.h"
 
 /* GPU IRQ Tags */
 #define	JOB_IRQ_TAG	0
@@ -3349,7 +3349,7 @@ static void power_control_term(struct kbase_device *kbdev)
 #ifdef MALI_KBASE_BUILD
 #ifdef CONFIG_DEBUG_FS
 
-#include <mali_kbase_hwaccess_jm.h>
+#include "mali_kbase_hwaccess_jm.h"
 
 static void trigger_quirks_reload(struct kbase_device *kbdev)
 {

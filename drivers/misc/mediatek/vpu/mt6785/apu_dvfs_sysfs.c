@@ -16,7 +16,7 @@
 #include <linux/pm_qos.h>
 #include <linux/sysfs.h>
 
-#include <apu_dvfs.h>
+#include "apu_dvfs.h"
 
 
 static struct pm_qos_request dvfs_vvpu_opp_req;

@@ -39,6 +39,6 @@ TRACE_EVENT(spmtwam,
 
 #undef TRACE_INCLUDE_PATH
 #undef TRACE_INCLUDE_FILE
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/twam
 #define TRACE_INCLUDE_FILE spmtwam_events
 #include <trace/define_trace.h>

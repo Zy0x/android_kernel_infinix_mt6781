@@ -35,7 +35,7 @@ TRACE_EVENT(wifi_standalone_log,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/connectivity/wlan/core/gen4m/include
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mtk_wifi_trace
 #include <trace/define_trace.h>

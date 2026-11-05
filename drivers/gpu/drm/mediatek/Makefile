@@ -134,3 +134,5 @@ ccflags-y += -DNOT_SUPPORT_CABC_HW
 ccflags-y += -DDISP_MDP_COLOR_ON
 ccflags-y += -DCCORR_SUPPORT
 endif
+
+ccflags-y += -I$(srctree)/drivers/gpu/drm/mediatek

@@ -23,7 +23,7 @@
 #if !defined(_KBASE_TIMELINE_H)
 #define _KBASE_TIMELINE_H
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 
 /*****************************************************************************/
 

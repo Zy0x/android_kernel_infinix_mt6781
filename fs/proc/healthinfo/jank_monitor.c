@@ -7,8 +7,8 @@
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
-#include <../fs/proc/internal.h>
-#include <../kernel/sched/sched.h>
+#include "../fs/proc/internal.h"
+#include "../kernel/sched/sched.h"
 
 #include <soc/oplus/healthinfo.h>
 

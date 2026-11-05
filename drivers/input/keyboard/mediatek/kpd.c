@@ -908,14 +908,12 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 	struct clk *kpd_clk = NULL;
         u32 i;
         int32_t err = 0;
-#ifndef CONFIG_MACH_MT6768_BAK
-//#ifdef OPLUS_FEATURE_TP_BASIC
+#if 0 /* Infinix Standard Keypad: Bypass Oppo struct */
 	struct device *dev = &pdev->dev;
 	struct vol_info *kpd_oppo;
 
 	kpd_oppo = devm_kzalloc(dev, sizeof(*kpd_oppo), GFP_KERNEL);
-//#endif /*OPLUS_FEATURE_TP_BASIC*/
-#endif /*CONFIG_MACH_MT6768*/
+#endif
 	if (!pdev->dev.of_node) {
 		kpd_notice("no kpd dev node\n");
 		return -ENODEV;
@@ -1027,8 +1025,7 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 		kpd_delete_attr(&kpd_pdrv.driver);
 		return err;
 	}
-#ifndef CONFIG_MACH_MT6768_BAK
-//#ifdef OPLUS_FEATURE_TP_BASIC
+#if 0 /* Infinix Standard Keypad: Bypass Oppo named GPIOs */
 	kpd_oppo->dev = dev;
 	dev_set_drvdata(dev, kpd_oppo);
 	kpd_oppo->pdev = pdev;
@@ -1091,6 +1088,10 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 	init_proc_aee_kpd_enable();
 //#endif /* OPLUS_FEATURE_TP_BASIC */
 #endif /*CONFIG_MACH_MT6768*/
+	/* Enable MediaTek Hardware Matrix Keypad for Volume Up & Down */
+	kpd_wakeup_src_setting(1);
+	kpd_info("MediaTek Hardware Matrix Keypad enabled (KP_EN=1)\n");
+
 	/* Add kpd debug node */
 	mt_kpd_debugfs();
 

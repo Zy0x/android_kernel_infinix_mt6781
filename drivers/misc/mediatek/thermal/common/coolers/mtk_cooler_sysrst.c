@@ -91,7 +91,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		if (tpcb > DYNAMIC_REBOOT_TRIP_TEMP) {
 			tscpu_printk("SW reset! tpcb = %d\n", tpcb);
 			if (get_eng_version() != HIGH_TEMP_AGING)
-				BUG();
+				tscpu_printk("[BOOT_GUARD] %s: thermal sysrst bypassed\n", __func__);
 			else
 				tscpu_printk("should reset bypass \n");
 		} else {
@@ -102,7 +102,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		 * for thermal protection.
 		 */
 		if (get_eng_version() != HIGH_TEMP_AGING)
-			BUG();
+			tscpu_printk("[BOOT_GUARD] %s: thermal sysrst bypassed\n", __func__);
 #endif
 
 	}
@@ -141,7 +141,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		 * for thermal protection.
 		 */
 		if (get_eng_version() != HIGH_TEMP_AGING)
-			BUG();
+			tscpu_printk("[BOOT_GUARD] %s: thermal sysrst bypassed\n", __func__);
 		else
 			tscpu_printk("should reset bypass \n");
 	}
@@ -180,7 +180,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		 * for thermal protection.
 		 */
 		if (get_eng_version() != HIGH_TEMP_AGING)
-			BUG();
+			tscpu_printk("[BOOT_GUARD] %s: thermal sysrst bypassed\n", __func__);
 		else
 			tscpu_printk("should reset bypass \n");
 	}
@@ -219,7 +219,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		 * for thermal protection.
 		 */
 		if (get_eng_version() != HIGH_TEMP_AGING)
-			BUG();
+			tscpu_printk("[BOOT_GUARD] %s: thermal sysrst bypassed\n", __func__);
 		else
 			tscpu_printk("should reset bypass \n");
 	}

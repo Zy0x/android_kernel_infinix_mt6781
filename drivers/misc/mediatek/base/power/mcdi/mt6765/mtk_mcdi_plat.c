@@ -15,7 +15,7 @@
 #include <linux/of_address.h>
 
 #include <mtk_mcdi_governor.h>
-#include <mtk_mcdi_plat.h>
+#include "mtk_mcdi_plat.h"
 
 static const char mcdi_node_name[] = "mediatek,mt6765-mcdi";
 

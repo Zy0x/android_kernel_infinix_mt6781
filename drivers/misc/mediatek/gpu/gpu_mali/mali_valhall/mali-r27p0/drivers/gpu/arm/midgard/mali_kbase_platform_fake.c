@@ -32,7 +32,7 @@
  * specific platform folders. Do not add dependencies with symbols that are
  * defined somewhere else.
  */
-#include <mali_kbase_config.h>
+#include "mali_kbase_config.h"
 
 #define PLATFORM_CONFIG_RESOURCE_COUNT 4
 #define PLATFORM_CONFIG_IRQ_RES_COUNT  3

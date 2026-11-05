@@ -71,7 +71,7 @@ TRACE_EVENT(bt_evt,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH ./
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/connectivity/bt/mt66xx/include/btif
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE btmtk_dbg_tp_evt
 #include <trace/define_trace.h>

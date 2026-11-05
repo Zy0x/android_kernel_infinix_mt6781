@@ -44,6 +44,6 @@ TRACE_EVENT(thermal_zone_state,
 
 	/* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/include/mt-plat
 #define TRACE_INCLUDE_FILE mach/mtk_thermal_trace
 #include <trace/define_trace.h>

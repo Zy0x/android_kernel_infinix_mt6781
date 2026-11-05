@@ -32,7 +32,7 @@
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 #include <linux/ww_mutex.h>
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 
 static void
 kbase_dma_fence_work(struct work_struct *pwork);

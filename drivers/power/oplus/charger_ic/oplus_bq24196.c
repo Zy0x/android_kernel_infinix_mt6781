@@ -67,7 +67,7 @@ extern void mt_power_off(void);
 
 #include "../oplus_vooc.h"
 #include "../oplus_gauge.h"
-#include <oplus_bq24196.h>
+#include "oplus_bq24196.h"
 
 static struct chip_bq24196 *charger_ic = NULL;
 static int aicl_result = 500;

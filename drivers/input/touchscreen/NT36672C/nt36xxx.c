@@ -1002,9 +1002,13 @@ static int32_t nvt_parse_dt(struct device *dev)
 
 #if NVT_TOUCH_SUPPORT_HW_RST
 	ts->reset_gpio = of_get_named_gpio_flags(np, "novatek,reset-gpio", 0, &ts->reset_flags);
+	if (!gpio_is_valid(ts->reset_gpio))
+		ts->reset_gpio = 16;
 	NVT_LOG("novatek,reset-gpio=%d\n", ts->reset_gpio);
 #endif
 	ts->irq_gpio = of_get_named_gpio_flags(np, "novatek,irq-gpio", 0, &ts->irq_flags);
+	if (!gpio_is_valid(ts->irq_gpio))
+		ts->irq_gpio = 15;
 	NVT_LOG("novatek,irq-gpio=%d\n", ts->irq_gpio);
 
 	ret = of_property_read_u32(np, "novatek,swrst-n8-addr", &SWRST_N8_ADDR);
@@ -1053,8 +1057,8 @@ static int nvt_gpio_config(struct nvt_ts_data *ts)
 	if (gpio_is_valid(ts->reset_gpio)) {
 		ret = gpio_request_one(ts->reset_gpio, GPIOF_OUT_INIT_LOW, "NVT-tp-rst");
 		if (ret) {
-			NVT_ERR("Failed to request NVT-tp-rst GPIO\n");
-			goto err_request_reset_gpio;
+			NVT_ERR("Failed to request NVT-tp-rst GPIO %d, ignoring non-fatal error\n", ts->reset_gpio);
+			ret = 0;
 		}
 	}
 #endif
@@ -1063,19 +1067,12 @@ static int nvt_gpio_config(struct nvt_ts_data *ts)
 	if (gpio_is_valid(ts->irq_gpio)) {
 		ret = gpio_request_one(ts->irq_gpio, GPIOF_IN, "NVT-int");
 		if (ret) {
-			NVT_ERR("Failed to request NVT-int GPIO\n");
-			goto err_request_irq_gpio;
+			NVT_ERR("Failed to request NVT-int GPIO %d, ignoring non-fatal error\n", ts->irq_gpio);
+			ret = 0;
 		}
 	}
 
-	return ret;
-
-err_request_irq_gpio:
-#if NVT_TOUCH_SUPPORT_HW_RST
-	gpio_free(ts->reset_gpio);
-err_request_reset_gpio:
-#endif
-	return ret;
+	return 0;
 }
 
 /*******************************************************
@@ -1573,30 +1570,30 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 		goto err_gpio_config_failed;
 	}
 
-	/* get pinctrl handler from of node */
-	nt36672_pinctrl = devm_pinctrl_get(
-		ts->client->controller->dev.parent);
-	if (IS_ERR_OR_NULL(nt36672_pinctrl)) {
-		NVT_ERR("Failed to get pinctrl handler[need confirm]");
+	/* get pinctrl handler with multi-level fallback */
+	nt36672_pinctrl = devm_pinctrl_get(&ts->client->dev);
+	if (IS_ERR_OR_NULL(nt36672_pinctrl) && ts->client->controller)
+		nt36672_pinctrl = devm_pinctrl_get(&ts->client->controller->dev);
+	if (IS_ERR_OR_NULL(nt36672_pinctrl) && ts->client->controller && ts->client->controller->dev.parent)
+		nt36672_pinctrl = devm_pinctrl_get(ts->client->controller->dev.parent);
+
+	if (!IS_ERR_OR_NULL(nt36672_pinctrl)) {
+		nt36672_spi_mode_default = pinctrl_lookup_state(
+					nt36672_pinctrl, PINCTRL_STATE_SPI_DEFAULT);
+		if (!IS_ERR_OR_NULL(nt36672_spi_mode_default)) {
+			ret = pinctrl_select_state(nt36672_pinctrl,
+						nt36672_spi_mode_default);
+			if (ret < 0)
+				NVT_ERR("Failed to select default pinstate, r:%d\n", ret);
+			else
+				NVT_LOG("Selected default pinstate: %s\n", PINCTRL_STATE_SPI_DEFAULT);
+		} else {
+			NVT_ERR("Pinctrl state %s not found (non-fatal)\n", PINCTRL_STATE_SPI_DEFAULT);
+		}
+	} else {
+		NVT_LOG("Pinctrl handler not available, relying on spi master pins\n");
 		nt36672_pinctrl = NULL;
-		goto err_gpio_config_failed;
 	}
-
-	/* default spi mode */
-	nt36672_spi_mode_default = pinctrl_lookup_state(
-				nt36672_pinctrl, PINCTRL_STATE_SPI_DEFAULT);
-	if (IS_ERR_OR_NULL(nt36672_spi_mode_default)) {
-		ret = PTR_ERR(nt36672_spi_mode_default);
-		NVT_ERR("Failed to get pinctrl state:%s, r:%d",
-				PINCTRL_STATE_SPI_DEFAULT, ret);
-		nt36672_spi_mode_default = NULL;
-		goto err_pinctrl_failed;
-	}
-
-	ret = pinctrl_select_state(nt36672_pinctrl,
-					nt36672_spi_mode_default);
-	if (ret < 0)
-		NVT_ERR("Failed to select default pinstate, r:%d", ret);
 
 	mutex_init(&ts->lock);
 	mutex_init(&ts->xbuf_lock);
@@ -1686,9 +1683,12 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 		goto err_input_register_device_failed;
 	}
 	//---set int-pin & request irq---
-	client->irq = gpio_to_irq(ts->irq_gpio);
-	if (client->irq) {
-		NVT_LOG("int_trigger_type=%d\n", ts->int_trigger_type);
+	if (!client->irq && gpio_is_valid(ts->irq_gpio))
+		client->irq = gpio_to_irq(ts->irq_gpio);
+	if (client->irq <= 0)
+		client->irq = 35;
+	if (client->irq > 0) {
+		NVT_LOG("int_trigger_type=%d, client->irq=%d\n", ts->int_trigger_type, client->irq);
 		ts->irq_enabled = true;
 		ret = request_threaded_irq(client->irq, NULL, nvt_ts_work_func,
 					   ts->int_trigger_type | IRQF_ONESHOT, NVT_SPI_NAME, ts);
@@ -2146,11 +2146,8 @@ static int32_t nvt_ts_resume(struct device *dev)
 #if NVT_TOUCH_SUPPORT_HW_RST
 	gpio_set_value(ts->reset_gpio, 1);
 #endif
-	if (nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME)) {
-		NVT_ERR("download firmware failed, ignore check fw state\n");
-	} else {
-		nvt_check_fw_reset_state(RESET_STATE_REK);
-	}
+	nvt_bootloader_reset();
+	nvt_check_fw_reset_state(RESET_STATE_REK);
 
 #if !WAKEUP_GESTURE
 	nvt_irq_enable(true);

@@ -69,8 +69,8 @@
 
 #include <mt-plat/mtk_boot.h>
 
-#include <mtk_lp_sysfs.h>
-#include <mtk_lp_kernfs.h>
+#include "mtk_lp_sysfs.h"
+#include "mtk_lp_kernfs.h"
 #include "mtk_idle_sysfs.h"
 
 #define IDLE_GPT GPT4

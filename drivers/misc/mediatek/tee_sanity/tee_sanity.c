@@ -15,14 +15,14 @@
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
 #include <mt-plat/mtk_secure_api.h>
-#include <tee_sanity.h>
+#include "tee_sanity.h"
 #include <linux/sched/clock.h>
 #include <archcounter_timesync.h>
 #include <asm/arch_timer.h>
 #include <sched_ctl.h>
 
 #define CREATE_TRACE_POINTS
-#include <trace_tee.h>
+#include "trace_tee.h"
 
 #define TEE_TASK_MIN_UTIL	30
 

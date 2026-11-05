@@ -7,10 +7,10 @@
 #include <linux/of.h>
 
 #include <mtk_lpm.h>
-#include <mtk_lpm_irqremain.h>
-#include <mtk_lpm_resource_ctrl.h>
-#include <mtk_lpm_rc.h>
-#include <mtk_lpm_trace.h>
+#include "mtk_lpm_irqremain.h"
+#include "mtk_lpm_resource_ctrl.h"
+#include "mtk_lpm_rc.h"
+#include "mtk_lpm_trace.h"
 
 int mtk_lpm_platform_trace_get(int type, struct MTK_LPM_PLAT_TRACE *trace)
 {

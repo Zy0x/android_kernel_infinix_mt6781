@@ -771,6 +771,7 @@ static int chgdet_task_threadfn(void *data)
 #ifdef OPLUS_FEATURE_CHG_BASIC
 		mdelay(ms);
 #endif
+#ifdef OPLUS_FEATURE_CHG_BASIC
 		if (attach && ignore_usb) {
 			cti->bypass_chgdet = true;
 			goto bypass_chgdet;
@@ -778,6 +779,7 @@ static int chgdet_task_threadfn(void *data)
 			cti->bypass_chgdet = false;
 			goto bypass_chgdet;
 		}
+#endif
 
 #ifdef CONFIG_MTK_EXTERNAL_CHARGER_TYPE_DETECT
 		if (cti->chg_consumer)
@@ -787,6 +789,7 @@ static int chgdet_task_threadfn(void *data)
 		mtk_pmic_enable_chr_type_det(attach);
 #endif
 		goto pm_relax;
+#ifdef OPLUS_FEATURE_CHG_BASIC
 bypass_chgdet:
 		val.intval = attach;
 		ret = power_supply_set_property(psy, POWER_SUPPLY_PROP_ONLINE,
@@ -806,6 +809,7 @@ bypass_chgdet:
 		if (ret < 0)
 			pr_notice("%s: power supply set charge type fail(%d)\n",
 				  __func__, ret);
+#endif
 pm_relax:
 		pm_relax(cti->dev);
 	}
@@ -916,6 +920,10 @@ static int mt_charger_probe(struct platform_device *pdev)
 
 	cti->chg_consumer = charger_manager_get_by_name(cti->dev,
 							"charger_port1");
+	if (!cti->chg_consumer)
+		cti->chg_consumer = charger_manager_get_by_name(cti->dev, "primary_chg");
+	if (!cti->chg_consumer)
+		cti->chg_consumer = charger_manager_get_by_name(cti->dev, "charger");
 	if (!cti->chg_consumer) {
 		pr_info("%s: get charger consumer device failed\n", __func__);
 		ret = -EINVAL;

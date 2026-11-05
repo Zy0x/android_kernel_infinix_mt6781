@@ -35,7 +35,7 @@ TRACE_EVENT(swpm_power_idx,
 #endif /* _SWPM_TRACKER_TRACE_H */
 
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/base/power/include/swpm_v1
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mtk_swpm_tracker_trace
 /* This part must be outside protection */

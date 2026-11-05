@@ -26,7 +26,7 @@
 #include <mt-plat/mtk_wd_api.h>
 
 #include <mtk_dbgtop.h>
-#include <dbgtop.h>
+#include "dbgtop.h"
 
 static void __iomem *DBGTOP_BASE;
 static unsigned int dfd_timeout;

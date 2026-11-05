@@ -24,7 +24,7 @@
 
 #if IS_ENABLED(CONFIG_ARM64)
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 
 #define SMC_FAST_CALL (1 << 31)
 #define SMC_64 (1 << 30)

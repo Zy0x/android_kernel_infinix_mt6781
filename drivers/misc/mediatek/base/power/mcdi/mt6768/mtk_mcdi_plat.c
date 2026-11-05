@@ -17,7 +17,7 @@
 
 #include <mtk_mcdi_governor.h>
 #include <mtk_mcdi_util.h>
-#include <mtk_mcdi_plat.h>
+#include "mtk_mcdi_plat.h"
 
 void __iomem *cpc_base;
 

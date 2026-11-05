@@ -16,7 +16,7 @@
 #include <linux/init.h>
 
 #include <mtk_spm.h>
-#include <mtk_sleep_internal.h>
+#include "mtk_sleep_internal.h"
 
 static bool spm_drv_init;
 

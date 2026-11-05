@@ -1586,7 +1586,6 @@ config DRM_PANEL_NT36672C_FHDP_DSI_VDO_TXD_BOE_120HZ_X697
 	bool "Novatek NT36672C 120Hz FHD+ DSI Panel (BOE Glass / TXD) for Infinix X698"
 	depends on OF
 	depends on DRM_MIPI_DSI
-	select DRM_PANEL
 	help
 	  Say Y here to enable support for Novatek NT36672C FHD+ 120Hz Video Mode
 	  display panel with BOE glass on Infinix Note 11 Pro / Note 11S (X697/X698/sword).

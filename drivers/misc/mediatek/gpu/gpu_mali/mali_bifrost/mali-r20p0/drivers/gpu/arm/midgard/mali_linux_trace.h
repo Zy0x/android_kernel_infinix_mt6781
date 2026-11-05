@@ -132,7 +132,7 @@ TRACE_EVENT(mali_total_alloc_pages_change,
 
 #undef TRACE_INCLUDE_PATH
 #undef linux
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/gpu/gpu_mali/mali_bifrost/mali-r20p0/drivers/gpu/arm/midgard
 
 /* This part must be outside protection */
 #include <trace/define_trace.h>

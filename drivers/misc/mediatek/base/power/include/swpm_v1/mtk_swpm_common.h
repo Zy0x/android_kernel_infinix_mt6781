@@ -23,7 +23,7 @@
 #include <linux/uaccess.h>
 #include <mt-plat/sync_write.h>
 #include <mtk_swpm_platform.h>
-#include <mtk_swpm_sp_interface.h>
+#include "mtk_swpm_sp_interface.h"
 
 
 /* LOG */

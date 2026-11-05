@@ -23,8 +23,8 @@
 #include <linux/mm.h>
 #include <linux/memory_group_manager.h>
 
-#include <mali_kbase.h>
-#include <mali_kbase_native_mgm.h>
+#include "mali_kbase.h"
+#include "mali_kbase_native_mgm.h"
 
 /**
  * kbase_native_mgm_alloc - Native physical memory allocation method

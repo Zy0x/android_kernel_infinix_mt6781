@@ -983,6 +983,11 @@
     };
     dualdefault1 {
       phandle = <0x177>;
+      pins_cmd_dat {
+        pinmux = <0xad00>;
+        slew-rate = <0x1>;
+        output-low;
+      };
     };
     dv2_high1 {
       phandle = <0x178>;
@@ -1002,6 +1007,11 @@
     };
     dualdefault2 {
       phandle = <0x17c>;
+      pins_cmd_dat {
+        pinmux = <0xab00>;
+        slew-rate = <0x1>;
+        output-low;
+      };
     };
     dv2_high2 {
       phandle = <0x17d>;
@@ -4076,6 +4086,7 @@
       max-brightness = <0xff>;
       led-bits = <0x8>;
       default-state = "on";
+      phandle = <0x200>;
     };
   };
   pwmleds {

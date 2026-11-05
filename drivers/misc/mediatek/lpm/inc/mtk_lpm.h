@@ -10,7 +10,7 @@
 #include <linux/cpumask.h>
 #include <linux/notifier.h>
 
-#include <mtk_lpm_type.h>
+#include "mtk_lpm_type.h"
 
 #define MTK_LPM_DTS_COMPATIBLE		"mediatek,mtk-lpm"
 

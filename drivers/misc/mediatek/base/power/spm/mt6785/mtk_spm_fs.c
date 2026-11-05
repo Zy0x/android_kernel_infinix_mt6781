@@ -17,11 +17,11 @@
 #include <linux/sysfs.h>
 #include <linux/string.h>
 
-#include <mtk_spm_internal.h>
-#include <mtk_spm_suspend_internal.h>
+#include "mtk_spm_internal.h"
+#include "mtk_spm_suspend_internal.h"
 #include <mtk_spm_resource_req_internal.h>
 #include <mtk_idle_fs/mtk_idle_sysfs.h>
-#include <mtk_spm_resource_req_console.h>
+#include "mtk_spm_resource_req_console.h"
 
 /**************************************
  * Macro and Inline

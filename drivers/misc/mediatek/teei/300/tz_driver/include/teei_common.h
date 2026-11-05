@@ -16,7 +16,7 @@
 #define __TEEI_COMMON_H_
 
 #include <linux/types.h>
-#include <notify_queue.h>
+#include "notify_queue.h"
 #include <mt-plat/met_drv.h>
 
 #define TEEI_MAX_REQ_PARAMS  12

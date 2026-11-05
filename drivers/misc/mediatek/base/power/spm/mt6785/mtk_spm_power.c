@@ -20,10 +20,10 @@
 
 #include <mtk_idle.h>
 #include <mtk_idle_internal.h> /* MTK_IDLE_OPT_XXX */
-#include <mtk_spm_internal.h>
-#include <mtk_sspm.h>
+#include "mtk_spm_internal.h"
+#include "mtk_sspm.h"
 
-#include <mtk_idle_module_plat.h>
+#include "mtk_idle_module_plat.h"
 void mtk_idle_power_pre_process(int idle_type, unsigned int op_cond)
 {
 	int ret;

@@ -19,8 +19,8 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <mtk_swpm_common.h>
-#include <mtk_swpm_platform.h>
-#include <mtk_swpm_sp_platform.h>
+#include "mtk_swpm_platform.h"
+#include "mtk_swpm_sp_platform.h"
 #include <mtk_swpm_sp_interface.h>
 
 #define SWPM_INTERNAL_TEST (0)

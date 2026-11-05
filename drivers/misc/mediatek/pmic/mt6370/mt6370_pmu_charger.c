@@ -172,9 +172,7 @@ struct mt6370_pmu_charger_data {
 	enum power_supply_type hvdcp_type;
 #endif
 
-#ifdef OPLUS_FEATURE_CHG_BASIC
 	int pre_charger_type;
-#endif
 
 	bool pp_en;
 };

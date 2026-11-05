@@ -23,7 +23,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 
-#include <mali_kbase_mem_pool_debugfs.h>
+#include "mali_kbase_mem_pool_debugfs.h"
 
 #ifdef CONFIG_DEBUG_FS
 

@@ -46,7 +46,7 @@
 #include <mt-plat/met_drv.h>
 #endif /* MET_SUPPORT */
 
-#include <mtk_cm_mgr.h>
+#include "mtk_cm_mgr.h"
 #include <mtk_cm_mgr_platform_data.h>
 #ifdef CONFIG_MTK_CPU_FREQ
 #include <mtk_cpufreq_api.h>

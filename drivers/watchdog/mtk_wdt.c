@@ -48,7 +48,7 @@
 #include <linux/mfd/mt6397/rtc_misc.h>
 #endif
 #ifdef CONFIG_MTK_RTC
-#include <../misc/mediatek/include/mt-plat/mtk_rtc.h>
+#include "../misc/mediatek/include/mt-plat/mtk_rtc.h"
 #endif
 #include <linux/suspend.h>
 

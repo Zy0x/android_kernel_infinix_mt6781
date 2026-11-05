@@ -18,9 +18,9 @@
 #include <linux/module.h>
 #include <uapi/linux/sched/types.h>
 #include <mt-plat/turbo_common.h>
-#include <task_turbo.h>
+#include "task_turbo.h"
 #define CREATE_TRACE_POINTS
-#include <trace_task_turbo.h>
+#include "trace_task_turbo.h"
 
 #define TOP_APP_GROUP_ID	4
 #define TURBO_PID_COUNT		8

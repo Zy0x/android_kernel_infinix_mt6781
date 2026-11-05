@@ -21,7 +21,7 @@
  */
 
 #include "mali_kbase_dvfs_debugfs.h"
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <linux/seq_file.h>
 
 #ifdef CONFIG_DEBUG_FS

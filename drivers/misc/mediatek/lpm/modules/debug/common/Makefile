@@ -1,3 +1,5 @@
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/debug/common
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/debug/common
 MTK_LPM_GS_DUMP_VERSION = $(strip $(subst ",, $(CONFIG_MTK_LPM_GS_DUMP_VERSION)))
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include/power_gs_v1
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/inc/

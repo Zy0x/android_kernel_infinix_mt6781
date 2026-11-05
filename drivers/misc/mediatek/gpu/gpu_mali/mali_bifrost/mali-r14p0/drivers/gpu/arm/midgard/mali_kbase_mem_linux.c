@@ -45,10 +45,10 @@
 #include <linux/shrinker.h>
 #include <linux/cache.h>
 
-#include <mali_kbase.h>
-#include <mali_kbase_mem_linux.h>
-#include <mali_kbase_tlstream.h>
-#include <mali_kbase_ioctl.h>
+#include "mali_kbase.h"
+#include "mali_kbase_mem_linux.h"
+#include "mali_kbase_tlstream.h"
+#include "mali_kbase_ioctl.h"
 
 
 static int kbase_vmap_phy_pages(struct kbase_context *kctx,

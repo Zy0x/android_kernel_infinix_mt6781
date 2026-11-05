@@ -24,7 +24,7 @@
 #include <linux/sched.h>
 #include <linux/debugfs.h>
 #include <asm/sysreg.h>
-#include <cache_ctrl.h>
+#include "cache_ctrl.h"
 #include <mt-plat/l3cc_common.h>
 #ifdef CONFIG_MTK_TASK_TURBO
 #include <mt-plat/turbo_common.h>

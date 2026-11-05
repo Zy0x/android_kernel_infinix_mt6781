@@ -24,3 +24,5 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/imgsensor/inc/
 
 obj-y += camera_isp.o
 obj-y += cam_qos.o
+
+ccflags-y += -I$(src) -I$(src)/inc

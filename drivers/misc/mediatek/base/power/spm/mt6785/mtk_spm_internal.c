@@ -15,7 +15,7 @@
 #include <linux/module.h>
 #include <linux/random.h>
 #include <asm/setup.h>
-#include <mtk_spm_internal.h>
+#include "mtk_spm_internal.h"
 #include <mtk_power_gs_api.h>
 
 static u32 pcm_timer_ramp_max_sec_loop = 1;

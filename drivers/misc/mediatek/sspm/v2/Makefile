@@ -1,3 +1,4 @@
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/sspm/v2
 obj-y += sspm_helper.o sspm_sysfs.o sspm_reservedmem.o sspm_plt.o
 obj-y += sspm_logger_impl.o
 

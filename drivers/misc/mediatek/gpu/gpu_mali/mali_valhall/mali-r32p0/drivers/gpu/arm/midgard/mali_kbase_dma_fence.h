@@ -26,7 +26,7 @@
 
 #include <linux/list.h>
 #include <linux/reservation.h>
-#include <mali_kbase_fence.h>
+#include "mali_kbase_fence.h"
 
 /* Forward declaration from mali_kbase_defs.h */
 struct kbase_jd_atom;

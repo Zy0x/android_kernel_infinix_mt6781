@@ -20,3 +20,6 @@ obj-$(CONFIG_MTK_CACHE_CONTROL) += ca_drv.o
 obj-$(CONFIG_MTK_CACHE_CONTROL) += pftch_qos.o
 obj-$(CONFIG_MTK_CACHE_CONTROL) += utils.o
 obj-$(CONFIG_MTK_CACHE_PARTITION_CTRL) += cache_ctrl.o
+
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/cache-auditor
+CFLAGS_cache_ctrl.o := -I$(src)

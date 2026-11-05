@@ -26,13 +26,13 @@
  * Base kernel context APIs
  */
 
-#include <mali_kbase.h>
-#include <mali_midg_regmap.h>
-#include <mali_kbase_mem_linux.h>
-#include <mali_kbase_dma_fence.h>
-#include <mali_kbase_ctx_sched.h>
-#include <mali_kbase_mem_pool_group.h>
-#include <mali_kbase_tracepoints.h>
+#include "mali_kbase.h"
+#include "mali_midg_regmap.h"
+#include "mali_kbase_mem_linux.h"
+#include "mali_kbase_dma_fence.h"
+#include "mali_kbase_ctx_sched.h"
+#include "mali_kbase_mem_pool_group.h"
+#include "mali_kbase_tracepoints.h"
 
 struct kbase_context *
 kbase_create_context(struct kbase_device *kbdev, bool is_compat,

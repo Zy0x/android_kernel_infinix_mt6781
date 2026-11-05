@@ -23,8 +23,8 @@
 #if !defined(_KBASE_TIMELINE_PRIV_H)
 #define _KBASE_TIMELINE_PRIV_H
 
-#include <mali_kbase.h>
-#include <mali_kbase_tlstream.h>
+#include "mali_kbase.h"
+#include "mali_kbase_tlstream.h"
 
 #include <linux/timer.h>
 #include <linux/atomic.h>

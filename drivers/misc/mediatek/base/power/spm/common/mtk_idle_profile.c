@@ -15,7 +15,7 @@
 #include <linux/math64.h>
 
 #include <mtk_idle.h>
-#include <mtk_idle_internal.h>
+#include "mtk_idle_internal.h"
 #include <linux/sched/clock.h>
 
 #if defined(CONFIG_MTK_CPU_FREQ)
@@ -30,8 +30,8 @@
 #include <core/met_drv.h>
 #endif
 
-#include <mtk_idle_profile.h>
-#include <mtk_idle_module.h>
+#include "mtk_idle_profile.h"
+#include "mtk_idle_module.h"
 
 /* [ByChip] Internal weak function: implemented in mtk_idle_cond_check.c */
 int __attribute__((weak)) mtk_idle_cond_append_info(

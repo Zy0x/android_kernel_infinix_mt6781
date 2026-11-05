@@ -27,12 +27,12 @@
  * Base kernel power management APIs
  */
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <gpu/mali_kbase_gpu_regmap.h>
-#include <mali_kbase_vinstr.h>
-#include <mali_kbase_hwcnt_context.h>
+#include "mali_kbase_vinstr.h"
+#include "mali_kbase_hwcnt_context.h"
 
-#include <mali_kbase_pm.h>
+#include "mali_kbase_pm.h"
 #include <mali_kbase_pm_internal.h>
 
 #ifdef CONFIG_MALI_ARBITER_SUPPORT

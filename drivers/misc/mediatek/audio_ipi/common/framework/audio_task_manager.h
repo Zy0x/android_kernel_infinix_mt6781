@@ -16,8 +16,8 @@
 
 #include <linux/types.h>
 
-#include <audio_task.h>
-#include <audio_messenger_ipi.h>
+#include "audio_task.h"
+#include "audio_messenger_ipi.h"
 
 
 

@@ -18,7 +18,7 @@
 #include <mt-plat/upmu_common.h>
 #endif
 #include <kpd.h>
-#include <hal_kpd.h>
+#include "hal_kpd.h"
 #include <mt-plat/mtk_boot_common.h>
 //#ifdef OPLUS_FEATURE_STABIITY
 #include <linux/of_device.h>

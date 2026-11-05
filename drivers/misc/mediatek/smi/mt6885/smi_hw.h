@@ -15,7 +15,7 @@
 #define __SMI_HW_H__
 
 #include <clk-mt6885-pg.h>
-#include <smi_port.h>
+#include "smi_port.h"
 
 static const u32 smi_subsys_to_larbs[NR_SYSS] = {
 	[SYS_ISP] = (1 << 9),

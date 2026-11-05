@@ -217,7 +217,7 @@ DEFINE_EVENT(pvr_fence_foreign, pvr_fence_foreign_signal,
 
 #undef TRACE_INCLUDE_PATH
 #undef TRACE_INCLUDE_FILE
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/gpu/gpu_rgx/m1.13ED5696267/kernel/drivers/staging/imgtec
 
 /* This is needed because the name of this file doesn't match TRACE_SYSTEM. */
 #define TRACE_INCLUDE_FILE pvr_fence_trace

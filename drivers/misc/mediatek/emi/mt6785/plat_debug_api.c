@@ -21,7 +21,7 @@
 #include <mt-plat/mtk_ram_console.h>
 #endif
 #include "mt_emi_api.h"
-#include <../emi_ctrl_v1.h>
+#include "../emi_ctrl_v1.h"
 
 #include "mt_emi.h"
 #include "plat_debug_api.h"

@@ -123,7 +123,7 @@ TRACE_EVENT(sched_turbo_nice_set,
 
 #undef TRACE_INCLUDE_PATH
 #undef TRACE_INCLUDE_FILE
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/task_turbo
 #define TRACE_INCLUDE_FILE trace_task_turbo
 /* This part must be outside protection */
 #include <trace/define_trace.h>

@@ -367,6 +367,10 @@ static void fw_free_buf(struct firmware_buf *buf)
 /* direct firmware loading support */
 static char fw_path_para[256];
 static const char * const fw_path[] = {
+	"/vendor/firmware",
+	"/vendor/firmware/wifi",
+	"/vendor/etc/firmware",
+	"/odm/etc/firmware",
        //#ifdef OPLUS_FEATURE_BT_FW_SAU_MTK
        //Add for fw sau
        "/data/vendor/firmware/update/",

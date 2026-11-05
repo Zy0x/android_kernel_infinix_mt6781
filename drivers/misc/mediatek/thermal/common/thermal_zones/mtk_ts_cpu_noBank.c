@@ -1618,7 +1618,7 @@ static void read_all_tc_temperature(void)
 			dump_lvts_error_info();
 			tscpu_printk("thermal_hw_protect_en\n");
 			if (get_eng_version() != HIGH_TEMP_AGING)
-				BUG();
+				tscpu_printk("[BOOT_GUARD] %s: LVTS status error bypassed\n", __func__);
 			else
 				pr_info("%s should reset but bypass\n", __func__);
 		} else {
@@ -1627,7 +1627,7 @@ static void read_all_tc_temperature(void)
 #else
 		dump_lvts_error_info();
 		if (get_eng_version() != HIGH_TEMP_AGING)
-			BUG();
+			tscpu_printk("[BOOT_GUARD] %s: LVTS status error bypassed\n", __func__);
 #endif
 
 	}

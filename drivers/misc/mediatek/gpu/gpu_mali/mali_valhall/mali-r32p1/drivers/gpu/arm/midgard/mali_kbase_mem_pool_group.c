@@ -19,9 +19,9 @@
  *
  */
 
-#include <mali_kbase.h>
-#include <mali_kbase_mem.h>
-#include <mali_kbase_mem_pool_group.h>
+#include "mali_kbase.h"
+#include "mali_kbase_mem.h"
+#include "mali_kbase_mem_pool_group.h"
 
 #include <linux/memory_group_manager.h>
 

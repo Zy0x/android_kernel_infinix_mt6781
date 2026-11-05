@@ -33,11 +33,11 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 
-#include <mali_kbase.h>
-#include <mali_kbase_defs.h>
-#include <mali_kbase_hwaccess_instr.h>
-#include <mali_kbase_hw.h>
-#include <mali_kbase_config_defaults.h>
+#include "mali_kbase.h"
+#include "mali_kbase_defs.h"
+#include "mali_kbase_hwaccess_instr.h"
+#include "mali_kbase_hw.h"
+#include "mali_kbase_config_defaults.h"
 
 /* NOTE: Magic - 0x45435254 (TRCE in ASCII).
  * Supports tracing feature provided in the base module.

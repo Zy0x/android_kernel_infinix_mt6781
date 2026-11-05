@@ -45,10 +45,10 @@
 #include <linux/shrinker.h>
 #include <linux/cache.h>
 
-#include <mali_kbase.h>
-#include <mali_kbase_mem_linux.h>
-#include <mali_kbase_tracepoints.h>
-#include <mali_kbase_ioctl.h>
+#include "mali_kbase.h"
+#include "mali_kbase_mem_linux.h"
+#include "mali_kbase_tracepoints.h"
+#include "mali_kbase_ioctl.h"
 
 #if KERNEL_VERSION(4, 17, 2) > LINUX_VERSION_CODE
 /* Enable workaround for ion in v4.17.2 and earlier to avoid the potentially

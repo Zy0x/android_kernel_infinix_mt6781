@@ -22,7 +22,7 @@
 #ifndef _KBASE_MEM_POOL_GROUP_H_
 #define _KBASE_MEM_POOL_GROUP_H_
 
-#include <mali_kbase_defs.h>
+#include "mali_kbase_defs.h"
 
 /**
  * kbase_mem_pool_group_config_init - Set the initial configuration for a

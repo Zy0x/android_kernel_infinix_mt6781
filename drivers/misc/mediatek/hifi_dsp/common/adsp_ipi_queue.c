@@ -11,7 +11,7 @@
  * GNU General Public License for more details.
  */
 
-#include <adsp_ipi_queue.h>
+#include "adsp_ipi_queue.h"
 
 #include <linux/types.h>
 #include <linux/errno.h>

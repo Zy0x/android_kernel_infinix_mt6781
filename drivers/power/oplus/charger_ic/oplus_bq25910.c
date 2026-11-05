@@ -55,7 +55,7 @@ extern void mt_power_off(void);
 
 #include "../oplus_vooc.h"
 #include "../oplus_gauge.h"
-#include <oplus_bq25910.h>
+#include "oplus_bq25910.h"
 
 #define DEBUG_BY_FILE_OPS
 

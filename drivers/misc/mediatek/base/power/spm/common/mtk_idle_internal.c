@@ -27,7 +27,7 @@
 #endif
 
 #include <mtk_idle.h>
-#include <mtk_idle_internal.h>
+#include "mtk_idle_internal.h"
 
 #include <mtk_spm_internal.h>
 #if defined(CONFIG_MTK_UFS_SUPPORT)
@@ -35,7 +35,7 @@
 #endif
 #include <mt-plat/mtk_boot.h>
 
-#include <mtk_idle_module.h>
+#include "mtk_idle_module.h"
 /* External weak functions: implemented in clkbuf and thermal module */
 uint32_t __attribute__((weak)) clk_buf_bblpm_enter_cond(void) { return -1; }
 

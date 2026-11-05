@@ -23,7 +23,7 @@
  * CSF GPU HWC backend firmware interface APIs.
  */
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <gpu/mali_kbase_gpu_regmap.h>
 #include <device/mali_kbase_device.h>
 #include "mali_kbase_hwcnt_gpu.h"

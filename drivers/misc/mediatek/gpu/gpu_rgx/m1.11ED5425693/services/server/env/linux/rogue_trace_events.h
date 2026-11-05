@@ -549,7 +549,7 @@ TRACE_EVENT_FN(rogue_firmware_activity,
 
 #undef TRACE_INCLUDE_PATH
 #undef TRACE_INCLUDE_FILE
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/gpu/gpu_rgx/m1.11ED5425693/services/server/env/linux
 
 /* This is needed because the name of this file doesn't match TRACE_SYSTEM. */
 #define TRACE_INCLUDE_FILE rogue_trace_events

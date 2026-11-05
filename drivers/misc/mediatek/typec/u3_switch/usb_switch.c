@@ -18,7 +18,7 @@
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
 #include <typec.h>
-#include <usb_switch.h>
+#include "usb_switch.h"
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/of.h>

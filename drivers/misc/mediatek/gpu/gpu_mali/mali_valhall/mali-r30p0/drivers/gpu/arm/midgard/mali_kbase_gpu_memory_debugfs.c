@@ -21,7 +21,7 @@
  *
  */
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <device/mali_kbase_device.h>
 
 #ifdef CONFIG_DEBUG_FS

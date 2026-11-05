@@ -7,7 +7,7 @@
 #define __MTK_LPM_CALL_H__
 
 #include <linux/list.h>
-#include <mtk_lpm_type.h>
+#include "mtk_lpm_type.h"
 
 struct mtk_lpm_callee_ipi {
 	int (*send)(int id, const struct mtk_lpm_data *val);

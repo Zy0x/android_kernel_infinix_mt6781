@@ -15,8 +15,8 @@
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
 
-#include <mtk_lp_sysfs.h>
-#include <mtk_lp_kernfs.h>
+#include "mtk_lp_sysfs.h"
+#include "mtk_lp_kernfs.h"
 #include "mtk_idle_sysfs.h"
 
 #include "mtk_spm_resource_req.h"

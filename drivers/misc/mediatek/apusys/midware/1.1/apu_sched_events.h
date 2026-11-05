@@ -61,7 +61,7 @@ TRACE_EVENT(deadline_task,
 #endif /* _TRACE_MET_MDLASYS_EVENTS_H */
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/apusys/midware/1.1
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE apu_sched_events
 #include <trace/define_trace.h>

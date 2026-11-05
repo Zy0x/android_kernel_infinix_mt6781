@@ -15,8 +15,8 @@
 #include <linux/arm-smccc.h>
 #include <mt-plat/mtk_secure_api.h>
 #include <memory/mediatek/emi.h>
-#include <devmpu.h>
-#include <devmpu_emi.h>
+#include "devmpu.h"
+#include "devmpu_emi.h"
 
 #if IS_ENABLED(CONFIG_MTK_DEVMPU_SLOG)
 #define CREATE_TRACE_POINTS

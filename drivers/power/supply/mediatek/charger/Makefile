@@ -13,6 +13,7 @@
 
 MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include
 subdir-ccflags-$(CONFIG_USB_MU3D_DRV) += -I$(srctree)/drivers/misc/mediatek/mu3d/drv
@@ -78,3 +79,4 @@ obj-$(CONFIG_CHARGER_MT6362) += mt6362-chg.o
 obj-$(CONFIG_CHARGER_BQ25890) += bq2589x_charger.o
 obj-$(CONFIG_CHARGER_SGM41511) += sgm4151x.o
 obj-$(CONFIG_CHARGER_MM8013) += mm8013.o
+obj-y += tran_usb_switch.o

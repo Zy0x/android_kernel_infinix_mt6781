@@ -15,7 +15,7 @@
 #include <asm/page.h>
 
 #if defined(CONFIG_NANDSWAP)
-#include <../drivers/soc/oplus/oplus_nandswap/nandswap.h>
+#include "../drivers/soc/oplus/oplus_nandswap/nandswap.h"
 #define SWAP_NANDSWAP_PRIO	2020	/* just a magic number */
 #endif
 

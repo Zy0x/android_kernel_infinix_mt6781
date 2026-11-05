@@ -34,17 +34,17 @@
 #include <linux/of_platform.h>
 #endif
 
-#include <mali_kbase_config.h>
-#include <mali_kbase.h>
+#include "mali_kbase_config.h"
+#include "mali_kbase.h"
 #include <gpu/mali_kbase_gpu_regmap.h>
-#include <mali_kbase_cache_policy.h>
-#include <mali_kbase_hw.h>
+#include "mali_kbase_cache_policy.h"
+#include "mali_kbase_hw.h"
 #include <tl/mali_kbase_tracepoints.h>
-#include <mali_kbase_native_mgm.h>
-#include <mali_kbase_mem_pool_group.h>
+#include "mali_kbase_native_mgm.h"
+#include "mali_kbase_mem_pool_group.h"
 #include <mmu/mali_kbase_mmu.h>
-#include <mali_kbase_config_defaults.h>
-#include <mali_kbase_trace_gpu_mem.h>
+#include "mali_kbase_config_defaults.h"
+#include "mali_kbase_trace_gpu_mem.h"
 
 /*
  * Alignment of objects allocated by the GPU inside a just-in-time memory

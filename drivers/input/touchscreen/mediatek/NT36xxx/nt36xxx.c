@@ -1706,6 +1706,8 @@ static const struct i2c_device_id nvt_ts_id[] = {
 #ifdef CONFIG_OF
 static const struct of_device_id nvt_match_table[] = {
 	{.compatible = "mediatek,cap_touch"},
+	{.compatible = "mediatek,touch"},
+	{.compatible = "goodix,touch"},
 	{},
 };
 #endif

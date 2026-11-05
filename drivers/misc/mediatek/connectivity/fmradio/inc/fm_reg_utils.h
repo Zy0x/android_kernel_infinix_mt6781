@@ -20,7 +20,7 @@
 #include <linux/ioport.h>
 #include <linux/vmalloc.h>
 
-#include <fm_ext_api.h>
+#include "fm_ext_api.h"
 
 /* SPI register address */
 #if CFG_FM_CONNAC2

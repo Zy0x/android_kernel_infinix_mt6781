@@ -17,7 +17,7 @@
 #include <linux/notifier.h>
 
 #include <mtk_idle.h>
-#include <mtk_idle_internal.h>
+#include "mtk_idle_internal.h"
 
 #define IDLE_TYPE_LEGACY_ENTER			IDLE_TYPE_SO
 #define IDLE_TYPE_LEGACY_CAN_NOT_ENTER	IDLE_TYPE_RG

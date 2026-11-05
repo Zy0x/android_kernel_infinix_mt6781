@@ -560,7 +560,7 @@ TRACE_EVENT(mali_jit_trim,
 /* lwn.net/Articles/383362 suggests this should remain as '.', and instead
  * extend CFLAGS
  */
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/gpu/gpu_mali/mali_valhall/mali-r30p0/drivers/gpu/arm/midgard
 #undef  TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mali_linux_trace
 

@@ -18,7 +18,7 @@
 #include <mt-plat/upmu_common.h>
 #endif
 #include <kpd.h>
-#include <hal_kpd.h>
+#include "hal_kpd.h"
 #include <mt-plat/mtk_boot_common.h>
 
 #ifdef CONFIG_LONG_POWERKEY_LOG_STORE

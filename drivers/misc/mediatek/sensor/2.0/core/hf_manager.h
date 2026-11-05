@@ -23,7 +23,7 @@
 #include "hf_sensor_type.h"
 #include "hf_sensor_io.h"
 #ifdef OPLUS_FEATURE_SENSOR_ALGORITHM
-#include <oplus_sensor.h>
+#include "oplus_sensor.h"
 #endif /*OPLUS_FEATURE_SENSOR_ALGORITHM*/
 
 

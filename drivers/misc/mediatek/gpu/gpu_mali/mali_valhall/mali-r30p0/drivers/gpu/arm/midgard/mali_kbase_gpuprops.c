@@ -25,11 +25,11 @@
  * Base kernel property query APIs
  */
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <gpu/mali_kbase_gpu_regmap.h>
-#include <mali_kbase_gpuprops.h>
-#include <mali_kbase_hwaccess_gpuprops.h>
-#include <mali_kbase_config_defaults.h>
+#include "mali_kbase_gpuprops.h"
+#include "mali_kbase_hwaccess_gpuprops.h"
+#include "mali_kbase_config_defaults.h"
 #include "mali_kbase_ioctl.h"
 #include <linux/clk.h>
 #include <mali_kbase_pm_internal.h>

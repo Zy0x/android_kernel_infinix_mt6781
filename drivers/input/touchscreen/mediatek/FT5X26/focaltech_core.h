@@ -65,7 +65,7 @@
 #include <linux/earlysuspend.h>
 #endif
 #include "include/tpd_ft5x0x_common.h"
-#include <../fs/proc/internal.h>
+#include "../fs/proc/internal.h"
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/fs.h>
@@ -288,8 +288,8 @@ struct fts_ts_data {
 
 #if TPD_AUTO_UPGRADE
 #define Boot_Upgrade_Protect
-/* 开机升级保护。升级失败后，再次开机可重新升级 */
-#define FTS_CHIP_ID 0x58     /* FT3427、FT5x46 CHIP ID = 0x54 */
+/* 失芎俅慰 */
+#define FTS_CHIP_ID 0x58     /* FT3427FT5x46 CHIP ID = 0x54 */
 #define FTS_Vendor_1_ID 0x51 /* Ofilm TP VID = 0x51 */
 #define FTS_Vendor_2_ID 0x01 /* Ofilm TP new VID */
 #endif

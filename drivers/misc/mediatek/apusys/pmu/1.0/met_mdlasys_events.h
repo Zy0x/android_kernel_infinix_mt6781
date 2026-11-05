@@ -98,7 +98,7 @@ TRACE_EVENT(mdla_cmd_leave,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/apusys/pmu/1.0
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE met_mdlasys_events
 #include <trace/define_trace.h>

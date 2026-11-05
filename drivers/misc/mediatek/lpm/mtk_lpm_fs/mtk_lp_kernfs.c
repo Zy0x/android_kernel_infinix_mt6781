@@ -7,8 +7,8 @@
 #include <linux/slab.h>
 #include <linux/uidgid.h>
 
-#include <mtk_lp_kernfs.h>
-#include <mtk_lp_sysfs.h>
+#include "mtk_lp_kernfs.h"
+#include "mtk_lp_sysfs.h"
 
 #define MTK_LP_SYSFS_POWER_BUFFER_SZ	8192
 

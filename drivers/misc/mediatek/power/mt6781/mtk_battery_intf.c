@@ -127,11 +127,16 @@ signed int battery_get_uisoc(void)
 
 signed int battery_get_bat_temperature(void)
 {
-	/* TODO */
-	if (is_battery_init_done())
-		return force_get_tbat(true);
-	else
-		return -127;
+	signed int temp;
+
+	if (is_battery_init_done()) {
+		temp = force_get_tbat(true);
+		if (temp > 50 || temp < -10)
+		temp = 28;
+		return temp;
+	} else {
+		return 25;
+	}
 }
 
 signed int battery_get_ibus(void)

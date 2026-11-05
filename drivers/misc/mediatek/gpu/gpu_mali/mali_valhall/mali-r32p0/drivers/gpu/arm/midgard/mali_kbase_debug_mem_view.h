@@ -22,7 +22,7 @@
 #ifndef _KBASE_DEBUG_MEM_VIEW_H
 #define _KBASE_DEBUG_MEM_VIEW_H
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 
 /**
  * kbase_debug_mem_view_init - Initialize the mem_view sysfs file

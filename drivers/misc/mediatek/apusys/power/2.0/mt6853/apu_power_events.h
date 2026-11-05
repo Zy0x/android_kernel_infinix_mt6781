@@ -41,7 +41,7 @@ TRACE_EVENT(APUSYS_DFS,
 #endif /* _TRACE_APUSYS_FREQ_EVENTS_H */
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/apusys/power/2.0/mt6853
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE apu_power_events
 #include <trace/define_trace.h>

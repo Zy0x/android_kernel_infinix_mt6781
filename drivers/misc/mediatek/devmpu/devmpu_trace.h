@@ -35,7 +35,7 @@ TRACE_EVENT(devmpu_event,
 #endif
 
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/devmpu
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE devmpu_trace
 #include <trace/define_trace.h>

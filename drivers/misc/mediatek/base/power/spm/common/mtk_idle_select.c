@@ -24,10 +24,10 @@
 
 #include <mtk_spm_resource_req.h>
 #include <mtk_idle.h>
-#include <mtk_idle_internal.h>
+#include "mtk_idle_internal.h"
 #include <mtk_spm_internal.h> /* mtk_idle_cond_update_state */
 
-#include <mtk_idle_module.h>
+#include "mtk_idle_module.h"
 
 /* [ByChip] Internal weak functions: implemented in mtk_spm.c */
 int __attribute__((weak)) spm_load_firmware_status(void) { return -1; }

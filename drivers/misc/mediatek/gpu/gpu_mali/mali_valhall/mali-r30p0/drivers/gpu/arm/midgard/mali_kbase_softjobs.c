@@ -21,20 +21,20 @@
  *
  */
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 
 #include <linux/dma-buf.h>
 #include <asm/cacheflush.h>
 #if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
-#include <mali_kbase_sync.h>
+#include "mali_kbase_sync.h"
 #endif
 #include <linux/dma-mapping.h>
-#include <mali_base_kernel.h>
-#include <mali_kbase_hwaccess_time.h>
-#include <mali_kbase_kinstr_jm.h>
-#include <mali_kbase_mem_linux.h>
+#include "mali_base_kernel.h"
+#include "mali_kbase_hwaccess_time.h"
+#include "mali_kbase_kinstr_jm.h"
+#include "mali_kbase_mem_linux.h"
 #include <tl/mali_kbase_tracepoints.h>
-#include <mali_linux_trace.h>
+#include "mali_linux_trace.h"
 #include <linux/version.h>
 #include <linux/ktime.h>
 #include <linux/pfn.h>

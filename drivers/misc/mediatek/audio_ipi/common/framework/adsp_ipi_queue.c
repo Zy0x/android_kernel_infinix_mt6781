@@ -11,7 +11,7 @@
  * GNU General Public License for more details.
  */
 
-#include <adsp_ipi_queue.h>
+#include "adsp_ipi_queue.h"
 
 #include <linux/types.h>
 #include <linux/errno.h>
@@ -27,7 +27,7 @@
 #include <linux/ktime.h>
 
 #include <audio_assert.h>
-#include <audio_ipi_platform.h>
+#include "audio_ipi_platform.h"
 
 #ifdef CONFIG_MTK_AUDIODSP_SUPPORT
 #include <adsp_ipi.h>
@@ -43,7 +43,7 @@
 #include <mt-plat/aee.h>
 #endif
 
-#include <audio_messenger_ipi.h>
+#include "audio_messenger_ipi.h"
 
 
 

@@ -9,7 +9,7 @@
 **  <author>        <data>        <version >        <desc>
 **  JianBin.Zhang   2020/07/01        1.0           Build this moudle
 ***************************************************************/
-#include <oplus_display_common.h>
+#include "oplus_display_common.h"
 #include "display_panel/oplus_display_panel.h"
 
 #define PANEL_SERIAL_NUM_REG 0xA1

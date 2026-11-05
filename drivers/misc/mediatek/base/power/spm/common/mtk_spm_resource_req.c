@@ -17,9 +17,9 @@
 #include <linux/uaccess.h>
 
 #include <mtk_spm_resource_req.h>
-#include <mtk_spm_resource_req_internal.h>
+#include "mtk_spm_resource_req_internal.h"
 #include <mtk_idle_fs/mtk_idle_sysfs.h>
-#include <mtk_lp_dts.h>
+#include "mtk_lp_dts.h"
 
 #define NF_SPM_USER_USAGE_STRUCT	2
 

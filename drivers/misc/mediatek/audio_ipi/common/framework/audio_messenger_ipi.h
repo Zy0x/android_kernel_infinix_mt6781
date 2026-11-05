@@ -16,7 +16,7 @@
 
 #include <linux/types.h>
 
-#include <audio_ipi_dma.h>
+#include "audio_ipi_dma.h"
 
 
 

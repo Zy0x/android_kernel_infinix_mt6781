@@ -94,7 +94,7 @@ TRACE_EVENT(apply_cache_control,
 
 #undef TRACE_INCLUDE_PATH
 #undef TRACE_INCLUDE_FILE
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/cache-auditor
 #define TRACE_INCLUDE_FILE trace_cache_ctrl
 /* This part must be outside protection */
 #include <trace/define_trace.h>

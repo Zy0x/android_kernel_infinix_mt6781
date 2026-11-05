@@ -60,11 +60,12 @@
 #include <mt-plat/charger_type.h>
 #include <mt-plat/mtk_charger.h>
 #include <mt-plat/mtk_battery.h>
+unsigned int get_PCB_Version(void);
 #include <mt-plat/mtk_boot.h>
 #include <mt-plat/upmu_common.h>
 #include <pmic_lbat_service.h>
 
-#include <mtk_gauge_class.h>
+#include "mtk_gauge_class.h"
 #include "mtk_battery_internal.h"
 #include <mtk_gauge_time_service.h>
 
@@ -73,7 +74,7 @@
 #else
 #include <string.h>
 
-#include <mtk_gauge_class.h>
+#include "mtk_gauge_class.h"
 #include "mtk_battery_internal.h"
 #include <mtk_gauge_time_service.h>
 #include <mtk_battery_property.h>
@@ -2255,7 +2256,7 @@ void sw_check_bat_plugout(void)
             wakeup_fg_algo(FG_INTR_BAT_PLUGOUT);
 #endif /* OPLUS_FEATURE_CHG_BASIC */
 
-			kernel_power_off();
+			pr_emerg("[BATTERY_GUARD] Suppressed battery plugout kernel_power_off!\n");
 		}
 	}
 }
@@ -2835,7 +2836,7 @@ void fg_bat_plugout_int_handler(void)
 #endif /* OPLUS_FEATURE_CHG_BASIC */
 
 		fg_int_event(gm.gdev, EVT_INT_BAT_PLUGOUT);
-		kernel_power_off();
+		pr_emerg("[BATTERY_GUARD] Suppressed battery plugout kernel_power_off!\n");
 	}
 }
 
@@ -2853,7 +2854,7 @@ void fg_bat_plugout_int_handler_gm25(void)
 		gauge_dev_set_info(gm.gdev, GAUGE_BAT_PLUG_STATUS, 0);
 		en_intr_VBATON_UNDET(0);
 		battery_notifier(EVENT_BATTERY_PLUG_OUT);
-		kernel_power_off();
+		pr_emerg("[BATTERY_GUARD] Suppressed battery plugout kernel_power_off!\n");
 	}
 }
 

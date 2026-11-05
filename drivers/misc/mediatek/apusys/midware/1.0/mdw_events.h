@@ -140,7 +140,7 @@ TRACE_EVENT(mdw_cmd,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/apusys/midware/1.0
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mdw_events
 #include <trace/define_trace.h>

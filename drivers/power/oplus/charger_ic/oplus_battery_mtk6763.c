@@ -30,7 +30,7 @@
 #include <linux/power_supply.h>
 #include <mach/mtk_charging.h>
 #include <mt-plat/charging.h>
-#include <oplus_bq24196.h>
+#include "oplus_bq24196.h"
 
 #include "../oplus_gauge.h"
 

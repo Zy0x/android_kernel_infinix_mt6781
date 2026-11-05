@@ -251,6 +251,11 @@ static int mtktsbattery_get_hw_temp(void)
 
 	mutex_unlock(&Battery_lock);
 
+	if (t_ret > 50000 || t_ret < -10000) {
+		pr_warn_ratelimited("[BOOT_GUARD] mtktsbattery: clamped anomalous temp %d to 28000 mC\n", t_ret);
+		t_ret = 28000;
+	}
+
 	if (t_ret)
 
 		mtktsbattery_dprintk(
@@ -474,9 +479,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-#ifndef OPLUS_FEATURE_CHG_BASIC
-		BUG();
-#endif
+		pr_warn("[BOOT_GUARD] Power/battery_Thermal: tsbat_sysrst triggered (state=%lu), suppressing hard kernel BUG!\n", state);
 	}
 	return 0;
 }

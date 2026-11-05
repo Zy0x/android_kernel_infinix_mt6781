@@ -10,8 +10,8 @@
 #include <mtk_dbg_common_v1.h>
 #include <mtk_lpm_module.h>
 #include <gs/mtk_lpm_pwr_gs.h>
-#include <mt6833_dbg_fs_common.h>
-#include <mt6833_power_gs_compare.h>
+#include "mt6833_dbg_fs_common.h"
+#include "mt6833_power_gs_compare.h"
 
 static void __exit mt6833_dbg_exit(void)
 {

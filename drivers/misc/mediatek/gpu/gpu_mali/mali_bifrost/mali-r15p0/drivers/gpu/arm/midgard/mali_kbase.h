@@ -25,9 +25,9 @@
 #ifndef _KBASE_H_
 #define _KBASE_H_
 
-#include <mali_malisw.h>
+#include "mali_malisw.h"
 
-#include <mali_kbase_debug.h>
+#include "mali_kbase_debug.h"
 
 #include <linux/atomic.h>
 #include <linux/highmem.h>
@@ -48,7 +48,7 @@
 #include <linux/workqueue.h>
 
 #include "mali_base_kernel.h"
-#include <mali_kbase_linux.h>
+#include "mali_kbase_linux.h"
 
 /*
  * Include mali_kbase_defs.h first as this provides types needed by other local
@@ -564,7 +564,7 @@ void kbasep_trace_add(struct kbase_device *kbdev, enum kbase_trace_code code, vo
 void kbasep_trace_clear(struct kbase_device *kbdev);
 #else /* #ifndef CONFIG_MALI_SYSTEM_TRACE */
 /* Dispatch kbase trace events as system trace events */
-#include <mali_linux_kbase_trace.h>
+#include "mali_linux_kbase_trace.h"
 #define KBASE_TRACE_ADD_SLOT(kbdev, code, ctx, katom, gpu_addr, jobslot)\
 	trace_mali_##code(jobslot, 0)
 

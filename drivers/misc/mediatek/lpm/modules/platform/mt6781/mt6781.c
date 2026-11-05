@@ -8,7 +8,7 @@
 
 #include "mt6781.h"
 
-#include <suspend/mt6781_suspend.h>
+#include "suspend/mt6781_suspend.h"
 
 static unsigned int mt6781_lp_pwr_state;
 

@@ -19,8 +19,8 @@
 #include <linux/of_device.h>
 #include <asm/setup.h>
 
-#include <mtk_spm_internal.h>
-#include <mtk_spm_suspend_internal.h>
+#include "mtk_spm_internal.h"
+#include "mtk_spm_suspend_internal.h"
 #include <mt-plat/mtk_ccci_common.h>
 
 #define CREATE_TRACE_POINTS

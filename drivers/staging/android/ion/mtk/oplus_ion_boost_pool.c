@@ -21,7 +21,7 @@
 #include <linux/mm.h>
 #include <linux/sched.h>
 #include <uapi/linux/sched/types.h>
-#include <../../../../kernel/sched/sched.h>
+#include "../../../../kernel/sched/sched.h"
 
 #include "oplus_ion_boost_pool.h"
 

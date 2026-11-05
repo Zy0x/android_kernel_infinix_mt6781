@@ -50,7 +50,7 @@ TRACE_EVENT(mnoc_pmu_polling,
 #endif /* _TRACE_MNOC_MET_EVENTS_H */
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/apusys/mnoc/mt6893
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mnoc_met_events
 #include <trace/define_trace.h>

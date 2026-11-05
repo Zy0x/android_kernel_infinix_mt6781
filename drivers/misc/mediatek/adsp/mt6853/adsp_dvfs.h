@@ -6,8 +6,8 @@
 #ifndef __ADSP_DVFS_H__
 #define __ADSP_DVFS_H__
 
-#include <adsp_ipi.h>
-#include <adsp_clk.h>
+#include "adsp_ipi.h"
+#include "adsp_clk.h"
 
 #define ADSP_ITCM_MONITOR               (1)
 #define ADSP_DTCM_MONITOR               (1)

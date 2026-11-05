@@ -23,22 +23,22 @@
 #if IS_ENABLED(CONFIG_COMPAT)
 #include <linux/compat.h>
 #endif
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <linux/random.h>
 #include <linux/version.h>
 #include <linux/ratelimit.h>
 #include <linux/priority_control_manager.h>
 
-#include <mali_kbase_jm.h>
-#include <mali_kbase_kinstr_jm.h>
-#include <mali_kbase_hwaccess_jm.h>
+#include "mali_kbase_jm.h"
+#include "mali_kbase_kinstr_jm.h"
+#include "mali_kbase_hwaccess_jm.h"
 #include <tl/mali_kbase_tracepoints.h>
-#include <mali_linux_trace.h>
+#include "mali_linux_trace.h"
 
 #include "mali_kbase_dma_fence.h"
-#include <mali_kbase_cs_experimental.h>
+#include "mali_kbase_cs_experimental.h"
 
-#include <mali_kbase_caps.h>
+#include "mali_kbase_caps.h"
 
 #define beenthere(kctx, f, a...)  dev_dbg(kctx->kbdev->dev, "%s:" f, __func__, ##a)
 

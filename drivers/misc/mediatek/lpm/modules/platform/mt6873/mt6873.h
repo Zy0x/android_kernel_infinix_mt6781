@@ -8,7 +8,7 @@
 
 #include <linux/delay.h>
 #include <mtk_lpm_type.h>
-#include <mt6873_common.h>
+#include "mt6873_common.h"
 
 int mt6873_do_mcusys_prepare_pdn(unsigned int status,
 					   unsigned int *resource_req);

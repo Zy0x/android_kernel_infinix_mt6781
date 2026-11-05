@@ -16,8 +16,8 @@
 
 #include <linux/kernel.h>
 #include <linux/cpumask.h>
-#include <mtk_idle_internal.h>
-#include <mtk_idle_module.h>
+#include "mtk_idle_internal.h"
+#include "mtk_idle_module.h"
 
 unsigned long long idle_get_current_time_ms(void);
 

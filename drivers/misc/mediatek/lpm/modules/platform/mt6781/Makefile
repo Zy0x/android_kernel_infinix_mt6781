@@ -1,3 +1,5 @@
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/platform/mt6781
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/platform/mt6781
 
 ifeq ($(CONFIG_MTK_TINYSYS_MCUPM_SUPPORT), y)
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/mcupm/

@@ -19,7 +19,7 @@
  *
  */
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <device/mali_kbase_device.h>
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)

@@ -14,7 +14,7 @@
 #include <mtk_idle_module.h>
 #include <mtk_idle.h>
 #include <mtk_lp_dts.h>
-#include <mtk_idle_module_plat.h>
+#include "mtk_idle_module_plat.h"
 #include <mtk_idle_profile.h>
 
 static int mtk_idle_module_get_init_data(struct mtk_idle_init_data *pData)

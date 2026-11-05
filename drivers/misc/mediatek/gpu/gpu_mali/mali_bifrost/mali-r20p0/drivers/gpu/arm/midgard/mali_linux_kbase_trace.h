@@ -196,7 +196,7 @@ DEFINE_MALI_ADD_EVENT(PM_WAKE_WAITERS);
 
 #undef TRACE_INCLUDE_PATH
 #undef linux
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/gpu/gpu_mali/mali_bifrost/mali-r20p0/drivers/gpu/arm/midgard
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mali_linux_kbase_trace
 

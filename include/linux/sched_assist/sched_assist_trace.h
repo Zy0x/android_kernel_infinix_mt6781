@@ -41,5 +41,5 @@ TRACE_EVENT(oplus_tp_sched_switch_ux,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../kernel/sched_assist
 #include <trace/define_trace.h>

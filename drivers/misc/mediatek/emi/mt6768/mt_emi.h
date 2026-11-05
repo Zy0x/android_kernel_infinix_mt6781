@@ -66,7 +66,7 @@
 #define LAST_EMI_MBW_BUF_H	(LAST_EMI_BASE + 0x14)
 #define LAST_EMI_ISU_VER	(LAST_EMI_BASE + 0x18)
 
-#include <mt_emi_api.h>
+#include "mt_emi_api.h"
 #include <bwl_v1.h>
 #include <elm_v1.h>
 

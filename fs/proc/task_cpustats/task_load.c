@@ -2,8 +2,8 @@
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
-#include <../fs/proc/internal.h>
-#include <../kernel/sched/sched.h>
+#include "../fs/proc/internal.h"
+#include "../kernel/sched/sched.h"
 #include <linux/spinlock.h>
 #include <linux/hashtable.h>
 #include <linux/task_load.h>

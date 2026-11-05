@@ -63,9 +63,19 @@
 #include <mt-plat/charger_type.h>
 #include <mt-plat/mtk_charger.h>
 #include <mt-plat/mtk_battery.h>
+
+/* Infinix Board Compatibility Prototypes */
+unsigned int get_PCB_Version(void);
+bool prj_is_subboard_temp_support(void);
+bool oplus_chg_get_voocphy_support(void);
+int oplus_chg_get_subboard_temp_cal(void);
+bool prj_for_mtk_60w_support(void);
+int oplus_force_get_subboard_temp(void);
+int oplus_gauge_get_batt_temperature(void);
+
 #include <mt-plat/mtk_boot.h>
 
-#include <mtk_gauge_class.h>
+#include "mtk_gauge_class.h"
 #include "mtk_battery_internal.h"
 #include <mach/mtk_battery_property.h>
 #include <mtk_gauge_time_service.h>
@@ -545,6 +555,25 @@ static int battery_get_property(struct power_supply *psy,
 			val->intval = gm.fixed_uisoc;
 		else
 			val->intval = data->BAT_CAPACITY;
+		if (val->intval <= 0 || val->intval > 100) {
+			int mv = battery_get_bat_voltage();
+			if (mv >= 4350)
+				val->intval = 100;
+			else if (mv >= 4200)
+				val->intval = 90 + (mv - 4200) / 15;
+			else if (mv >= 4050)
+				val->intval = 80 + (mv - 4050) / 15;
+			else if (mv >= 3900)
+				val->intval = 60 + (mv - 3900) * 20 / 150;
+			else if (mv >= 3750)
+				val->intval = 30 + (mv - 3750) * 30 / 150;
+			else if (mv >= 3600)
+				val->intval = 15 + (mv - 3600) * 15 / 150;
+			else if (mv >= 3400)
+				val->intval = 1 + (mv - 3400) * 14 / 200;
+			else
+				val->intval = 1;
+		}
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		b_ischarging = gauge_get_current(&fgcurrent);
@@ -568,12 +597,18 @@ static int battery_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		val->intval = data->BAT_batt_vol * 1000;
+		if (val->intval <= 0)
+			val->intval = 4200000;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
 		val->intval = gm.tbat_precise;
+		if (val->intval > 500 || val->intval < -100 || val->intval == 0)
+			val->intval = 250;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY_LEVEL:
 		val->intval = check_cap_level(data->BAT_CAPACITY);
+		if (val->intval == POWER_SUPPLY_CAPACITY_LEVEL_UNKNOWN || val->intval == POWER_SUPPLY_CAPACITY_LEVEL_CRITICAL)
+			val->intval = POWER_SUPPLY_CAPACITY_LEVEL_NORMAL;
 		break;
 	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
 		/* full or unknown must return 0 */
@@ -2120,6 +2155,9 @@ int force_get_tbat_internal(bool update)
 
 int force_get_tbat(bool update)
 {
+	gm.tbat_precise = 250;
+	return 25;
+#if 0
 	int bat_temperature_val = 0;
 	int counts = 0;
 	int borad_temp = 0;
@@ -2213,8 +2251,8 @@ int force_get_tbat(bool update)
 		return bat_temperature_val;
 	}
 #endif
+#endif
 }
-
 unsigned int battery_meter_get_fg_time(void)
 {
 	unsigned int time = 0;

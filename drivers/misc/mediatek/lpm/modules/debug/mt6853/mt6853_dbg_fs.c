@@ -9,7 +9,7 @@
 
 #include <mtk_dbg_common_v1.h>
 #include <mtk_lpm_module.h>
-#include <mt6853_dbg_fs_common.h>
+#include "mt6853_dbg_fs_common.h"
 
 static void __exit mt6853_dbg_fs_exit(void)
 {

@@ -110,7 +110,7 @@ TRACE_EVENT(vpu_wait,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/apusys/vpu/p1
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE vpu_events
 #include <trace/define_trace.h>

@@ -136,7 +136,7 @@ TRACE_EVENT(core_ctl_update_nr_btask,
 #endif /*_CORE_CTL_TRACE_H */
 
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/perf
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE core_ctl_trace
 /* This part must be outside protection */

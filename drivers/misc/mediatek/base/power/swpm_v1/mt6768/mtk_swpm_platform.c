@@ -30,7 +30,7 @@
 #include <mtk_dramc.h>
 #endif
 #include <mtk_swpm_common.h>
-#include <mtk_swpm_platform.h>
+#include "mtk_swpm_platform.h"
 #include <mtk_swpm.h>
 
 

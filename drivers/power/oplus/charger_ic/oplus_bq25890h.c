@@ -76,7 +76,7 @@ void (*enable_aggressive_segmentation_fn)(bool);
 
 #include "../oplus_vooc.h"
 #include "../oplus_gauge.h"
-#include <oplus_bq25890h.h>
+#include "oplus_bq25890h.h"
 extern int oplus_get_rtc_ui_soc(void);
 extern int oplus_set_rtc_ui_soc(int value);
 static struct chip_bq25890h *charger_ic;

@@ -14,6 +14,8 @@
 # drivers/mdp
 
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/mdp \
+             -I$(srctree)/drivers/misc/mediatek/mdp/mt6781 \
+             -I$(src) \
              -I$(srctree)/drivers/misc/mediatek/mmdvfs/ \
              -I$(srctree)/drivers/misc/mediatek/smi/ \
              -I$(srctree)/drivers/misc/mediatek/smi/$(MTK_PLATFORM)/ \

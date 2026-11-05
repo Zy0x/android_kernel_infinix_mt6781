@@ -37,7 +37,7 @@
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_devfreq.h>
 #include <mali_kbase_dummy_job_wa.h>
-#include <mali_kbase_irq_internal.h>
+#include "mali_kbase_irq_internal.h"
 
 #ifdef ENABLE_COMMON_DVFS
 extern unsigned int (*mtk_get_gpu_loading_fp)(void);

@@ -42,7 +42,7 @@
 #ifndef _KBASE_MEM_POOL_DEBUGFS_H_
 #define _KBASE_MEM_POOL_DEBUGFS_H_
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 
 /**
  * kbase_mem_pool_debugfs_init - add debugfs knobs for @pool

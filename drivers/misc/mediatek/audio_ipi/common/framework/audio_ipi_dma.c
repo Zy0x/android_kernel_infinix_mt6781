@@ -11,7 +11,7 @@
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
-#include <audio_ipi_dma.h>
+#include "audio_ipi_dma.h"
 
 #include <linux/string.h>
 #include <linux/io.h>
@@ -28,13 +28,13 @@
 
 #include <audio_log.h>
 #include <audio_assert.h>
-#include <audio_ipi_platform.h>
+#include "audio_ipi_platform.h"
 
-#include <audio_task.h>
-#include <audio_controller_msg_id.h>
-#include <audio_messenger_ipi.h>
+#include "audio_task.h"
+#include "audio_controller_msg_id.h"
+#include "audio_messenger_ipi.h"
 
-#include <audio_ringbuf.h>
+#include "audio_ringbuf.h"
 #include <linux/wait.h>
 
 

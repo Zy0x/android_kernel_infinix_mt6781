@@ -15,8 +15,8 @@
 
 #include <mtk_idle.h>
 #include <mtk_mcdi.h>
-#include <mtk_mcdi_state.h>
-#include <mtk_mcdi_plat.h>
+#include "mtk_mcdi_state.h"
+#include "mtk_mcdi_plat.h"
 
 static int mcdi_idle_state_mapping[NR_TYPES] = {
 	MCDI_STATE_DPIDLE,		/* IDLE_TYPE_DP */

@@ -4,7 +4,7 @@
  */
 
 #include <gs/mtk_lpm_pwr_gs.h>
-#include <gs/v1/mtk_lpm_pwr_gs_internal.h>
+#include "mtk_lpm_pwr_gs_internal.h"
 
 
 int mtk_lpm_pwr_gs_common_init(void)

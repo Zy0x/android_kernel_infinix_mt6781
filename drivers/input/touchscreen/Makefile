@@ -113,3 +113,6 @@ subdir-ccflags-y += -DODM_WT_EDIT
 obj-$(CONFIG_TOUCHPANEL_OPLUS) += oplus_touchscreen/
 obj-$(CONFIG_TOUCHPANEL_OPLUS) += touch.o
 #endif /* OPLUS_FEATURE_TP_BASIC */
+
+# Infinix Novatek NT36672C SPI Touch Driver
+obj-y += NT36672C/

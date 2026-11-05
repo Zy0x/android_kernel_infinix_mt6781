@@ -13,7 +13,7 @@
 #include <mtk_resource_constraint_v1.h>
 
 #include <mt6885_pwr_ctrl.h>
-#include <mt6885_dbg_fs_common.h>
+#include "mt6885_dbg_fs_common.h"
 #include <mt6885_cond.h>
 #include <mt6885_spm_comm.h>
 

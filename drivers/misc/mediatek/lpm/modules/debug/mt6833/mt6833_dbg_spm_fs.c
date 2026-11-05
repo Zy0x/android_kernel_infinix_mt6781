@@ -16,7 +16,7 @@
 #include <mtk_spm_sysfs.h>
 
 #include <mt6833_pwr_ctrl.h>
-#include <mt6833_dbg_fs_common.h>
+#include "mt6833_dbg_fs_common.h"
 #include <mt6833_cond.h>
 #include <mt6833_spm_comm.h>
 

@@ -12,7 +12,7 @@
 #ifndef _OPLUS_DISPLAY_COMMON_H_
 #define _OPLUS_DISPLAY_COMMON_H_
 
-#include <oplus_display_private_api.h>
+#include "oplus_display_private_api.h"
 
 int oplus_display_panel_get_max_brightness(void *buf);
 int oplus_display_panel_get_serial_number(void *buf);

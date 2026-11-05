@@ -15,7 +15,7 @@
 #define __SMI_HW_H__
 
 #include <clk-mt6877-pg.h>
-#include <smi_port.h>
+#include "smi_port.h"
 
 #define SYS_DIS SYS_DISP /* Because smi_drv.c use SYS_DIS */
 

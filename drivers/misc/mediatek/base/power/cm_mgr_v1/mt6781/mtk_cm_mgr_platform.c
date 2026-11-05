@@ -58,6 +58,7 @@
 #include <linux/notifier.h>
 
 #include <linux/pm_qos.h>
+void cm_mgr_ddr_setting_init(void);
 #include <helio-dvfsrc.h>
 #ifdef USE_IDLE_NOTIFY
 #include "mtk_idle.h"

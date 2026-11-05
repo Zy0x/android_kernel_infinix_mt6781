@@ -1,3 +1,4 @@
+ccflags-y += -I$(srctree)/drivers/iommu
 # SPDX-License-Identifier: GPL-2.0
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/

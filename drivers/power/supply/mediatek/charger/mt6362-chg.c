@@ -17,7 +17,7 @@
 
 #include <dt-bindings/mfd/mt6362.h>
 #include <mt-plat/charger_class.h>
-#include <mtk_charger_intf.h> /* notify vbusov/eoc/rechg */
+#include "mtk_charger_intf.h"
 #include <mt-plat/mtk_boot.h> /* meta mode */
 #include <mt-plat/upmu_common.h> /* usb phy switch */
 

@@ -46,7 +46,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <img_defs.h>
 #include <ri_typedefs.h>
-#include <pmr.h>
+#include "pmr.h"
 #include <pvrsrv_error.h>
 #include <physheap.h>
 

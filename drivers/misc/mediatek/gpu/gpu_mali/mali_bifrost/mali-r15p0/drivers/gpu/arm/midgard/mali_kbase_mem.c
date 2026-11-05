@@ -35,12 +35,12 @@
 #include <linux/version.h>
 #include <linux/log2.h>
 
-#include <mali_kbase_config.h>
-#include <mali_kbase.h>
-#include <mali_midg_regmap.h>
-#include <mali_kbase_cache_policy.h>
-#include <mali_kbase_hw.h>
-#include <mali_kbase_tlstream.h>
+#include "mali_kbase_config.h"
+#include "mali_kbase.h"
+#include "mali_midg_regmap.h"
+#include "mali_kbase_cache_policy.h"
+#include "mali_kbase_hw.h"
+#include "mali_kbase_tlstream.h"
 
 /* Forward declarations */
 static void free_partial_locked(struct kbase_context *kctx,

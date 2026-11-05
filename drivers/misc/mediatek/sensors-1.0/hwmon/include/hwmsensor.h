@@ -26,7 +26,7 @@
 #include <linux/compat.h>
 #endif
 #ifdef OPLUS_FEATURE_SENSOR_ALGORITHM
-#include <oplussensor.h>
+#include "oplussensor.h"
 #endif /*OPLUS_FEATURE_SENSOR_ALGORITHM*/
 /* follow google default sensor type */
 #define SENSOR_TYPE_ACCELEROMETER                      1

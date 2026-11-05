@@ -23,12 +23,9 @@
 #include "mtk_battery.h"
 #endif
 
-#include <mtk_gauge_time_service.h>
-#include <mtk_gauge_class.h>
+#include "mtk_gauge_time_service.h"
+#include "mtk_gauge_class.h"
 
-#ifndef OPLUS_FEATURE_CHG_BASIC
-#define OPLUS_FEATURE_CHG_BASIC
-#endif
 
 
 /* ============================================================ */

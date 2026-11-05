@@ -411,6 +411,10 @@ static int mt6358_irq_init(struct mt6358_chip *chip)
 static struct mt6358_chip *mt6358_pm_off;
 static void mt6358_power_off(void)
 {
+	if (ktime_get_seconds() < 300) {
+		pr_emerg("[BOOT_GUARD] mt6358_power_off blocked during early boot (uptime=%llds)!\n", (long long)ktime_get_seconds());
+		return;
+	}
 	pr_info("%s\n", __func__);
 	if (mt6358_pm_off)
 		regmap_update_bits(mt6358_pm_off->regmap,

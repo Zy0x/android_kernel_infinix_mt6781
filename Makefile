@@ -556,10 +556,6 @@ endif
 KBUILD_CPPFLAGS += -Qunused-arguments
 endif
 
-KBUILD_CFLAGS +=   -DOPLUS_FEATURE_CHG_BASIC
-KBUILD_CPPFLAGS += -DOPLUS_FEATURE_CHG_BASIC
-CFLAGS_KERNEL +=   -DOPLUS_FEATURE_CHG_BASIC
-CFLAGS_MODULE +=   -DOPLUS_FEATURE_CHG_BASIC
 
 RETPOLINE_CFLAGS_GCC := -mindirect-branch=thunk-extern -mindirect-branch-register
 RETPOLINE_VDSO_CFLAGS_GCC := -mindirect-branch=thunk-inline -mindirect-branch-register

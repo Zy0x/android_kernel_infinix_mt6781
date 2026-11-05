@@ -48,7 +48,7 @@
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mali_power_gpu_frequency_trace
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/gpu/gpu_mali/mali_valhall/mali-r30p0/drivers/gpu/arm/midgard
 
 #if !defined(_TRACE_POWER_GPU_FREQUENCY_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_POWER_GPU_FREQUENCY_H

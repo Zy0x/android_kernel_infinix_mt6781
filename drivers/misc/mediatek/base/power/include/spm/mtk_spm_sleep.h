@@ -15,7 +15,7 @@
 #define __MTK_SPM_SLEEP_H__
 
 #include <linux/kernel.h>
-#include <mtk_spm.h>
+#include "mtk_spm.h"
 
 /*
  * for suspend

@@ -25,9 +25,9 @@
  * Implementation of the dummy job execution workaround for the GPU hang issue.
  */
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <device/mali_kbase_device.h>
-#include <mali_kbase_dummy_job_wa.h>
+#include "mali_kbase_dummy_job_wa.h"
 
 #include <linux/firmware.h>
 #include <linux/delay.h>

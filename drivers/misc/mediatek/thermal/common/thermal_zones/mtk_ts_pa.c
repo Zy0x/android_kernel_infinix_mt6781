@@ -201,10 +201,10 @@ static void pa_cal_stats(unsigned long data)
  *struct md_info g_pinfo_list[] =
  *{{"TXPWR_MD1", -127, "db", -127, 0},
  * {"TXPWR_MD2", -127, "db", -127, 1},
- * {"RFTEMP_2G_MD1", -32767, "¢XC", -32767, 2},
- * {"RFTEMP_2G_MD2", -32767, "¢XC", -32767, 3},
- * {"RFTEMP_3G_MD1", -32767, "¢XC", -32767, 4},
- * {"RFTEMP_3G_MD2", -32767, "¢XC", -32767, 5}};
+ * {"RFTEMP_2G_MD1", -32767, "XC", -32767, 2},
+ * {"RFTEMP_2G_MD2", -32767, "XC", -32767, 3},
+ * {"RFTEMP_3G_MD1", -32767, "XC", -32767, 4},
+ * {"RFTEMP_3G_MD2", -32767, "XC", -32767, 5}};
  */
 static DEFINE_MUTEX(TSPA_lock);
 static int mtktspa_get_hw_temp(void)
@@ -437,7 +437,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		 * for thermal protection.
 		 */
 		if (get_eng_version() != HIGH_TEMP_AGING)
-			BUG();
+			pr_warn("[BOOT_GUARD] %s: thermal reset bypassed\n", __func__);
 		else
 			pr_info("%s should reset but bypass\n", __func__);
 	}

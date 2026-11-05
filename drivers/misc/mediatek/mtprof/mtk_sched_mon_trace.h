@@ -39,7 +39,7 @@ TRACE_EVENT(sched_mon_msg,
 #endif /* _TRACE_SCHED_MON_H */
 
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/mtprof
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mtk_sched_mon_trace
 

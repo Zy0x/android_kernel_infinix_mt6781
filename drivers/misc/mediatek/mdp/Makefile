@@ -14,9 +14,9 @@
 # driver code for MDP
 
 ifeq ($(CONFIG_MACH_MT6833),y)
-MTK_PLATFORM := "mt6833"
+MTK_PLATFORM := mt6833
 else ifeq ($(CONFIG_MACH_MT6781),y)
-MTK_PLATFORM := "mt6781"
+MTK_PLATFORM := mt6781
 else
 MTK_PLATFORM := $(CONFIG_MTK_PLATFORM)
 endif
@@ -36,7 +36,8 @@ ccflags-$(CONFIG_MACH_MT6877) += -DMDP_MMPATH
 ccflags-$(CONFIG_MACH_MT6781) += -DCMDQ_MDP_ENABLE_SPR
 ccflags-$(CONFIG_MACH_MT6781) += -DMDP_MMPATH
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/smi/ \
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/mdp/$(subst ",,$(MTK_PLATFORM)) \
+	     -I$(srctree)/drivers/misc/mediatek/smi/ \
 	     -I$(srctree)/drivers/misc/mediatek/smi/$(MTK_PLATFORM)/ \
 	     -I$(srctree)/drivers/misc/mediatek/mmdvfs/ \
 	     -I$(srctree)/drivers/misc/mediatek/mmp/ \

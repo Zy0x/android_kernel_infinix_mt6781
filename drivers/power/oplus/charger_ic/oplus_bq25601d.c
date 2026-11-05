@@ -76,7 +76,7 @@ void (*enable_aggressive_segmentation_fn)(bool);
 
 #include "../oplus_vooc.h"
 #include "../oplus_gauge.h"
-#include <oplus_bq25601d.h>
+#include "oplus_bq25601d.h"
 extern int oplus_get_rtc_ui_soc(void);
 extern int oplus_set_rtc_ui_soc(int value);
 #if !defined(CONFIG_OPLUS_CHARGER_MTK6781)

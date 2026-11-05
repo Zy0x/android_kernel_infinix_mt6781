@@ -88,7 +88,7 @@ TRACE_EVENT(Network__traffic_0,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH ./
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/base/power/spm/mt6785
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mtk_spm_events
 #include <trace/define_trace.h>

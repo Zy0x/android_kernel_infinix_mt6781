@@ -24,15 +24,15 @@
 /*
  * Job Scheduler Implementation
  */
-#include <mali_kbase.h>
-#include <mali_kbase_js.h>
+#include "mali_kbase.h"
+#include "mali_kbase_js.h"
 #include <tl/mali_kbase_tracepoints.h>
-#include <mali_linux_trace.h>
-#include <mali_kbase_hw.h>
-#include <mali_kbase_ctx_sched.h>
+#include "mali_linux_trace.h"
+#include "mali_kbase_hw.h"
+#include "mali_kbase_ctx_sched.h"
 
-#include <mali_kbase_defs.h>
-#include <mali_kbase_config_defaults.h>
+#include "mali_kbase_defs.h"
+#include "mali_kbase_config_defaults.h"
 
 #include "mali_kbase_jm.h"
 #include "mali_kbase_hwaccess_jm.h"

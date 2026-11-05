@@ -16,7 +16,7 @@
 
 #include <asm/cpuidle.h>
 #include <asm/suspend.h>
-#include <dt_idle_states.h>
+#include "dt_idle_states.h"
 
 #define MTK_CPUIDLE_PREPARE		(0)
 #define MTK_CPUIDLE_RESUME		(1)

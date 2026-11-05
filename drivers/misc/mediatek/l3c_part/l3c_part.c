@@ -25,7 +25,7 @@
 #include <mt-plat/mtk_io.h>
 
 #include <asm/arm_dsu_l3c.h>
-#include <l3c_part.h>
+#include "l3c_part.h"
 
 static unsigned char init_done;
 static struct platform_driver l3c_part_drv = {

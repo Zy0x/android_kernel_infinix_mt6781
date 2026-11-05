@@ -115,7 +115,7 @@ TRACE_EVENT(apupwr_dvfs,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/apusys/power/2.0/mt6833
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE apupwr_events
 #include <trace/define_trace.h>

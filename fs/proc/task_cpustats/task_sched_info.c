@@ -3,7 +3,7 @@
 #include <linux/vmalloc.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
-#include <../fs/proc/internal.h>
+#include "../fs/proc/internal.h"
 #include <linux/uaccess.h>
 #include <linux/task_sched_info.h>
 #include <linux/timekeeping.h>
@@ -17,7 +17,7 @@
 #include <linux/spinlock.h>
 #include <trace/events/sched.h>
 #include <linux/workqueue.h>
-#include <../kernel/sched/sched.h>
+#include "../kernel/sched/sched.h"
 
 #define MAX_PID_NUM 10
 #define BUFFER_SIZE 5760

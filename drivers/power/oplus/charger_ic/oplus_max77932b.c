@@ -55,7 +55,7 @@ extern void mt_power_off(void);
 
 #include "../oplus_vooc.h"
 #include "../oplus_gauge.h"
-#include <oplus_max77932b.h>
+#include "oplus_max77932b.h"
 #include <linux/proc_fs.h>
 
 static struct chip_max77932b *the_chip = NULL;

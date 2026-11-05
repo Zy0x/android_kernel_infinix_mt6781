@@ -19,10 +19,10 @@
  *
  */
 
-#include <mali_kbase.h>
-#include <mali_kbase_mem_linux.h>
-#include <mali_kbase_defs.h>
-#include <mali_kbase_trace_gpu_mem.h>
+#include "mali_kbase.h"
+#include "mali_kbase_mem_linux.h"
+#include "mali_kbase_defs.h"
+#include "mali_kbase_trace_gpu_mem.h"
 
 /**
  * struct kbase_dma_buf - Object instantiated when a dma-buf imported allocation

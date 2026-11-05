@@ -52,7 +52,7 @@ TRACE_EVENT(PPM__cobra_setting,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH ./
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/base/power/ppm_v3/src/mach/mt6893
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mtk_ppm_cobra_event
 #include <trace/define_trace.h>

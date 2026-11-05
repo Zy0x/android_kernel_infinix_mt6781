@@ -47,8 +47,8 @@
 #include <mtk_mcdi_api.h>
 #endif
 
-#include <mtk_lp_sysfs.h>
-#include <mtk_lp_kernfs.h>
+#include "mtk_lp_sysfs.h"
+#include "mtk_lp_kernfs.h"
 #include "mtk_idle_sysfs.h"
 
 

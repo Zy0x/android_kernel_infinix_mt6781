@@ -11,7 +11,7 @@
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
-#include <mtk_idle_module.h>
+#include "mtk_idle_module.h"
 #include <linux/printk.h>
 #include <linux/mutex.h>
 #include <linux/delay.h>
@@ -20,7 +20,7 @@
 #if defined(CONFIG_THERMAL)
 #include <mtk_thermal.h> /* mtkTTimer_start/cancel_timer */
 #endif
-#include <mtk_idle_profile.h>
+#include "mtk_idle_profile.h"
 #include <linux/atomic.h>
 
 DEFINE_MUTEX(mtk_idle_module_locker);

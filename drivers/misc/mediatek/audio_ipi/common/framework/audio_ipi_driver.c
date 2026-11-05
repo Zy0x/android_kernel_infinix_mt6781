@@ -33,7 +33,7 @@
 #include <linux/ioport.h>
 #include <linux/io.h>
 
-#include <audio_ipi_queue.h>
+#include "audio_ipi_queue.h"
 
 #ifdef CONFIG_MTK_AUDIO_CM4_SUPPORT
 #include <scp_helper.h>
@@ -49,15 +49,15 @@
 #include "audio_log.h"
 #include "audio_assert.h"
 
-#include <audio_controller_msg_id.h>
-#include <audio_messenger_ipi.h>
+#include "audio_controller_msg_id.h"
+#include "audio_messenger_ipi.h"
 
-#include <audio_task_manager.h>
+#include "audio_task_manager.h"
 
-#include <audio_ipi_dma.h>
-#include <audio_ipi_platform.h>
+#include "audio_ipi_dma.h"
+#include "audio_ipi_platform.h"
 
-#include <adsp_ipi_queue.h>
+#include "adsp_ipi_queue.h"
 
 
 #ifdef CONFIG_MTK_AURISYS_PHONE_CALL_SUPPORT

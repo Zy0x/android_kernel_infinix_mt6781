@@ -24,8 +24,8 @@
 #include <linux/mm.h>
 #include <linux/memory_group_manager.h>
 
-#include <mali_kbase.h>
-#include <mali_kbase_native_mgm.h>
+#include "mali_kbase.h"
+#include "mali_kbase_native_mgm.h"
 
 #if (KERNEL_VERSION(4, 17, 0) > LINUX_VERSION_CODE)
 static inline vm_fault_t vmf_insert_pfn(struct vm_area_struct *vma,

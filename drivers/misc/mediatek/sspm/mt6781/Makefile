@@ -1,3 +1,5 @@
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/sspm/v2
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/sspm/mt6781
 SSPM_VERSION := v2
 SSPM_VERSION_PATH := ../$(SSPM_VERSION)
 

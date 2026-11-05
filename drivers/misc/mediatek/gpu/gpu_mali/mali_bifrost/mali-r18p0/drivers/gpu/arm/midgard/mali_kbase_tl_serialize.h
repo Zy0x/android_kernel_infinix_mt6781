@@ -23,7 +23,7 @@
 #if !defined(_KBASE_TL_SERIALIZE_H)
 #define _KBASE_TL_SERIALIZE_H
 
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 
 #include <linux/timer.h>
 

@@ -26,7 +26,7 @@
 
 #include "mtk_spm_internal.h"
 
-#include <mtk_idle_module_plat.h>
+#include "mtk_idle_module_plat.h"
 /***********************************************************
  * Local definitions
  ***********************************************************/

@@ -254,7 +254,7 @@ static void kalDumpMsduReportStats(IN struct ADAPTER *prAdapter);
 #define  KGIDT_VALUE(v) v
 #endif
 
-const struct firmware *fw_entry;
+static const struct firmware *fw_entry;
 
 /* Default */
 static uint8_t *apucFwName[] = {

@@ -151,7 +151,7 @@ TRACE_EVENT(VPU__DVFS,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/vpu/mt6768
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE met_vpusys_events
 #include <trace/define_trace.h>

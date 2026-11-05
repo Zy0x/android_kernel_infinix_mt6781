@@ -37,6 +37,7 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/pmic/
 ccflags-y += -I$(srctree)/drivers/devfreq
 #workaround for include mmc/card/queue.h and mmc/core/core.h
 ccflags-y += -I$(srctree)/drivers
+ccflags-y += -I$(srctree)/drivers/mmc/host/mediatek/ComboA
 ccflags-y += -I$(srctree)/drivers/mmc/host/mediatek/ComboA/$(MMC_FOLDER)
 
 ifeq ($(CONFIG_MTK_HW_FDE_AES),y)

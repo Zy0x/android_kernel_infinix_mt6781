@@ -45,7 +45,7 @@ TRACE_EVENT(MMPath,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/include/mt-plat
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mmpath
 #include <trace/define_trace.h>

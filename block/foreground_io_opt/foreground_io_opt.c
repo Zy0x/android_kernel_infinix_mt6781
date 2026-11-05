@@ -14,7 +14,7 @@
 #include "foreground_io_opt.h"
 
 #define CREATE_TRACE_POINTS
-#include <trace/foreground_io_opt_trace.h>
+#include "trace/foreground_io_opt_trace.h"
 
 #define FG_CNT_DEF 20
 #define BOTH_CNT_DEF 10

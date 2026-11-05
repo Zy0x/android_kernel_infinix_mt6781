@@ -64,7 +64,7 @@ TRACE_EVENT(SPM__resource_req_0,
 #undef TRACE_INCLUDE_PATH
 #undef TRACE_INCLUDE_FILE
 
-#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/lpm/inc/mtk_lpm_trace_event
 #define TRACE_INCLUDE_FILE mtk_lpm_trace_event
 
 #include <trace/define_trace.h>

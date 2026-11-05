@@ -9,7 +9,7 @@
 #include <linux/uaccess.h>
 
 #include "mtk_lp_sysfs.h"
-#include <mtk_lp_kernfs.h>
+#include "mtk_lp_kernfs.h"
 
 #define CUSTOM_SYSFS_ROOT 1
 #define MTK_LPM_SYSFS_NAME	"mtk_lpm"

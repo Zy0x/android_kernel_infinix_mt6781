@@ -11,7 +11,7 @@
 #include <linux/interrupt.h>
 //#include <linux/qpnp/qpnp-adc.h>
 #include <linux/pinctrl/consumer.h>
-#include <smb1351-charger.h>
+#include "smb1351-charger.h"
 #include "../oplus_vooc.h"
 #include "../oplus_gauge.h"
 #include "../oplus_charger.h"

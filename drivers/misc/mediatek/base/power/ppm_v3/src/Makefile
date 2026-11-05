@@ -23,7 +23,8 @@ else
 ifeq ($(CONFIG_MACH_MT6893),y)
 ccflags-y += -I$(PPM_ROOT_DIR)/src/mach/mt6893
 else
-ccflags-y += -I$(PPM_ROOT_DIR)/src/mach/$(CONFIG_MTK_PLATFORM)
+MTK_PLAT := $(subst ",,$(CONFIG_MTK_PLATFORM))
+ccflags-y += -I$(PPM_ROOT_DIR)/src/mach/$(MTK_PLAT)
 endif
 endif
 

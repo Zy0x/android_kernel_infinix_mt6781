@@ -14,7 +14,7 @@
 #ifndef _MTK_VCOREFS_MANAGER_H
 #define _MTK_VCOREFS_MANAGER_H
 
-#include <mtk_vcorefs_governor.h>
+#include "mtk_vcorefs_governor.h"
 
 extern int is_vcorefs_can_work(void);
 extern bool is_vcorefs_request(void);

@@ -15,7 +15,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 
-#include <mtk_spm_internal.h>
+#include "mtk_spm_internal.h"
 #include "mtk_sspm.h"
 
 static twam_handler_t spm_twam_handler;

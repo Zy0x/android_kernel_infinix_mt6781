@@ -14,7 +14,7 @@
 #ifndef __MTK_SWPM_SP_PLATFORM_H__
 #define __MTK_SWPM_SP_PLATFORM_H__
 
-#include <mtk_swpm_platform.h>
+#include "mtk_swpm_platform.h"
 
 /* numbers of power state (active, idle, off) */
 enum pmsr_power_state {

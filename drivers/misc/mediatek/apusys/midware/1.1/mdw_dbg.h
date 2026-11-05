@@ -14,7 +14,7 @@
 #ifndef __APUSYS_MDW_DBG_H__
 #define __APUSYS_MDW_DBG_H__
 
-#include <apusys_dbg.h>
+#include "apusys_dbg.h"
 
 #define APUSYS_DBG_DIR "apusys_midware"
 

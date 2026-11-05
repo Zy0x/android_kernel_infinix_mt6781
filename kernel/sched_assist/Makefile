@@ -14,3 +14,6 @@ endif
 else
 obj-$(CONFIG_SCHED_WALT) += sched_assist_slide_v1.o
 endif
+
+ccflags-y += -I$(srctree)/kernel/sched_assist
+CFLAGS_sched_assist_futex.o := -I$(src)

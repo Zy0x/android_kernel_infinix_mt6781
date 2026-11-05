@@ -11,7 +11,9 @@
 # GNU General Public License for more details.
 #
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/freqhopping/$(MTK_PLATFORM)/
+MTK_PLAT := $(subst ",,$(CONFIG_MTK_PLATFORM))
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/freqhopping/$(MTK_PLAT)
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/freqhopping/$(MTK_PLAT)
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/mach/
 
 ifeq (y,$(filter y,$(CONFIG_MACH_MT6853) \

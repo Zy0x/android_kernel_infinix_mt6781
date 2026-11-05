@@ -47,3 +47,6 @@ subdir-ccflags-y += \
 	-I$(MTK_CUSTOM_PATH)/pmic/include \
 	-I$(MTK_CUSTOM_PATH)/pmic
 
+
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/flashlight
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/flashlight

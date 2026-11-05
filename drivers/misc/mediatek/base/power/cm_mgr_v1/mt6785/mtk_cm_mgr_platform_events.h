@@ -40,7 +40,7 @@ TRACE_EVENT(CM_MGR__stall_ratio,
 
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH ./
+#define TRACE_INCLUDE_PATH ../../drivers/misc/mediatek/base/power/cm_mgr_v1/mt6785
 #undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE mtk_cm_mgr_platform_events
 #include <trace/define_trace.h>

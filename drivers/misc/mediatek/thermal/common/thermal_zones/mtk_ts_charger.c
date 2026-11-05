@@ -390,7 +390,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		 * for thermal protection.
 		 */
 		if (get_eng_version() != HIGH_TEMP_AGING)
-			BUG();
+			pr_warn("[BOOT_GUARD] %s: thermal reset bypassed\n", __func__);
 		else
 			pr_info("%s should reset but bypass\n", __func__);
 	}

@@ -15,7 +15,7 @@
 #include <linux/kernel.h>
 
 #include <mtk_spm.h>	/* SPM TWAM API */
-#include <mtk_idle_internal.h>
+#include "mtk_idle_internal.h"
 #include <mtk_spm_reg.h>
 /* SPM TAWM */
 #define TRIGGER_TYPE                (2) /* b'10: high */

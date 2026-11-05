@@ -23,14 +23,14 @@
 
 #include <mtk_idle.h>
 #include <mtk_idle_internal.h>
-#include <mtk_spm_suspend_internal.h>
+#include "mtk_spm_suspend_internal.h"
 #include <mtk_spm_resource_req.h>
 
 #include "mtk_spm_internal.h"
 #include "pwr_ctrl.h"
 
 #include <mtk_idle_module.h>
-#include <mtk_idle_module_plat.h>
+#include "mtk_idle_module_plat.h"
 
 #define MTK_IDLE_GS_DUMP_READY	(1)
 

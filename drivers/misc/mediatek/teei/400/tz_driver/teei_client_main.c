@@ -51,12 +51,12 @@
 #include <fdrv.h>
 #include <backward_driver.h>
 #include <teei_fp.h>
-#include <tz_log.h>
+#include "tz_log.h"
 #include <utos_version.h>
 #include <sysfs.h>
 #include <teei_keymaster.h>
 #include <irq_register.h>
-#include <../teei_fp/fp_func.h>
+#include "../teei_fp/fp_func.h"
 #include "tz_log.h"
 
 #if (CONFIG_MICROTRUST_TZ_DRIVER_MTK_BOOTPROF && CONFIG_MTPROF)

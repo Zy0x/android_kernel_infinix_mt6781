@@ -20,7 +20,7 @@
  */
 
 #include "mali_kbase_dvfs_debugfs.h"
-#include <mali_kbase.h>
+#include "mali_kbase.h"
 #include <linux/seq_file.h>
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)

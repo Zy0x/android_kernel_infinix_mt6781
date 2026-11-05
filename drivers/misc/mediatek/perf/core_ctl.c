@@ -25,7 +25,7 @@
 
 #ifndef __CHECKER__
 #define CREATE_TRACE_POINTS
-#include <core_ctl_trace.h>
+#include "core_ctl_trace.h"
 #endif
 
 #include <mt-plat/core_ctl.h>
@@ -34,7 +34,7 @@
 #endif
 #include <mtk_ppm_api.h>
 #include <rq_stats.h>
-#include <core_ctl_internal.h>
+#include "core_ctl_internal.h"
 
 #define TAG "core_ctl"
 

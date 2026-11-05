@@ -637,7 +637,7 @@ static kal_uint16 table_write_cmos_sensor(kal_uint16 *para, kal_uint32 len)
 	return 0;
 }
 
-kal_uint16 addr_data_pair_init_gc02m1b[] = {
+static kal_uint16 addr_data_pair_init_gc02m1b[] = {
 /*system*/
 0xfc,0x01,
 0xf4,0x41,
@@ -853,27 +853,27 @@ kal_uint16 addr_data_pair_init_gc02m1b[] = {
 0xfe,0x00,
 0x3e,0x00,
 };
-kal_uint16 addr_data_pair_preview_gc02m1b[] = {
+static kal_uint16 addr_data_pair_preview_gc02m1b[] = {
 	0xfe, 0x00,
 	0x3e, 0x90,
 };
 
-kal_uint16 addr_data_pair_capture_gc02m1b[] = {
+static kal_uint16 addr_data_pair_capture_gc02m1b[] = {
 	0xfe, 0x00,
 	0x3e, 0x90,
 };
 
-kal_uint16 addr_data_pair_normal_video_gc02m1b[] = {
+static kal_uint16 addr_data_pair_normal_video_gc02m1b[] = {
 	0xfe, 0x00,
 	0x3e, 0x90,
 };
 
-kal_uint16 addr_data_pair_hs_video_gc02m1b[] = {
+static kal_uint16 addr_data_pair_hs_video_gc02m1b[] = {
 	0xfe, 0x00,
 	0x3e, 0x90,
 };
 
-kal_uint16 addr_data_pair_slim_video_gc02m1b[] = {
+static kal_uint16 addr_data_pair_slim_video_gc02m1b[] = {
 	0xfe, 0x00,
 	0x3e, 0x90,
 };

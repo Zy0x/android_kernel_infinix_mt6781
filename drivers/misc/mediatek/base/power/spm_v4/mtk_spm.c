@@ -71,8 +71,8 @@
 
 #include <trace/events/mtk_events.h>
 
-#include <mtk_lp_sysfs.h>
-#include <mtk_lp_kernfs.h>
+#include "mtk_lp_sysfs.h"
+#include "mtk_lp_kernfs.h"
 #include "mtk_idle_sysfs.h"
 
 int __spmfw_idx = -1;

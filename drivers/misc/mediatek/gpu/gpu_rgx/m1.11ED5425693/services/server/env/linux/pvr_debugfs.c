@@ -43,7 +43,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/module.h>
 #include <linux/slab.h>
 
-#include <pvr_debugfs.h>
+#include "pvr_debugfs.h"
 #include <hash.h>
 #include "allocmem.h"
 #include "pvr_bridge_k.h"

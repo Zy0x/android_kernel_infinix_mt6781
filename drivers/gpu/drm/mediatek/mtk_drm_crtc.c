@@ -3920,6 +3920,7 @@ static void ddp_cmdq_cb_blocking(struct mtk_cmdq_cb_data *cb_data)
 static void mtk_crtc_ddp_config(struct drm_crtc *crtc)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+	struct mtk_drm_private *priv = crtc->dev->dev_private;
 	struct mtk_crtc_state *state = to_mtk_crtc_state(mtk_crtc->base.state);
 	struct mtk_ddp_comp *comp = mtk_crtc_get_comp(crtc, 0, 0);
 	struct mtk_ddp_config cfg;
@@ -3974,31 +3975,61 @@ static void mtk_crtc_ddp_config(struct drm_crtc *crtc)
 	for (i = 0; i < mtk_crtc->layer_nr; i++) {
 		struct drm_plane *plane = &mtk_crtc->planes[i].base;
 		struct mtk_plane_state *plane_state;
+		struct mtk_ddp_comp *plane_comp = NULL;
+		unsigned int lye_idx = i;
+		int layer_num_ovl0_2l = -1;
 
 		plane_state = to_mtk_plane_state(plane->state);
-		if ((plane_state->pending.config) == false)
+
+		if (priv && priv->ddp_comp[DDP_COMPONENT_OVL0_2L])
+			layer_num_ovl0_2l = mtk_ovl_layer_num(priv->ddp_comp[DDP_COMPONENT_OVL0_2L]);
+
+		if (layer_num_ovl0_2l > 0 && priv && priv->ddp_comp[DDP_COMPONENT_OVL0]) {
+			if (i < layer_num_ovl0_2l) {
+				plane_comp = priv->ddp_comp[DDP_COMPONENT_OVL0_2L];
+				lye_idx = i;
+			} else {
+				plane_comp = priv->ddp_comp[DDP_COMPONENT_OVL0];
+				lye_idx = i - layer_num_ovl0_2l;
+			}
+		} else {
+			plane_comp = mtk_crtc_get_comp(crtc, 0, 0);
+			lye_idx = i;
+		}
+
+		if (!plane_comp)
 			continue;
 
-		mtk_ddp_comp_layer_config(comp, i, plane_state, cmdq_handle);
+		if (plane_state->pending.enable && plane_state->pending.config) {
+			mtk_ddp_comp_layer_config(plane_comp, lye_idx, plane_state, cmdq_handle);
 
-		last_fence = *(unsigned int *)(cmdq_buf->va_base +
-					       DISP_SLOT_CUR_CONFIG_FENCE(i));
-		cur_fence =
-			plane_state->pending.prop_val[PLANE_PROP_NEXT_BUFF_IDX];
+			last_fence = *(unsigned int *)(cmdq_buf->va_base +
+						       DISP_SLOT_CUR_CONFIG_FENCE(i));
+			cur_fence =
+				plane_state->pending.prop_val[PLANE_PROP_NEXT_BUFF_IDX];
 
-		if (cur_fence != -1 && cur_fence > last_fence)
+			if (cur_fence != -1 && cur_fence > last_fence)
+				cmdq_pkt_write(cmdq_handle, mtk_crtc->gce_obj.base,
+					       cmdq_buf->pa_base +
+						       DISP_SLOT_CUR_CONFIG_FENCE(i),
+					       cur_fence, ~0);
+
+			sub = 1;
 			cmdq_pkt_write(cmdq_handle, mtk_crtc->gce_obj.base,
 				       cmdq_buf->pa_base +
-					       DISP_SLOT_CUR_CONFIG_FENCE(i),
-				       cur_fence, ~0);
+					       DISP_SLOT_SUBTRACTOR_WHEN_FREE(i),
+				       sub, ~0);
 
-		sub = 1;
-		cmdq_pkt_write(cmdq_handle, mtk_crtc->gce_obj.base,
-			       cmdq_buf->pa_base +
-				       DISP_SLOT_SUBTRACTOR_WHEN_FREE(i),
-			       sub, ~0);
-
-		plane_state->pending.config = false;
+			plane_state->pending.config = false;
+		} else if (!plane_state->pending.enable) {
+			mtk_ddp_comp_layer_off(plane_comp, lye_idx, 0, cmdq_handle);
+			sub = 0;
+			cmdq_pkt_write(cmdq_handle, mtk_crtc->gce_obj.base,
+				       cmdq_buf->pa_base +
+					       DISP_SLOT_SUBTRACTOR_WHEN_FREE(i),
+				       sub, ~0);
+			plane_state->pending.config = false;
+		}
 	}
 
 	mtk_crtc->pending_planes = false;

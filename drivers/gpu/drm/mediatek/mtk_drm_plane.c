@@ -296,7 +296,7 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 	struct drm_rect clip = {
 		0,
 	};
-	struct mtk_drm_private *private = plane->dev->dev_private;
+	/* struct mtk_drm_private *private = plane->dev->dev_private; */
 
 	if (!fb)
 		return 0;
@@ -316,14 +316,14 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 	clip.x2 = crtc_state->mode.hdisplay;
 	clip.y2 = crtc_state->mode.vdisplay;
 
-	if (mtk_drm_helper_get_opt(private->helper_opt, MTK_DRM_OPT_RPO))
-		return drm_plane_helper_check_state(
-			state, &clip, MTK_DRM_PLANE_SCALING_MIN,
-			MTK_DRM_PLANE_SCALING_MAX, true, true);
-	else
-		return drm_plane_helper_check_state(
-			state, &clip, DRM_PLANE_HELPER_NO_SCALING,
-			DRM_PLANE_HELPER_NO_SCALING, true, true);
+	/*
+	 * MT6781 OVL has no hardware scaling capability on primary path.
+	 * Enforce NO_SCALING so that any scaled media layer (e.g. TikTok, video players)
+	 * is routed to GPU Client Composition rather than crashing OVL scanout.
+	 */
+	return drm_plane_helper_check_state(
+		state, &clip, DRM_PLANE_HELPER_NO_SCALING,
+		DRM_PLANE_HELPER_NO_SCALING, true, true);
 }
 
 #ifdef MTK_DRM_ADVANCE

@@ -909,29 +909,45 @@ static unsigned int ovl_fmt_convert(struct mtk_disp_ovl *ovl, unsigned int fmt,
 		       OVL_CON_BYTE_SWAP;
 	case DRM_FORMAT_RGBX8888:
 	case DRM_FORMAT_RGBA8888:
-		/* Standard Android Pre-multiplied Alpha */
-		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN;
+		if (modifier & MTK_FMT_PREMULTIPLIED)
+			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN;
+		else
+			return OVL_CON_CLRFMT_ARGB8888;
 	case DRM_FORMAT_BGRX8888:
 	case DRM_FORMAT_BGRA8888:
-		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
-		       OVL_CON_CLRFMT_MAN;
+		if (modifier & MTK_FMT_PREMULTIPLIED)
+			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
+			       OVL_CON_CLRFMT_MAN;
+		else
+			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP;
 	case DRM_FORMAT_XRGB8888:
 	case DRM_FORMAT_ARGB8888:
-		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
-		       OVL_CON_CLRFMT_MAN | OVL_CON_RGB_SWAP;
+		if (modifier & MTK_FMT_PREMULTIPLIED)
+			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
+			       OVL_CON_CLRFMT_MAN | OVL_CON_RGB_SWAP;
+		else
+			return OVL_CON_CLRFMT_RGBA8888;
 	case DRM_FORMAT_XBGR8888:
 	case DRM_FORMAT_ABGR8888:
-		/* Standard AOSP SurfaceFlinger Statusbar / Overlay format (ABGR8888) */
-		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
-		       OVL_CON_RGB_SWAP;
+		if (modifier & MTK_FMT_PREMULTIPLIED)
+			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
+			       OVL_CON_RGB_SWAP;
+		else
+			return OVL_CON_CLRFMT_RGBA8888 | OVL_CON_BYTE_SWAP;
 	case DRM_FORMAT_UYVY:
 		return OVL_CON_CLRFMT_UYVY(ovl);
 	case DRM_FORMAT_YUYV:
 		return OVL_CON_CLRFMT_YUYV(ovl);
 	case DRM_FORMAT_ABGR2101010:
+		if (modifier & MTK_FMT_PREMULTIPLIED)
+			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
+			       OVL_CON_RGB_SWAP;
+		return OVL_CON_CLRFMT_RGBA8888 | OVL_CON_BYTE_SWAP;
 	case DRM_FORMAT_ABGR16161616F:
-		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
-		       OVL_CON_RGB_SWAP;
+		if (modifier & MTK_FMT_PREMULTIPLIED)
+			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
+			       OVL_CON_RGB_SWAP;
+		return OVL_CON_CLRFMT_RGBA8888 | OVL_CON_BYTE_SWAP;
 	case DRM_FORMAT_C8:
 		return OVL_CON_CLRFMT_DIM | OVL_CON_CLRFMT_RGB888(ovl);
 	}
@@ -1755,6 +1771,14 @@ static bool compr_l_config_PVRIC_V3_1(struct mtk_ddp_comp *comp,
 	unsigned int domain_val = 0, domain_mask = 0;
 #endif
 
+	/* Auto-detect AFBC compression from framebuffer modifier */
+	if (!compress && pending->modifier && pending->modifier != DRM_FORMAT_MOD_LINEAR)
+		compress = 1;
+
+	/* Default vpitch if not populated by userspace */
+	if (vpitch == 0)
+		vpitch = ALIGN_TO(pending->height, 16);
+
 #ifdef CONFIG_MTK_LCM_PHYSICAL_ROTATION_HW
 	if (drm_crtc_index(&comp->mtk_crtc->base) == 0)
 		rotate = 1;
@@ -2106,6 +2130,14 @@ static bool compr_l_config_AFBC_V1_2(struct mtk_ddp_comp *comp,
 #ifdef CONFIG_MTK_SVP_ON_MTEE_SUPPORT
 	unsigned int domain_val = 0, domain_mask = 0;
 #endif
+
+	/* Auto-detect AFBC compression from framebuffer modifier */
+	if (!compress && pending->modifier && pending->modifier != DRM_FORMAT_MOD_LINEAR)
+		compress = 1;
+
+	/* Default vpitch if not populated by userspace */
+	if (vpitch == 0)
+		vpitch = ALIGN_TO(pending->height, 16);
 
 	DDPDBG("%s:%d, addr:0x%x, pitch:%d, vpitch:%d\n",
 		__func__, __LINE__, addr,

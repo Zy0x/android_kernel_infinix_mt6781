@@ -4678,19 +4678,37 @@ void mtk_crtc_restore_plane_setting(struct mtk_drm_crtc *mtk_crtc)
 		struct mtk_drm_private *priv = crtc->dev->dev_private;
 		struct drm_plane *plane = &mtk_crtc->planes[i].base;
 		struct mtk_plane_state *plane_state;
+		unsigned int lye_idx = i;
 
 		plane_state = to_mtk_plane_state(plane->state);
 		if (i >= OVL_PHY_LAYER_NR && !plane_state->comp_state.comp_id)
 			continue;
-		if (plane_state->comp_state.comp_id)
+		if (plane_state->comp_state.comp_id) {
 			comp = priv->ddp_comp[plane_state->comp_state.comp_id];
-		else {
+			lye_idx = plane_state->comp_state.lye_id;
+		} else {
 			struct mtk_crtc_ddp_ctx *ddp_ctx;
+			int layer_num_ovl0_2l = -1;
 
-			/* TODO: all plane should contain proper mtk_plane_state
-			 */
 			ddp_ctx = &mtk_crtc->ddp_ctx[mtk_crtc->ddp_mode];
-			comp = ddp_ctx->ddp_comp[DDP_FIRST_PATH][0];
+			if (priv->ddp_comp[DDP_COMPONENT_OVL0_2L])
+				layer_num_ovl0_2l = mtk_ovl_layer_num(priv->ddp_comp[DDP_COMPONENT_OVL0_2L]);
+
+			if (layer_num_ovl0_2l > 0 && priv->ddp_comp[DDP_COMPONENT_OVL0]) {
+				if (i < layer_num_ovl0_2l) {
+					comp = priv->ddp_comp[DDP_COMPONENT_OVL0_2L];
+					lye_idx = i;
+				} else {
+					comp = priv->ddp_comp[DDP_COMPONENT_OVL0];
+					lye_idx = i - layer_num_ovl0_2l;
+				}
+			} else {
+				comp = ddp_ctx->ddp_comp[DDP_FIRST_PATH][0];
+				lye_idx = i;
+			}
+			plane_state->comp_state.comp_id = comp->id;
+			plane_state->comp_state.lye_id = lye_idx;
+			plane_state->comp_state.ext_lye_id = 0;
 		}
 
 		if (comp == NULL)
@@ -4710,17 +4728,17 @@ void mtk_crtc_restore_plane_setting(struct mtk_drm_crtc *mtk_crtc)
 				plane_state_r.comp_state.comp_id = 0;
 
 			p_comp = priv->ddp_comp[dual_pipe_comp_mapping(comp->id)];
-			mtk_ddp_comp_layer_config(p_comp, i,
+			mtk_ddp_comp_layer_config(p_comp, lye_idx,
 						&plane_state_r, cmdq_handle);
 			DDPINFO("%s+ comp_id:%d, comp_id:%d\n",
 				__func__, p_comp->id,
 				plane_state_r.comp_state.comp_id);
 
 			p_comp = comp;
-			mtk_ddp_comp_layer_config(p_comp, i, &plane_state_l,
+			mtk_ddp_comp_layer_config(p_comp, lye_idx, &plane_state_l,
 						  cmdq_handle);
 		} else {
-			mtk_ddp_comp_layer_config(comp, i, plane_state, cmdq_handle);
+			mtk_ddp_comp_layer_config(comp, lye_idx, plane_state, cmdq_handle);
 		}
 		if (comp->id == DDP_COMPONENT_OVL2_2L
 			&& mtk_crtc->is_dual_pipe) {

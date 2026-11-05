@@ -1446,25 +1446,27 @@ static ssize_t store_Battery_Temperature(
 			return size;
 		}
 
-		gm.fixed_bat_tmp = temp;
-		if (gm.fixed_bat_tmp == 0xffff)
-			fg_bat_temp_int_internal();
-		else {
-			gauge_dev_enable_battery_tmp_lt_interrupt(
-				gm.gdev, 0, 0);
-			gauge_dev_enable_battery_tmp_ht_interrupt(
-				gm.gdev, 0, 0);
-			wakeup_fg_algo(FG_INTR_BAT_TMP_C_HT);
-			wakeup_fg_algo(FG_INTR_BAT_TMP_HT);
-		}
+		if (gm.fixed_bat_tmp != temp) {
+			gm.fixed_bat_tmp = temp;
+			if (gm.fixed_bat_tmp == 0xffff)
+				fg_bat_temp_int_internal();
+			else {
+				gauge_dev_enable_battery_tmp_lt_interrupt(
+					gm.gdev, 0, 0);
+				gauge_dev_enable_battery_tmp_ht_interrupt(
+					gm.gdev, 0, 0);
+				wakeup_fg_algo(FG_INTR_BAT_TMP_C_HT);
+				wakeup_fg_algo(FG_INTR_BAT_TMP_HT);
+			}
 #ifndef OPLUS_FEATURE_CHG_BASIC
-		battery_main.BAT_batt_temp = force_get_tbat(true);
-		bm_err(
-			"%s: fixed_bat_tmp:%d ,tmp:%d!\n",
-			__func__,
-			temp, battery_main.BAT_batt_temp);
-		battery_update(&battery_main);
+			battery_main.BAT_batt_temp = force_get_tbat(true);
+			bm_err(
+				"%s: fixed_bat_tmp:%d ,tmp:%d!\n",
+				__func__,
+				temp, battery_main.BAT_batt_temp);
+			battery_update(&battery_main);
 #endif /* OPLUS_FEATURE_CHG_BASIC */
+		}
 	} else {
 		bm_err("%s: format error!\n", __func__);
 	}

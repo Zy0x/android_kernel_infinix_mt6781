@@ -2569,6 +2569,30 @@ static void mtk_crtc_get_plane_comp_state(struct drm_crtc *crtc,
 
 		mtk_plane_get_comp_state(plane, &plane_state->comp_state, crtc,
 					 0);
+
+		if (!plane_state->comp_state.comp_id) {
+			struct mtk_drm_private *priv = crtc->dev->dev_private;
+			int layer_num_ovl0_2l = -1;
+
+			if (priv->ddp_comp[DDP_COMPONENT_OVL0_2L])
+				layer_num_ovl0_2l = mtk_ovl_layer_num(priv->ddp_comp[DDP_COMPONENT_OVL0_2L]);
+
+			if (layer_num_ovl0_2l > 0 && priv->ddp_comp[DDP_COMPONENT_OVL0]) {
+				if (i < layer_num_ovl0_2l) {
+					plane_state->comp_state.comp_id = DDP_COMPONENT_OVL0_2L;
+					plane_state->comp_state.lye_id = i;
+				} else {
+					plane_state->comp_state.comp_id = DDP_COMPONENT_OVL0;
+					plane_state->comp_state.lye_id = i - layer_num_ovl0_2l;
+				}
+			} else {
+				struct mtk_ddp_comp *c0 = mtk_crtc_get_comp(crtc, 0, 0);
+
+				plane_state->comp_state.comp_id = c0 ? c0->id : 0;
+				plane_state->comp_state.lye_id = i;
+			}
+			plane_state->comp_state.ext_lye_id = 0;
+		}
 	}
 }
 unsigned int mtk_drm_primary_frame_bw(struct drm_crtc *i_crtc)
@@ -6276,7 +6300,7 @@ void mtk_drm_crtc_plane_update(struct drm_crtc *crtc, struct drm_plane *plane,
 	unsigned int plane_index = to_crtc_plane_index(plane->index);
 	struct drm_crtc_state *crtc_state = crtc->state;
 	struct mtk_crtc_state *state = to_mtk_crtc_state(crtc_state);
-	struct mtk_ddp_comp *comp = mtk_crtc_get_comp(crtc, 0, 0);
+	struct mtk_ddp_comp *comp = NULL;
 #ifdef CONFIG_MTK_DISPLAY_CMDQ
 	unsigned int v = crtc->state->adjusted_mode.vdisplay;
 	unsigned int h = crtc->state->adjusted_mode.hdisplay;
@@ -6285,10 +6309,42 @@ void mtk_drm_crtc_plane_update(struct drm_crtc *crtc, struct drm_plane *plane,
 	struct cmdq_pkt_buffer *cmdq_buf = &(mtk_crtc->gce_obj.buf);
 	unsigned int last_fence, cur_fence, sub;
 	dma_addr_t addr;
+	unsigned int lye_idx = plane_index;
+	int layer_num_ovl0_2l = -1;
+
+	if (priv == NULL) {
+		DDPINFO("%s+ priv is NULL\n", __func__);
+		return;
+	}
+
+	/* Cascade planes cleanly: 0-1 to OVL0_2L (idx 0-1), 2-5 to OVL0 (idx 0-3) */
+	if (!plane_state->comp_state.comp_id) {
+		if (priv->ddp_comp[DDP_COMPONENT_OVL0_2L])
+			layer_num_ovl0_2l = mtk_ovl_layer_num(priv->ddp_comp[DDP_COMPONENT_OVL0_2L]);
+
+		if (layer_num_ovl0_2l > 0 && priv->ddp_comp[DDP_COMPONENT_OVL0]) {
+			if (plane_index < layer_num_ovl0_2l) {
+				comp = priv->ddp_comp[DDP_COMPONENT_OVL0_2L];
+				lye_idx = plane_index;
+			} else {
+				comp = priv->ddp_comp[DDP_COMPONENT_OVL0];
+				lye_idx = plane_index - layer_num_ovl0_2l;
+			}
+		} else {
+			comp = mtk_crtc_get_comp(crtc, 0, 0);
+			lye_idx = plane_index;
+		}
+		plane_state->comp_state.comp_id = comp ? comp->id : 0;
+		plane_state->comp_state.lye_id = lye_idx;
+		plane_state->comp_state.ext_lye_id = 0;
+	} else {
+		comp = mtk_crtc_get_plane_comp(crtc, plane_state);
+		lye_idx = plane_state->comp_state.lye_id;
+	}
 
 	if (comp)
-		DDPINFO("%s+ comp_id:%d, comp_id:%d\n", __func__, comp->id,
-		    plane_state->comp_state.comp_id);
+		DDPINFO("%s+ comp_id:%d, comp_id:%d, lye_idx:%d\n", __func__, comp->id,
+		    plane_state->comp_state.comp_id, lye_idx);
 	else {
 		DDPINFO("%s+ comp is NULL\n", __func__);
 		return;
@@ -6323,7 +6379,7 @@ void mtk_drm_crtc_plane_update(struct drm_crtc *crtc, struct drm_plane *plane,
 
 			if (priv)
 				comp = priv->ddp_comp[plane_state_r.comp_state.comp_id];
-			mtk_ddp_comp_layer_config(comp, plane_index,
+			mtk_ddp_comp_layer_config(comp, lye_idx,
 						&plane_state_r, cmdq_handle);
 			DDPINFO("%s+ comp_id:%d, comp_id:%d\n",
 				__func__, comp->id,
@@ -6331,12 +6387,12 @@ void mtk_drm_crtc_plane_update(struct drm_crtc *crtc, struct drm_plane *plane,
 
 			comp = mtk_crtc_get_plane_comp(crtc, &plane_state_l);
 
-			mtk_ddp_comp_layer_config(comp, plane_index, &plane_state_l,
+			mtk_ddp_comp_layer_config(comp, lye_idx, &plane_state_l,
 						  cmdq_handle);
 		} else {
 			comp = mtk_crtc_get_plane_comp(crtc, plane_state);
 
-			mtk_ddp_comp_layer_config(comp, plane_index, plane_state,
+			mtk_ddp_comp_layer_config(comp, lye_idx, plane_state,
 						  cmdq_handle);
 		}
 #ifdef CONFIG_MTK_DISPLAY_CMDQ
@@ -6344,17 +6400,10 @@ void mtk_drm_crtc_plane_update(struct drm_crtc *crtc, struct drm_plane *plane,
 #else
 		mtk_wb_atomic_commit(mtk_crtc);
 #endif
-	} else if (state->prop_val[CRTC_PROP_USER_SCEN] &
-		USER_SCEN_BLANK) {
-	/* plane disable at mtk_crtc_get_plane_comp_state() actually */
-	/* following statement is for disable all layers during suspend */
-
+	} else {
 		if (mtk_crtc->is_dual_pipe) {
 			struct mtk_plane_state plane_state_l;
 			struct mtk_plane_state plane_state_r;
-
-			if ((plane_state->comp_state.comp_id == 0) && comp)
-				plane_state->comp_state.comp_id = comp->id;
 
 			mtk_drm_layer_dispatch_to_dual_pipe(plane_state,
 				&plane_state_l, &plane_state_r,
@@ -6362,21 +6411,12 @@ void mtk_drm_crtc_plane_update(struct drm_crtc *crtc, struct drm_plane *plane,
 
 			if (priv)
 				comp = priv->ddp_comp[plane_state_r.comp_state.comp_id];
-			mtk_ddp_comp_layer_config(comp, plane_index,
-						&plane_state_r, cmdq_handle);
-			DDPINFO("%s+D comp_id:%d, comp_id:%d\n",
-				__func__, comp->id,
-				plane_state_r.comp_state.comp_id);
+			mtk_ddp_comp_layer_off(comp, lye_idx, 0, cmdq_handle);
 
 			comp = mtk_crtc_get_plane_comp(crtc, &plane_state_l);
-
-			mtk_ddp_comp_layer_config(comp, plane_index, &plane_state_l,
-						  cmdq_handle);
-		}  else {
-			comp = mtk_crtc_get_plane_comp(crtc, plane_state);
-
-			mtk_ddp_comp_layer_config(comp, plane_index, plane_state,
-						  cmdq_handle);
+			mtk_ddp_comp_layer_off(comp, lye_idx, 0, cmdq_handle);
+		} else {
+			mtk_ddp_comp_layer_off(comp, lye_idx, 0, cmdq_handle);
 		}
 	}
 	last_fence = *(unsigned int *)(cmdq_buf->va_base +

@@ -28,6 +28,7 @@ endif
 
 
 # platform
+BT_PLATFORM ?= 6781
 ccflags-y += -D CONNAC1X_CHIPID=$(BT_PLATFORM)
 $(info $(LOG_TAG) BT_PLATFORM = $(BT_PLATFORM))
 $(info $(LOG_TAG) srctree = $(srctree))

@@ -212,7 +212,8 @@ void connectivity_export_clk_buf_show_status_info(void)
 	defined(CONFIG_MACH_MT6873) || \
 	defined(CONFIG_MACH_MT6885) || \
 	defined(CONFIG_MACH_MT6893) || \
-	defined(CONFIG_MACH_MT6877)
+	defined(CONFIG_MACH_MT6877) || \
+	defined(CONFIG_MACH_MT6781)
 #if defined(CONFIG_MTK_BASE_POWER)
 	clk_buf_show_status_info();
 #else

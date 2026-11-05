@@ -34,14 +34,13 @@ endif
     subdir-ccflags-y += -I$(srctree)/drivers/pinctrl/mediatek/
     subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/power_throttling/
 
-    # Do Nothing, move to standalone repo
-    MODULE_NAME := connadp
-    obj-y += $(MODULE_NAME).o
-    $(MODULE_NAME)-objs += common/connectivity_build_in_adapter.o
-    $(MODULE_NAME)-objs += common/wmt_build_in_adapter.o
-    $(MODULE_NAME)-objs += power_throttling/adapter.o
-    $(MODULE_NAME)-objs += power_throttling/core.o
-    $(MODULE_NAME)-objs += power_throttling/test.o
+    # Directly link adapter objects and transsion stubs into built-in.o
+    obj-y += common/connectivity_build_in_adapter.o
+    obj-y += common/wmt_build_in_adapter.o
+    obj-y += power_throttling/adapter.o
+    obj-y += power_throttling/core.o
+    obj-y += power_throttling/test.o
+    obj-y += common/transsion_stubs.o
 
     ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
         $(info $$CONFIG_MTK_COMBO_CHIP is [${CONFIG_MTK_COMBO_CHIP}])

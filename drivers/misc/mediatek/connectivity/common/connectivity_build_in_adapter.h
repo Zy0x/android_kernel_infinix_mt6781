@@ -64,7 +64,8 @@
 	defined(CONFIG_MACH_MT6873) || \
 	defined(CONFIG_MACH_ELBRUS) || \
 	defined(CONFIG_MACH_MT6893) || \
-	defined(CONFIG_MACH_MT6877)
+	defined(CONFIG_MACH_MT6877) || \
+	defined(CONFIG_MACH_MT6781)
 #define CONNADP_HAS_CLOCK_BUF_CTRL
 #define KERNEL_CLK_BUF_CHIP_NOT_SUPPORT -7788
 #define KERNEL_clk_buf_ctrl connectivity_export_clk_buf_ctrl

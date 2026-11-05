@@ -523,6 +523,17 @@ void battery_update_psd(struct battery_data *bat_data)
 }
 
 #ifndef OPLUS_FEATURE_CHG_BASIC
+static int mtk_battery_get_ui_capacity(struct battery_data *data)
+{
+	if (gm.fixed_uisoc != 0xffff)
+		return gm.fixed_uisoc;
+	if (gm.ui_soc >= 0 && gm.ui_soc <= 100)
+		return gm.ui_soc;
+	if (data && data->BAT_CAPACITY >= 0 && data->BAT_CAPACITY <= 100)
+		return data->BAT_CAPACITY;
+	return -1;
+}
+
 static int battery_get_property(struct power_supply *psy,
 	enum power_supply_property psp,
 	union power_supply_propval *val)
@@ -550,12 +561,11 @@ static int battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
 		val->intval = gm.bat_cycle;
 		break;
-	case POWER_SUPPLY_PROP_CAPACITY:
-		if (gm.fixed_uisoc != 0xffff)
-			val->intval = gm.fixed_uisoc;
-		else
-			val->intval = data->BAT_CAPACITY;
-		if (val->intval <= 0 || val->intval > 100) {
+	case POWER_SUPPLY_PROP_CAPACITY: {
+		int cap = mtk_battery_get_ui_capacity(data);
+		if (cap >= 0 && cap <= 100)
+			val->intval = cap;
+		else {
 			int mv = battery_get_bat_voltage();
 			if (mv >= 4350)
 				val->intval = 100;
@@ -575,6 +585,7 @@ static int battery_get_property(struct power_supply *psy,
 				val->intval = 1;
 		}
 		break;
+	}
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		b_ischarging = gauge_get_current(&fgcurrent);
 		if (b_ischarging == false)
@@ -605,21 +616,24 @@ static int battery_get_property(struct power_supply *psy,
 		if (val->intval > 500 || val->intval < -100 || val->intval == 0)
 			val->intval = 250;
 		break;
-	case POWER_SUPPLY_PROP_CAPACITY_LEVEL:
-		val->intval = check_cap_level(data->BAT_CAPACITY);
+	case POWER_SUPPLY_PROP_CAPACITY_LEVEL: {
+		int cap = mtk_battery_get_ui_capacity(data);
+		val->intval = check_cap_level(cap);
 		if (val->intval == POWER_SUPPLY_CAPACITY_LEVEL_UNKNOWN || val->intval == POWER_SUPPLY_CAPACITY_LEVEL_CRITICAL)
 			val->intval = POWER_SUPPLY_CAPACITY_LEVEL_NORMAL;
 		break;
-	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
+	}
+	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW: {
 		/* full or unknown must return 0 */
-		ret = check_cap_level(data->BAT_CAPACITY);
+		int cap = mtk_battery_get_ui_capacity(data);
+		ret = check_cap_level(cap);
 		if ((ret == POWER_SUPPLY_CAPACITY_LEVEL_FULL) ||
 			(ret == POWER_SUPPLY_CAPACITY_LEVEL_UNKNOWN))
 			val->intval = 0;
 		else {
 			int q_max_now = fg_table_cust_data.fg_profile[
 						gm.battery_id].q_max;
-			int remain_ui = 100 - data->BAT_CAPACITY;
+			int remain_ui = (cap >= 0) ? (100 - cap) : 50;
 			int remain_mah = remain_ui * q_max_now / 10;
 			int time_to_full = 0;
 
@@ -636,8 +650,9 @@ static int battery_get_property(struct power_supply *psy,
 		}
 		ret = 0;
 		break;
+	}
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-		if (check_cap_level(data->BAT_CAPACITY) ==
+		if (check_cap_level(mtk_battery_get_ui_capacity(data)) ==
 			POWER_SUPPLY_CAPACITY_LEVEL_UNKNOWN)
 			val->intval = 0;
 		else {

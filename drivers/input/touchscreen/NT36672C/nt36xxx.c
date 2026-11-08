@@ -1836,6 +1836,10 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 		retval = mtk_panel_tch_handle_init();
 		*retval = (void *)nvt_tp_power_on_reinit;
 	}
+	/* Ensure touch is awake and calibrated at cold boot since LK bootloader already powers display */
+	nvt_tp_power_on_reinit();
+#else
+	bTouchIsAwake = 1;
 #endif
 
 	nvt_irq_enable(true);

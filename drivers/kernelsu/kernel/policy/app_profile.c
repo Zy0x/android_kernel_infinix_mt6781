@@ -34,7 +34,8 @@ void setup_groups(struct root_profile *profile, struct cred *cred)
         return;
     }
 
-    if (profile->groups_count == 1 && profile->groups[0] == 0) {
+    if ((profile->groups_count == 1 && profile->groups[0] == 0) ||
+        (profile->groups_count == 0 && profile->uid == 0)) {
         // setgroup to root and return early.
         if (cred->group_info)
             put_group_info(cred->group_info);
@@ -213,9 +214,16 @@ int escape_with_root_profile(void)
     }
 #endif
 
-    memcpy(&cred->cap_effective, &profile->capabilities.effective, sizeof(cred->cap_effective));
-    memcpy(&cred->cap_permitted, &profile->capabilities.effective, sizeof(cred->cap_permitted));
-    memcpy(&cred->cap_bset, &profile->capabilities.effective, sizeof(cred->cap_bset));
+    if (profile->uid == 0 && profile->capabilities.effective == 0) {
+        kernel_cap_t full_cap = CAP_FULL_SET;
+        memcpy(&cred->cap_effective, &full_cap, sizeof(cred->cap_effective));
+        memcpy(&cred->cap_permitted, &full_cap, sizeof(cred->cap_permitted));
+        memcpy(&cred->cap_bset, &full_cap, sizeof(cred->cap_bset));
+    } else {
+        memcpy(&cred->cap_effective, &profile->capabilities.effective, sizeof(cred->cap_effective));
+        memcpy(&cred->cap_permitted, &profile->capabilities.effective, sizeof(cred->cap_permitted));
+        memcpy(&cred->cap_bset, &profile->capabilities.effective, sizeof(cred->cap_bset));
+    }
     if (profile->uid != 0) {
         memcpy(&cred->cap_inheritable, &profile->capabilities.effective, sizeof(cred->cap_inheritable));
         memcpy(&cred->cap_ambient, &profile->capabilities.effective, sizeof(cred->cap_ambient));

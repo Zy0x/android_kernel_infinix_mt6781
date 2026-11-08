@@ -18,6 +18,9 @@
 #include "runtime/ksud_boot.h"
 #include "supercall/supercall.h"
 #include "ksu.h"
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#endif
 #include "feature/sulog.h"
 #include "infra/file_wrapper.h"
 #include "selinux/selinux.h"
@@ -147,6 +150,10 @@ int __init kernelsu_init(void)
 	ksu_supercalls_init();
 
 	ksu_app_profile_init();
+
+#ifdef CONFIG_KSU_SUSFS
+	susfs_init();
+#endif
 
 	if (ksu_late_loaded) {
 		pr_info("late load mode, skipping kprobe hooks\n");

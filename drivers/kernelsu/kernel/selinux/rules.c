@@ -18,6 +18,9 @@
 #include "uapi/selinux.h"
 #include "klog.h" // IWYU pragma: keep
 #include "selinux.h"
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#endif
 #include "sepolicy.h"
 #include "ss/services.h"
 #include "linux/lsm_audit.h" // IWYU pragma: keep
@@ -204,6 +207,11 @@ static int apply_kernelsu_rules_fn(void *ptr)
     ksu_allow(db, "system_server", KERNEL_SU_DOMAIN, "process", "getpgid");
     ksu_allow(db, "system_server", KERNEL_SU_DOMAIN, "process", "sigkill");
 
+#ifdef CONFIG_KSU_SUSFS
+    // Allow umount in zygote process without installing zygisk
+    ksu_allow(db, "zygote", "labeledfs", "filesystem", "unmount");
+#endif
+
     return 0;
 }
 
@@ -269,6 +277,11 @@ do_stop_machine:
 out_reset_avc:
 	smp_mb();
 	reset_avc_cache();
+#ifdef CONFIG_KSU_SUSFS
+	susfs_set_init_sid();
+	susfs_set_ksu_sid();
+	susfs_set_zygote_sid();
+#endif
 #endif
 }
 

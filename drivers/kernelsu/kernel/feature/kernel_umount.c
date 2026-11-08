@@ -99,10 +99,18 @@ struct umount_tw {
 	struct callback_head cb;
 };
 
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+extern void susfs_try_umount_all(uid_t uid);
+#endif
+
 static void umount_tw_func(struct callback_head *cb)
 {
 	struct umount_tw *tw = container_of(cb, struct umount_tw, cb);
 	const struct cred *saved = override_creds(ksu_cred);
+
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+	susfs_try_umount_all(current_uid().val);
+#endif
 
     struct mount_entry *entry;
     down_read(&mount_list_lock);

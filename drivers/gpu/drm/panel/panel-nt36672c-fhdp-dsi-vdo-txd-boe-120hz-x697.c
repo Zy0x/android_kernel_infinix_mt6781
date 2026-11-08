@@ -354,26 +354,27 @@ static int lcm_unprepare(struct drm_panel *panel)
 	struct lcm *ctx = panel_to_lcm(panel);
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 	static const u8 dcs_sleep_in  = 0x10;
+	struct gpio_desc *bias_neg, *bias_pos;
 
 	if (!ctx->prepared)
 		return 0;
-
-#if defined(CONFIG_MTK_PANEL_EXT)
-	mtk_panel_tch_suspend(panel);
-#endif
 
 	/* 1. Send single-byte DCS Sleep In Command (0x10) */
 	mipi_dsi_dcs_write_buffer(dsi, &dcs_sleep_in, 1);
 	msleep(120);
 
-	/* 2. Cut dual-rail bias power: VNEG (-5.5V) -> 10ms delay -> VPOS (+5.5V) */
-	if (ctx->bias_neg) {
-		gpiod_set_value(ctx->bias_neg, 0);
-		msleep(10);
+	/* 2. Cut dual-rail bias power: VNEG (-5.5V) -> 2ms delay -> VPOS (+5.5V) */
+	bias_neg = devm_gpiod_get_index(ctx->dev, "bias", 1, GPIOD_OUT_LOW);
+	if (!IS_ERR(bias_neg)) {
+		gpiod_set_value(bias_neg, 0);
+		devm_gpiod_put(ctx->dev, bias_neg);
 	}
+	usleep_range(2000, 2001);
 
-	if (ctx->bias_pos) {
-		gpiod_set_value(ctx->bias_pos, 0);
+	bias_pos = devm_gpiod_get_index(ctx->dev, "bias", 0, GPIOD_OUT_LOW);
+	if (!IS_ERR(bias_pos)) {
+		gpiod_set_value(bias_pos, 0);
+		devm_gpiod_put(ctx->dev, bias_pos);
 	}
 
 	ctx->error = 0;
@@ -384,31 +385,46 @@ static int lcm_unprepare(struct drm_panel *panel)
 static int lcm_prepare(struct drm_panel *panel)
 {
 	struct lcm *ctx = panel_to_lcm(panel);
+	struct gpio_desc *bias_pos, *bias_neg, *reset_gpio;
 	int ret;
 
 	if (ctx->prepared)
 		return 0;
 
-	/* 1. Sequence LCD Dual-Rail Bias Voltage: VPOS (+5.5V) -> 10ms -> VNEG (-5.5V) -> 10ms */
-	if (ctx->bias_pos) {
-		gpiod_set_value(ctx->bias_pos, 1);
-		msleep(10);
+	/* 1. Sequence LCD Dual-Rail Bias Voltage: VPOS (+5.5V) -> 2ms -> VNEG (-5.5V) */
+	bias_pos = devm_gpiod_get_index(ctx->dev, "bias", 0, GPIOD_OUT_LOW);
+	if (!IS_ERR(bias_pos)) {
+		gpiod_set_value(bias_pos, 1);
+		devm_gpiod_put(ctx->dev, bias_pos);
+	}
+	msleep(10);
+
+	bias_neg = devm_gpiod_get_index(ctx->dev, "bias", 1, GPIOD_OUT_LOW);
+	if (!IS_ERR(bias_neg)) {
+		gpiod_set_value(bias_neg, 1);
+		devm_gpiod_put(ctx->dev, bias_neg);
+	}
+	msleep(10);
+
+	/* 2. Double-Pulse Hardware Reset Sequence */
+	reset_gpio = devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_LOW);
+	if (!IS_ERR(reset_gpio)) {
+		usleep_range(10000, 15000);
+		gpiod_set_value(reset_gpio, 0);
+		udelay(11000);
+		gpiod_set_value(reset_gpio, 1);
+		udelay(5000);
+		gpiod_set_value(reset_gpio, 0);
+		udelay(5000);
+		gpiod_set_value(reset_gpio, 1);
+		udelay(13000);
+		devm_gpiod_put(ctx->dev, reset_gpio);
 	}
 
-	if (ctx->bias_neg) {
-		gpiod_set_value(ctx->bias_neg, 1);
-		msleep(10);
-	}
+	/* 3. Wait for IC digital logic & charge pump stabilization */
+	msleep(20);
 
-	/* 2. Hardware Reset Sequence with full charge pump stabilization */
-	if (ctx->reset_gpio) {
-		gpiod_set_value(ctx->reset_gpio, 0);
-		msleep(10);
-		gpiod_set_value(ctx->reset_gpio, 1);
-		msleep(15);
-	}
-
-	/* 3. Send 257 authentic configuration packets */
+	/* 4. Send 257 authentic configuration packets */
 	ret = lcm_send_packets(ctx);
 	if (ret < 0) {
 		lcm_unprepare(panel);
@@ -814,21 +830,10 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 
 	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		dev_warn(dev, "cannot get reset-gpios %ld\n", PTR_ERR(ctx->reset_gpio));
-		ctx->reset_gpio = NULL;
+		dev_err(dev, "cannot get reset-gpios %ld\n", PTR_ERR(ctx->reset_gpio));
+		return PTR_ERR(ctx->reset_gpio);
 	}
-
-	ctx->bias_pos = devm_gpiod_get_index(dev, "bias", 0, GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->bias_pos)) {
-		dev_warn(dev, "cannot get bias_pos %ld\n", PTR_ERR(ctx->bias_pos));
-		ctx->bias_pos = NULL;
-	}
-
-	ctx->bias_neg = devm_gpiod_get_index(dev, "bias", 1, GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->bias_neg)) {
-		dev_warn(dev, "cannot get bias_neg %ld\n", PTR_ERR(ctx->bias_neg));
-		ctx->bias_neg = NULL;
-	}
+	devm_gpiod_put(dev, ctx->reset_gpio);
 
 	ctx->prepared = false;
 	ctx->enabled = false;

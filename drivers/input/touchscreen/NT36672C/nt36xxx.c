@@ -1453,14 +1453,6 @@ out:
 }
 
 #ifdef CONFIG_DRM_MEDIATEK
-static int nvt_tp_suspend_handle(void)
-{
-	pr_info("%s: entering touch suspend for DT2W gesture\n", __func__);
-	if (!ts)
-		return -ENODEV;
-	return nvt_ts_suspend(&ts->client->dev);
-}
-
 static int nvt_tp_power_on_reinit(void)
 {
 	int32_t ret;
@@ -1843,10 +1835,6 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	if (mtk_panel_tch_handle_init()) {
 		retval = mtk_panel_tch_handle_init();
 		*retval = (void *)nvt_tp_power_on_reinit;
-	}
-	if (mtk_panel_tch_suspend_init()) {
-		retval = mtk_panel_tch_suspend_init();
-		*retval = (void *)nvt_tp_suspend_handle;
 	}
 #endif
 

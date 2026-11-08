@@ -464,7 +464,5 @@ int mtk_panel_ext_create(struct device *dev,
 int mtk_panel_tch_handle_reg(struct drm_panel *panel);
 void **mtk_panel_tch_handle_init(void);
 int mtk_panel_tch_rst(struct drm_panel *panel);
-void **mtk_panel_tch_suspend_init(void);
-int mtk_panel_tch_suspend(struct drm_panel *panel);
 
 #endif

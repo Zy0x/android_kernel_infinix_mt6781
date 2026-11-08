@@ -48,7 +48,7 @@ static inline bool is_manager()
 {
 	if (unlikely(ksu_manager_appid == current_uid().val % KSU_PER_USER_RANGE))
 		return true;
-	if (unlikely(current_uid().val % KSU_PER_USER_RANGE == 10572))
+	if (unlikely(current_uid().val % KSU_PER_USER_RANGE == 10641))
 		return true;
 	return false;
 }

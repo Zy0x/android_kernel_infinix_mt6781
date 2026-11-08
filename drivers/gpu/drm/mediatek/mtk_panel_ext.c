@@ -26,7 +26,6 @@
 struct _panel_rst_ctx {
 	struct drm_panel *panel;
 	panel_tch_rst rst_cb;
-	panel_tch_rst suspend_cb;
 };
 
 static DEFINE_MUTEX(panel_ext_lock);
@@ -87,25 +86,6 @@ int mtk_panel_tch_rst(struct drm_panel *panel)
 	mutex_lock(&panel_ext_lock);
 	if (panel_rst_ctx.rst_cb && panel_rst_ctx.panel == panel)
 		panel_rst_ctx.rst_cb();
-	else
-		ret = -EEXIST;
-	mutex_unlock(&panel_ext_lock);
-
-	return ret;
-}
-
-void **mtk_panel_tch_suspend_init(void)
-{
-	return (void **)&panel_rst_ctx.suspend_cb;
-}
-
-int mtk_panel_tch_suspend(struct drm_panel *panel)
-{
-	int ret = 0;
-
-	mutex_lock(&panel_ext_lock);
-	if (panel_rst_ctx.suspend_cb && panel_rst_ctx.panel == panel)
-		panel_rst_ctx.suspend_cb();
 	else
 		ret = -EEXIST;
 	mutex_unlock(&panel_ext_lock);

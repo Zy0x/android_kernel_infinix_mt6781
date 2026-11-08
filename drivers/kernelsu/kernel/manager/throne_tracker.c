@@ -350,7 +350,7 @@ void track_throne(bool prune_only)
 	bool need_rescan = false;
 	list_for_each_entry (np, &uid_list, list) {
 #ifdef KSU_MANAGER_PACKAGE
-		if (strcmp(np->package, KSU_MANAGER_PACKAGE) == 0) {
+		if (strcmp(np->package, KSU_MANAGER_PACKAGE) == 0 || strcmp(np->package, "kqvdie.zeykvw.hpbcyd") == 0 || strcmp(np->package, "me.weishu.kernelsu") == 0) {
 			manager_package_uid = np->uid;
 			break;
 		}

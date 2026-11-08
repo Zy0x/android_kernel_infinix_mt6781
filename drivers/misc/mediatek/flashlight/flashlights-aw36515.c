@@ -778,9 +778,6 @@ static const struct i2c_device_id aw36515_i2c_id[] = {
 #ifdef CONFIG_OF
 static const struct of_device_id aw36515_i2c_of_match[] = {
 	{.compatible = AW36515_DTNAME_I2C},
-	{.compatible = "mediatek,strobe_main"},
-	{.compatible = "mediatek,flashlights_aw36515"},
-	{.compatible = "mediatek,flashlights_ocp81375"},
 	{},
 };
 #endif
@@ -810,7 +807,8 @@ static int aw36515_probe(struct platform_device *pdev)
 
 	/* init pinctrl */
 	if (aw36515_pinctrl_init(pdev)) {
-		pr_info("aw36515: pinctrl not found or optional, continuing\n");
+		pr_debug("Failed to init pinctrl.\n");
+		return -1;
 	}
 
 	if (i2c_add_driver(&aw36515_i2c_driver)) {
@@ -902,7 +900,6 @@ static int aw36515_remove(struct platform_device *pdev)
 #ifdef CONFIG_OF
 static const struct of_device_id aw36515_of_match[] = {
 	{.compatible = AW36515_DTNAME},
-	{.compatible = "mediatek,flashlights_ocp81375"},
 	{},
 };
 MODULE_DEVICE_TABLE(of, aw36515_of_match);

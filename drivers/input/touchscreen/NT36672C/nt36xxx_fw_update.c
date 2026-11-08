@@ -1023,10 +1023,38 @@ void Boot_Update_Firmware(struct kthread_work *work)
 	int32_t ret;
 
 	mutex_lock(&ts->lock);
+
+	/* Query active firmware version from device if not already read */
+	if (ts->fw_ver == 0)
+		nvt_get_fw_info();
+
+	/* Check if on-chip firmware already matches binary file */
+	ret = update_firmware_request(BOOT_UPDATE_FIRMWARE_NAME);
+	if (ret == 0) {
+		uint8_t bin_ver = *(fw_entry->data + FW_BIN_VER_OFFSET);
+		NVT_LOG("On-chip FW ver=0x%02X, binary FW ver=0x%02X\n", ts->fw_ver, bin_ver);
+		if (ts->fw_ver == bin_ver && ts->fw_ver > 0) {
+			NVT_LOG("Firmware version matches (0x%02X), skipping redundant flash update\n", ts->fw_ver);
+			update_firmware_release();
+			if (!IS_ERR_OR_NULL(bin_map)) {
+				kfree(bin_map);
+				bin_map = NULL;
+			}
+			mutex_unlock(&ts->lock);
+			return;
+		}
+		update_firmware_release();
+		if (!IS_ERR_OR_NULL(bin_map)) {
+			kfree(bin_map);
+			bin_map = NULL;
+		}
+	}
+
+	/* Version mismatch or first flash: perform actual firmware download */
 	ret = nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
 	if (ret == 0) {
 		NVT_LOG("Boot firmware update success, entering normal REK mode\n");
-		nvt_bootloader_reset();
+		nvt_boot_ready();
 		nvt_check_fw_reset_state(RESET_STATE_REK);
 		nvt_irq_enable(true);
 		bTouchIsAwake = 1;

@@ -1617,6 +1617,13 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 		goto err_chipvertrim_failed;
 	}
 
+	/*
+	 * nvt_ts_check_chip_ver_trim() leaves IC in ROM bootloader mode.
+	 * Immediately issue nvt_boot_ready() to boot the IC into normal touch runtime (RESET_STATE_REK).
+	 */
+	nvt_boot_ready();
+	nvt_check_fw_reset_state(RESET_STATE_REK);
+
 	ts->abs_x_max = TOUCH_DEFAULT_MAX_WIDTH;
 	ts->abs_y_max = TOUCH_DEFAULT_MAX_HEIGHT;
 
@@ -1827,7 +1834,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	}
 #endif
 
-	bTouchIsAwake = 0;
+	bTouchIsAwake = 1;
 	NVT_LOG("end\n");
 
 #ifdef CONFIG_DRM_MEDIATEK
@@ -1836,10 +1843,6 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 		retval = mtk_panel_tch_handle_init();
 		*retval = (void *)nvt_tp_power_on_reinit;
 	}
-	/* Ensure touch is awake and calibrated at cold boot since LK bootloader already powers display */
-	nvt_tp_power_on_reinit();
-#else
-	bTouchIsAwake = 1;
 #endif
 
 	nvt_irq_enable(true);
@@ -2148,6 +2151,7 @@ static int32_t nvt_ts_resume(struct device *dev)
 	gpio_set_value(ts->reset_gpio, 1);
 #endif
 	nvt_bootloader_reset();
+	nvt_boot_ready();
 	nvt_check_fw_reset_state(RESET_STATE_REK);
 
 #if !WAKEUP_GESTURE

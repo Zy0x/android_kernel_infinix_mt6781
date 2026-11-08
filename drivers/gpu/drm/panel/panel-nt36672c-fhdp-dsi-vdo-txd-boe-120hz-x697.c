@@ -835,8 +835,9 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 	}
 	devm_gpiod_put(dev, ctx->reset_gpio);
 
-	ctx->prepared = false;
-	ctx->enabled = false;
+	/* Continuous splash: LK bootloader already prepared and enabled panel */
+	ctx->prepared = true;
+	ctx->enabled = true;
 
 	drm_panel_init(&ctx->panel);
 	ctx->panel.dev = dev;

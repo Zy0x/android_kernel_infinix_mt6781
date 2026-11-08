@@ -138,6 +138,10 @@ $(info -- KernelSU-Next version fallback: $(KSU_VERSION_FALLBACK))
 KSU_VERSION := $(KSU_VERSION_FALLBACK)
 endif
 
+# Pin version to official v3.4.2 without legacy tag
+KSU_VERSION_OVERRIDE := 33355
+KSU_VERSION_TAG_OVERRIDE := v3.4.2
+
 # Allow integrators to pin the reported version (e.g. when backporting
 # onto release branches where the commit count does not match releases)
 # legacy: keep version derived from commit count, with a +289 offset so

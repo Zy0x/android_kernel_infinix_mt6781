@@ -3517,7 +3517,7 @@ static int aw8624_vibrator_init(struct aw8624 *aw8624)
 	pr_info("%s enter\n", __func__);
 
 #ifdef TIMED_OUTPUT
-	aw8624->to_dev.name = "awinic_vibrator";
+	aw8624->to_dev.name = "vibrator";
 	aw8624->to_dev.get_time = aw8624_vibrator_get_time;
 	aw8624->to_dev.enable = aw8624_vibrator_enable;
 
@@ -3536,7 +3536,7 @@ static int aw8624_vibrator_init(struct aw8624 *aw8624)
 		return ret;
 	}
 #else
-	aw8624->cdev.name = "awinic_vibrator";
+	aw8624->cdev.name = "vibrator";
 	aw8624->cdev.brightness_set = aw8624_vibrator_enable;
 
 	ret = devm_led_classdev_register(&aw8624->i2c->dev, &(aw8624->cdev));

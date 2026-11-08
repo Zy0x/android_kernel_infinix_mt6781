@@ -460,34 +460,27 @@ static int silfp_set_spi(struct silfp_data *fp_dev, bool enable)
     if ( enable && !atomic_read(&fp_dev->spionoff_count) ) {
         atomic_inc(&fp_dev->spionoff_count);
         enable_clock(MT_CG_PERI_SPI0, "spi");
-    } else if (atomic_read(&fp_dev->spionoff_count)) {
+    } else if (!enable && atomic_read(&fp_dev->spionoff_count)) {
         atomic_dec(&fp_dev->spionoff_count);
         disable_clock(MT_CG_PERI_SPI0, "spi");
     }
     LOG_MSG_DEBUG(DBG_LOG, "[%s] done\n",__func__);
 #else
-    int ret = -ENOENT;
-    struct mt_spi_t *ms = NULL;
-    ms = spi_master_get_devdata(fp_dev->spi->master);
+    if (!fp_dev || !fp_dev->spi)
+        return -EINVAL;
 
-    if ( /*!fp_dev->pin.spi_id || */ !ms ) {
-        LOG_MSG_DEBUG(ERR_LOG, "%s: not support\n", __func__);
-        return ret;
+    if (enable) {
+        if (!atomic_read(&fp_dev->spionoff_count)) {
+            atomic_inc(&fp_dev->spionoff_count);
+            mt_spi_enable_master_clk(fp_dev->spi);
+        }
+    } else {
+        if (atomic_read(&fp_dev->spionoff_count)) {
+            atomic_dec(&fp_dev->spionoff_count);
+            mt_spi_disable_master_clk(fp_dev->spi);
+        }
     }
-
-    if ( enable && !atomic_read(&fp_dev->spionoff_count) ) {
-        atomic_inc(&fp_dev->spionoff_count);
-        mt_spi_enable_master_clk(fp_dev->spi);
-        /*	clk_prepare_enable(ms->clk_main); */
-        //ret = clk_enable(ms->clk_main);
-    } else if (atomic_read(&fp_dev->spionoff_count)) {
-        atomic_dec(&fp_dev->spionoff_count);
-        mt_spi_disable_master_clk(fp_dev->spi);
-        /*	clk_disable_unprepare(ms->clk_main); */
-        //clk_disable(ms->clk_main);
-        ret = 0;
-    }
-    LOG_MSG_DEBUG(DBG_LOG, "[%s] done (%d).\n",__func__,ret);
+    LOG_MSG_DEBUG(DBG_LOG, "[%s] done (enable=%d).\n", __func__, enable);
 #endif /* CONFIG_MTK_CLKMGR */
 #endif /* !CONFIG_MT_SPI_FPGA_ENABLE */
 #endif /* !CONFIG_SILEAD_FP_PLATFORM */

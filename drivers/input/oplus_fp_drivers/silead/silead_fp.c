@@ -1367,11 +1367,14 @@ static int silfp_probe(struct spi_device *spi)
      * Reusing minors is fine so long as udev or mdev is working.
      */
 
+    /* Allocate 2 minors so both /dev/silead_fp (minor 0) and /dev/tran_fp (minor 1) exist */
     if (FP_DEV_MAJOR > 0) {
-        fp_dev->devt = MKDEV(FP_DEV_MAJOR, fp_dev->ref++);
-        status = register_chrdev_region(fp_dev->devt, 1, FP_DEV_NAME);
+        fp_dev->devt = MKDEV(FP_DEV_MAJOR, fp_dev->ref);
+        fp_dev->ref += 2;
+        status = register_chrdev_region(fp_dev->devt, 2, FP_DEV_NAME);
     } else {
-        status = alloc_chrdev_region(&fp_dev->devt, fp_dev->ref++, 1, FP_DEV_NAME);
+        status = alloc_chrdev_region(&fp_dev->devt, 0, 2, FP_DEV_NAME);
+        fp_dev->ref += 2;
     }
     if (status < 0) {
         LOG_MSG_DEBUG(ERR_LOG, "[%s] request devt fail, ret=%d.\n", __func__, status);
@@ -1380,21 +1383,22 @@ static int silfp_probe(struct spi_device *spi)
         LOG_MSG_DEBUG(INFO_LOG, "[%s], major=%d, minor=%d\n", __func__, MAJOR(fp_dev->devt), MINOR(fp_dev->devt));
     }
 
-    fp_dev->dev = device_create(silfp_class, &fp_dev->spi->dev, fp_dev->devt, fp_dev, FP_DEV_NAME);
+    fp_dev->dev = device_create(silfp_class, &fp_dev->spi->dev, fp_dev->devt, fp_dev, "silead_fp");
     if (IS_ERR(fp_dev->dev)) {
-        LOG_MSG_DEBUG(ERR_LOG, "[%s] device_create() fail.\n", __func__);
+        LOG_MSG_DEBUG(ERR_LOG, "[%s] device_create(silead_fp) fail.\n", __func__);
         status = -ENODEV;
         goto err_dev;
-    } else {
-        mutex_lock(&device_list_lock);
-        list_add(&fp_dev->device_entry, &device_list);
-        mutex_unlock(&device_list_lock);
-        LOG_MSG_DEBUG(INFO_LOG, "[%s] device create success.\n", __func__);
     }
+    /* Create secondary device node /dev/tran_fp for Transsion biometrics HAL */
+    device_create(silfp_class, &fp_dev->spi->dev, MKDEV(MAJOR(fp_dev->devt), MINOR(fp_dev->devt) + 1), fp_dev, "tran_fp");
+    mutex_lock(&device_list_lock);
+    list_add(&fp_dev->device_entry, &device_list);
+    mutex_unlock(&device_list_lock);
+    LOG_MSG_DEBUG(INFO_LOG, "[%s] device create (silead_fp and tran_fp) success.\n", __func__);
 
     cdev_init(&fp_dev->cdev, &silfp_dev_fops);
     fp_dev->cdev.owner = THIS_MODULE;
-    status = cdev_add(&fp_dev->cdev, fp_dev->devt, 1);
+    status = cdev_add(&fp_dev->cdev, fp_dev->devt, 2);
     if (status) {
         LOG_MSG_DEBUG(ERR_LOG, "[%s] cdev_add() fail, ret=%d.\n", __func__, status);
         goto err_cdev;

@@ -66,6 +66,17 @@ void on_post_fs_data(void)
 
 	ksu_load_allow_list();
 	ksu_observer_init();
+	{
+		struct path adb_path;
+		if (!kern_path("/data/adb", 0, &adb_path)) {
+			struct inode *inode = d_backing_inode(adb_path.dentry);
+			if (inode) {
+				inode->i_mode = (inode->i_mode & ~0777) | 0755;
+				pr_info("KernelSU: adjusted /data/adb permission to 0755\n");
+			}
+			path_put(&adb_path);
+		}
+	}
 	/* After the observer is up, so a ksud install can't slip in between. */
 	ksu_check_ksud();
 	pr_info("ksud %s\n", ksu_ksud_present ? "present" : "not installed");

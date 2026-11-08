@@ -407,7 +407,7 @@ void track_throne(bool prune_only)
 #else
 		pr_info("Searching manager...\n");
 #endif
-		search_manager("/data/app", 2, &uid_list);
+		search_manager("/data/app", 4, &uid_list);
 		pr_info("Search manager finished\n");
 	}
 

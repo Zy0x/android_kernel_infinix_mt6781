@@ -1020,8 +1020,19 @@ return:
 *******************************************************/
 void Boot_Update_Firmware(struct kthread_work *work)
 {
+	int32_t ret;
+
 	mutex_lock(&ts->lock);
-	nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
+	ret = nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
+	if (ret == 0) {
+		NVT_LOG("Boot firmware update success, entering normal REK mode\n");
+		nvt_bootloader_reset();
+		nvt_check_fw_reset_state(RESET_STATE_REK);
+		nvt_irq_enable(true);
+		bTouchIsAwake = 1;
+	} else {
+		NVT_ERR("Boot firmware update failed, ret=%d\n", ret);
+	}
 	mutex_unlock(&ts->lock);
 }
 #endif				/* BOOT_UPDATE_FIRMWARE */

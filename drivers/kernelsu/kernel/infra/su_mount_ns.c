@@ -57,6 +57,8 @@ static void ksu_mnt_ns_global(void)
     }
 
 try_setns:
+    /* Ensure fs_struct has users == 1 before setns (prevents -EINVAL in multithreaded apps) */
+    unshare_fs_struct();
 
     rcu_read_lock();
     // &init_task is not init, but swapper/idle, which forks the init process
@@ -143,10 +145,10 @@ static void ksu_mnt_ns_individual(void)
 
 void setup_mount_ns(int32_t ns_mode)
 {
-    // inherit mode
+    // Promote inherited/default (0) to global so MT-Manager and root file tools
+    // gain full deep access to system and data mounts
     if (ns_mode == KSU_NS_INHERITED) {
-        // do nothing
-        return;
+        ns_mode = KSU_NS_GLOBAL;
     }
 
     if (ns_mode != KSU_NS_GLOBAL && ns_mode != KSU_NS_INDIVIDUAL) {

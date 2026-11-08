@@ -138,11 +138,30 @@ $(info -- KernelSU-Next version fallback: $(KSU_VERSION_FALLBACK))
 KSU_VERSION := $(KSU_VERSION_FALLBACK)
 endif
 
-# Pin version to match installed manager v3.3.1 (32680-5)
-KSU_VERSION := 32680
-KSU_VERSION_TAG := v3.3.1
-$(info -- KernelSU version pinned to: $(KSU_VERSION) ($(KSU_VERSION_TAG)))
+# Allow integrators to pin the reported version (e.g. when backporting
+# onto release branches where the commit count does not match releases)
+# legacy: keep version derived from commit count, with a +289 offset so
+# the reported ksuver stays in line with the manager versionCode
+# (maintainer preference, #1549)
+ifdef KSU_VERSION_OVERRIDE
+KSU_VERSION := $(KSU_VERSION_OVERRIDE)
+$(info -- KernelSU-Next version override: $(KSU_VERSION))
+endif
 ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
+
+ifdef KSU_GIT_VERSION_VALID
+$(eval KSU_VERSION_TAG=$(KSU_GIT_TAG))
+else
+$(warning "KSU_VERSION_TAG not defined! It is better to make KernelSU-Next a git submodule!")
+KSU_VERSION_TAG_FALLBACK := v0.0.1
+KSU_VERSION_TAG=$(KSU_VERSION_TAG_FALLBACK)
+endif
+
+ifdef KSU_VERSION_TAG_OVERRIDE
+KSU_VERSION_TAG := $(KSU_VERSION_TAG_OVERRIDE)
+endif
+
+$(info -- KernelSU-Next tag: $(KSU_VERSION_TAG))
 ccflags-y += -DKSU_VERSION_TAG=\"$(KSU_VERSION_TAG)\"
 
 ifndef KSU_NEXT_MANAGER_SIZE

@@ -1408,6 +1408,17 @@ static int silfp_probe(struct spi_device *spi)
         LOG_MSG_DEBUG(ERR_LOG, "[%s] silfp_init fail ret=%d.\n", __func__, status);
         goto err_cdev;
     }
+
+    /* Power up Silead hardware at boot probe so HAL can detect and communicate immediately */
+    status = silfp_parse_dts(fp_dev);
+    if (status == 0) {
+        silfp_hw_poweron(fp_dev);
+        if (!IS_ERR_OR_NULL(fp_dev->pin.pins_rst_h))
+            pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_rst_h);
+        LOG_MSG_DEBUG(INFO_LOG, "[%s] Silead hardware powered on and reset high at probe.\n", __func__);
+    } else {
+        LOG_MSG_DEBUG(ERR_LOG, "[%s] silfp_parse_dts failed at probe: %d\n", __func__, status);
+    }
 #ifdef PROC_NODE
     silfp_proc_init(fp_dev);
 #endif /* PROC_NODE */

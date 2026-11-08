@@ -5,7 +5,7 @@
  *   - Fix 1: Single-byte MIPI DCS Exit Sleep (0x11) & Display On (0x29) (fixes blank screen)
  *   - Fix 2: Single-byte MIPI DCS Display Off (0x28) & Enter Sleep (0x10) in lcm_unprepare
  *   - Fix 3: Dual-slice hardware DSC compression configuration in ext_params (fixes horizontal scanlines/glitch)
- *   - Fix 4: Authentic dynamic timings (.switch_en = 1, .vfp_lp_dyn = 4277, .data_rate = 900)
+ *   - Fix 4: Authentic dynamic timings (.switch_en = 1, .vfp_lp_dyn = 0, .data_rate = 900)
  *   - Fix 5: LED class fallback in lcm_enable() — ctx->backlight is always NULL because stock
  *            Transsion X698 uses mediatek,disp-leds (LED class, NOT backlight class) and
  *            panel DTS node has no "backlight" phandle. Fallback calls led_classdev
@@ -428,6 +428,9 @@ static int lcm_prepare(struct drm_panel *panel)
 	}
 
 	ctx->prepared = true;
+#if defined(CONFIG_MTK_PANEL_EXT)
+	mtk_panel_tch_rst(panel);
+#endif
 	return 0;
 }
 
@@ -555,13 +558,13 @@ static const struct drm_panel_funcs lcm_drm_funcs = {
 #if defined(CONFIG_MTK_PANEL_EXT)
 static struct mtk_panel_params ext_params_120hz = {
 	.data_rate = 960,
-	.vfp_low_power = 4277,
+	.vfp_low_power = 0,
 	.dyn = {
 		.switch_en = 1,
 		.data_rate = 900,
 		.vfp = 54,
-		.vfp_lp_dyn = 4277,
-		.hfp = 20,
+		.vfp_lp_dyn = 0,
+		.hfp = 49,
 	},
 	.dyn_fps = {
 		.vact_timing_fps = 120,
@@ -614,13 +617,13 @@ static struct mtk_panel_params ext_params_120hz = {
 
 static struct mtk_panel_params ext_params_90hz = {
 	.data_rate = 960,
-	.vfp_low_power = 4277,
+	.vfp_low_power = 0,
 	.dyn = {
 		.switch_en = 1,
 		.data_rate = 900,
 		.vfp = 899,
-		.vfp_lp_dyn = 4277,
-		.hfp = 20,
+		.vfp_lp_dyn = 0,
+		.hfp = 49,
 	},
 	.dyn_fps = {
 		.vact_timing_fps = 90,
@@ -673,13 +676,13 @@ static struct mtk_panel_params ext_params_90hz = {
 
 static struct mtk_panel_params ext_params_60hz = {
 	.data_rate = 960,
-	.vfp_low_power = 4277,
+	.vfp_low_power = 0,
 	.dyn = {
 		.switch_en = 1,
 		.data_rate = 900,
 		.vfp = 2588,
-		.vfp_lp_dyn = 4277,
-		.hfp = 20,
+		.vfp_lp_dyn = 0,
+		.hfp = 49,
 	},
 	.dyn_fps = {
 		.vact_timing_fps = 60,
@@ -844,6 +847,7 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 		drm_panel_remove(&ctx->panel);
 
 #if defined(CONFIG_MTK_PANEL_EXT)
+	mtk_panel_tch_handle_reg(&ctx->panel);
 	ret = mtk_panel_ext_create(dev, &ext_params_120hz, &lcm_ext_funcs, &ctx->panel);
 	if (ret < 0)
 		return ret;

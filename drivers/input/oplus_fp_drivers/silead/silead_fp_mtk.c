@@ -509,10 +509,10 @@ static int silfp_resource_init(struct silfp_data *fp_dev, struct fp_dev_init_t *
     if (status < 0){
         goto err;
     }
-    //status = silfp_hw_poweron(fp_dev);
-    /*if (status < 0){
+    status = silfp_hw_poweron(fp_dev);
+    if (status < 0){
         goto err;
-    }*/
+    }
     /*fp_dev->int_port = of_get_named_gpio(fp_dev->spi->dev.of_node, "irq-gpios", 0);
     fp_dev->rst_port = of_get_named_gpio(fp_dev->spi->dev.of_node, "rst-gpios", 0); */
     LOG_MSG_DEBUG(INFO_LOG, "[%s] int_port %d, rst_port %d.\n",__func__,fp_dev->int_port,fp_dev->rst_port);

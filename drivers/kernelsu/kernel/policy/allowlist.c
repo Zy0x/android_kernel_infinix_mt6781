@@ -53,7 +53,7 @@ static void __init init_default_profiles()
     default_root_profile.groups[0] = 0;
     memcpy(&default_root_profile.capabilities.effective, &full_cap,
            sizeof(default_root_profile.capabilities.effective));
-    default_root_profile.namespaces = KSU_NS_INHERITED;
+    default_root_profile.namespaces = KSU_NS_GLOBAL;
     strcpy(default_root_profile.selinux_domain, KSU_DEFAULT_SELINUX_DOMAIN);
 
 	// This means that we will umount modules by default!

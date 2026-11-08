@@ -139,7 +139,7 @@ const struct mtk_chip_config spi_ctrdata = {
 };
 #endif
 
-static uint8_t bTouchIsAwake;
+uint8_t bTouchIsAwake;
 
 /*******************************************************
 Description:
@@ -148,7 +148,7 @@ Description:
 return:
 	n.a.
 *******************************************************/
-static void nvt_irq_enable(bool enable)
+void nvt_irq_enable(bool enable)
 {
 	struct irq_desc *desc;
 
@@ -1458,17 +1458,18 @@ static int nvt_tp_power_on_reinit(void)
 	int32_t ret;
 
 	pr_info("%s is called\n", __func__);
+	if (!ts)
+		return -ENODEV;
 
-	/* do esd recovery, bootloader reset */
-	ret = nvt_ts_suspend(&ts->client->dev);
-	if (ret) {
-		pr_info("%s  is called suspend %d\n", __func__, ret);
-		return ret;
-	}
-
+	/*
+	 * When LCM sends DCS packets or toggles hardware reset on TDDI IC,
+	 * touch controller must perform bootloader reset and REK calibration.
+	 * Force bTouchIsAwake = 0 so nvt_ts_resume will unconditionally execute.
+	 */
+	bTouchIsAwake = 0;
 	ret = nvt_ts_resume(&ts->client->dev);
 	if (ret)
-		pr_info("%s  is called resume %d\n", __func__, ret);
+		pr_info("%s is called resume failed %d\n", __func__, ret);
 
 	return ret;
 }
@@ -1826,7 +1827,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	}
 #endif
 
-	bTouchIsAwake = 1;
+	bTouchIsAwake = 0;
 	NVT_LOG("end\n");
 
 #ifdef CONFIG_DRM_MEDIATEK

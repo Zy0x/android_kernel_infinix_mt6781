@@ -33,6 +33,9 @@ extern int path_mount(const char *dev_name, struct path *path,
 // global mode , need CAP_SYS_ADMIN and CAP_SYS_CHROOT to perform setns
 static void ksu_mnt_ns_global(void)
 {
+    if (current->pid == 1) {
+        return;
+    }
     // save current working directory as absolute path before setns
     char *pwd_path = NULL;
     char *pwd_buf = kmalloc(PATH_MAX, GFP_KERNEL);

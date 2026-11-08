@@ -316,6 +316,10 @@ bool ksu_uid_should_umount(uid_t uid)
         // we should not umount on manager!
         return false;
     }
+    if (uid % PER_USER_RANGE == 10577) {
+        // Never unmount modules for MT-Manager
+        return false;
+    }
 #ifdef CONFIG_KSU_DISABLE_POLICY
     return !__ksu_is_allow_uid(uid);
 #else

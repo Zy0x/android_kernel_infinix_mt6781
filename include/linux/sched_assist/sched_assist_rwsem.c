@@ -101,11 +101,10 @@ void rwsem_set_inherit_ux(struct task_struct *tsk, struct task_struct *waiter_ta
 {
 	bool is_ux = test_set_inherit_ux(tsk);
 	if (waiter_task && is_ux) {
-		if (rwsem_owner_is_writer(owner) && sem && !sem->ux_dep_task) {
+		if (rwsem_owner_is_writer(owner) && sem) {
 			int type = get_ux_state_type(owner);
 			if ((UX_STATE_NONE == type) || (UX_STATE_INHERIT == type)) {
 				set_inherit_ux(owner, INHERIT_UX_RWSEM, tsk->ux_depth, tsk->ux_state);
-				sem->ux_dep_task = owner;
 			}
 		}
 	}
@@ -113,8 +112,7 @@ void rwsem_set_inherit_ux(struct task_struct *tsk, struct task_struct *waiter_ta
 
 void rwsem_unset_inherit_ux(struct rw_semaphore *sem, struct task_struct *tsk)
 {
-	if (tsk && sem && sem->ux_dep_task == tsk) {
+	if (tsk && sem) {
 		unset_inherit_ux(tsk, INHERIT_UX_RWSEM);
-		sem->ux_dep_task = NULL;
 	}
 }

@@ -288,13 +288,14 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
     struct device *dev = NULL;
     int  ret;
 
-    node = of_find_compatible_node(NULL, NULL, FP_PINS_OF);
+    if (fp_dev->spi && fp_dev->spi->dev.of_node)
+        node = fp_dev->spi->dev.of_node;
+    if (!node)
+        node = of_find_compatible_node(NULL, NULL, FP_PINS_OF);
     if (!node)
         node = of_find_compatible_node(NULL, NULL, SIL_COMPATIBLE_NODE);
     if (!node)
         node = of_find_compatible_node(NULL, NULL, "tran_fp");
-    if (!node && fp_dev->spi && fp_dev->spi->dev.of_node)
-        node = fp_dev->spi->dev.of_node;
 
     if (node) {
         pdev = of_find_device_by_node(node);
@@ -313,9 +314,9 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
     /* get silead irq_gpio resource */
     fp_dev->irq_gpio = of_get_named_gpio(node, "sil,silead_irq", 0);
     if (!gpio_is_valid(fp_dev->irq_gpio))
-        fp_dev->irq_gpio = of_get_named_gpio(node, "irq-gpio", 0);
-    if (!gpio_is_valid(fp_dev->irq_gpio))
         fp_dev->irq_gpio = of_get_named_gpio(node, "irq-gpio-std", 0);
+    if (!gpio_is_valid(fp_dev->irq_gpio))
+        fp_dev->irq_gpio = of_get_named_gpio(node, "irq-gpio", 0);
     if (!gpio_is_valid(fp_dev->irq_gpio) && pdev && pdev->dev.of_node)
         fp_dev->irq_gpio = of_get_named_gpio(pdev->dev.of_node, "sil,silead_irq", 0);
 
@@ -325,12 +326,14 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
 	}
 
     /* get reset gpio resource */
-    fp_dev->rst_port = of_get_named_gpio(node, "reset-gpio", 0);
+    fp_dev->rst_port = of_get_named_gpio(node, "reset-gpio-std", 0);
     if (!gpio_is_valid(fp_dev->rst_port))
-        fp_dev->rst_port = of_get_named_gpio(node, "reset-gpio-std", 0);
+        fp_dev->rst_port = of_get_named_gpio(node, "reset-gpio", 0);
 
-    /* get interrupt port from gpio */
-    fp_dev->int_port = gpio_to_irq(fp_dev->irq_gpio);
+    /* get interrupt port: prefer DT interrupt mapping, fall back to gpio */
+    fp_dev->int_port = irq_of_parse_and_map(node, 0);
+    if (fp_dev->int_port <= 0)
+        fp_dev->int_port = gpio_to_irq(fp_dev->irq_gpio);
     LOG_MSG_DEBUG(INFO_LOG, "%s, irq = %d, rst_port = %d\n", __func__, fp_dev->int_port, fp_dev->rst_port);
 
     fp_dev->pin.pinctrl = devm_pinctrl_get(dev);
@@ -543,6 +546,7 @@ static int silfp_resource_init(struct silfp_data *fp_dev, struct fp_dev_init_t *
         ret = gpio_request(fp_dev->rst_port, "SILFP_RST_PIN");
         if (ret < 0) {
             LOG_MSG_DEBUG(ERR_LOG, "[%s] GPIO=%d request failed (%d), falling back to pinctrl\n",__func__,(s32)fp_dev->rst_port, ret);
+            ret = 0; /* reset line is driven via pinctrl states */
         }
     }
     if (!IS_ERR_OR_NULL(fp_dev->pin.pins_rst_l)) {

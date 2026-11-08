@@ -219,10 +219,11 @@ enum Fg_daemon_cmds {
 	FG_DAEMON_CMD_DUMP_LOG,
 	FG_DAEMON_CMD_SEND_DATA,
 	FG_DAEMON_CMD_COMMUNICATION_INT,
-	FG_DAEMON_CMD_SET_BATTERY_CAPACITY,
-	FG_DAEMON_CMD_GET_BH_DATA,
 
-	FG_DAEMON_CMD_FROM_USER_NUMBER
+	FG_DAEMON_CMD_FROM_USER_NUMBER,
+	/* Oplus extensions kept outside stock GM30 ABI count */
+	FG_DAEMON_CMD_SET_BATTERY_CAPACITY,
+	FG_DAEMON_CMD_GET_BH_DATA
 };
 
 /* kernel cmd */
@@ -241,10 +242,11 @@ enum Fg_kernel_cmds {
 	FG_KERNEL_CMD_REQ_CHANGE_AGING_DATA,
 	FG_KERNEL_CMD_AG_LOG_TEST,
 	FG_KERNEL_CMD_CHG_DECIMAL_RATE,
-	FG_KERNEL_CMD_FORCE_BAT_TEMP,
-	FG_KERNEL_CMD_SEND_BH_DATA,
 
-	FG_KERNEL_CMD_FROM_USER_NUMBER
+	FG_KERNEL_CMD_FROM_USER_NUMBER,
+	/* Oplus extensions kept outside stock GM30 ABI count */
+	FG_KERNEL_CMD_FORCE_BAT_TEMP,
+	FG_KERNEL_CMD_SEND_BH_DATA
 
 };
 
@@ -329,9 +331,10 @@ enum daemon_cmd_int_data {
 	FG_GET_SOC_DECIMAL_RATE = 7,
 	FG_GET_DIFF_SOC_SET = 8,
 	FG_GET_IS_FORCE_FULL = 9,
-	FG_GET_ZCV_INTR_CURR = 10,
-	FG_GET_CHARGE_POWER_SEL = 11,
-	FG_GET_MAX,
+	FG_GET_MAX = 10,
+	/* Oplus extensions kept outside stock GM30 ABI count */
+	FG_GET_ZCV_INTR_CURR = 11,
+	FG_GET_CHARGE_POWER_SEL = 12,
 	FG_SET_ANCHOR = 999,
 	FG_SET_SOC = FG_SET_ANCHOR + 1,
 	FG_SET_C_D0_SOC = FG_SET_ANCHOR + 2,
@@ -516,16 +519,6 @@ struct fuel_gauge_custom_data {
 	int ui_full_limit_ith4;
 	int ui_full_limit_time;
 
-	int ui_full_limit_fc_soc0;
-	int ui_full_limit_fc_ith0;
-	int ui_full_limit_fc_soc1;
-	int ui_full_limit_fc_ith1;
-	int ui_full_limit_fc_soc2;
-	int ui_full_limit_fc_ith2;
-	int ui_full_limit_fc_soc3;
-	int ui_full_limit_fc_ith3;
-	int ui_full_limit_fc_soc4;
-	int ui_full_limit_fc_ith4;
 
 	/* using voltage to limit uisoc in 1% case */
 	int ui_low_limit_en;
@@ -558,7 +551,6 @@ struct fuel_gauge_custom_data {
 	int c_soc;
 	int v_soc;
 	int ui_old_soc;
-	int dlpt_ui_remap_en;
 
 	int aging_factor_min;
 	int aging_factor_diff;
@@ -577,7 +569,28 @@ struct fuel_gauge_custom_data {
 	int power_on_car_nochr;
 	int shutdown_car_ratio;
 
-	/* battery health */
+
+	/* log_level */
+	int daemon_log_level;
+	int record_log;
+
+};
+
+
+/* Oplus-only tunables moved out of the GM30 ABI struct so that
+ * sizeof(struct fuel_gauge_custom_data) matches vendor fuelgauged (664). */
+struct fuel_gauge_custom_data_ext {
+	int ui_full_limit_fc_soc0;
+	int ui_full_limit_fc_ith0;
+	int ui_full_limit_fc_soc1;
+	int ui_full_limit_fc_ith1;
+	int ui_full_limit_fc_soc2;
+	int ui_full_limit_fc_ith2;
+	int ui_full_limit_fc_soc3;
+	int ui_full_limit_fc_ith3;
+	int ui_full_limit_fc_soc4;
+	int ui_full_limit_fc_ith4;
+	int dlpt_ui_remap_en;
 	int aging_diff_max_threshold;
 	int aging_diff_max_level;
 	int aging_factor_t_min;
@@ -592,12 +605,8 @@ struct fuel_gauge_custom_data {
 	int max_aging_data;
 	int max_fast_data;
 	int fast_data_threshold_score;
-
-	/* log_level */
-	int daemon_log_level;
-	int record_log;
-
 };
+extern struct fuel_gauge_custom_data_ext fg_cust_ext;
 
 struct FUELGAUGE_TEMPERATURE {
 	signed int BatteryTemp;

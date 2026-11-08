@@ -54,9 +54,6 @@ struct rw_semaphore {
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map	dep_map;
 #endif
-#ifdef OPLUS_FEATURE_SCHED_ASSIST
-	struct task_struct *ux_dep_task;
-#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 };
 
 /*
@@ -100,7 +97,7 @@ static inline int rwsem_is_locked(struct rw_semaphore *sem)
 #ifndef OPLUS_FEATURE_SCHED_ASSIST
 #define __RWSEM_OPT_INIT(lockname) , .osq = OSQ_LOCK_UNLOCKED, .owner = NULL
 #else /* OPLUS_FEATURE_SCHED_ASSIST */
-#define __RWSEM_OPT_INIT(lockname) , .osq = OSQ_LOCK_UNLOCKED, .owner = NULL, .ux_dep_task = NULL
+#define __RWSEM_OPT_INIT(lockname) , .osq = OSQ_LOCK_UNLOCKED, .owner = NULL
 #endif /* OPLUS_FEATURE_SCHED_ASSIST */
 #else
 #define __RWSEM_OPT_INIT(lockname)

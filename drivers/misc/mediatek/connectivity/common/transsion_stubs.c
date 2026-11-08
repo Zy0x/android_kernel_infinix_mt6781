@@ -48,47 +48,14 @@ int msg_put_ll(void *msg, const char *key, long long val)
 }
 EXPORT_SYMBOL(msg_put_ll);
 
-/* Transsion WLAN / vendor hooks for wlan_drv_gen4m.ko */
-int get_low_latency_mode(void)
-{
-	return 0;
-}
-EXPORT_SYMBOL(get_low_latency_mode);
-
-int register_file_buf_handler(void *handler)
-{
-	return 0;
-}
-EXPORT_SYMBOL(register_file_buf_handler);
-
-int register_set_p2p_mode_handler(void *handler)
-{
-	return 0;
-}
-EXPORT_SYMBOL(register_set_p2p_mode_handler);
-
-void update_driver_loaded_status(int status)
-{
-}
-EXPORT_SYMBOL(update_driver_loaded_status);
-
-int wifi_fwlog_event_func_register(void *func)
-{
-	return 0;
-}
-EXPORT_SYMBOL(wifi_fwlog_event_func_register);
-
-int wifi_reset_start(void)
-{
-	return 0;
-}
-EXPORT_SYMBOL(wifi_reset_start);
-
-int wifi_reset_end(int status)
-{
-	return 0;
-}
-EXPORT_SYMBOL(wifi_reset_end);
+/*
+ * NOTE: get_low_latency_mode, register_file_buf_handler,
+ * register_set_p2p_mode_handler, update_driver_loaded_status,
+ * wifi_fwlog_event_func_register, wifi_reset_start and wifi_reset_end are
+ * exported by the vendor wmt_chrdev_wifi.ko itself. Exporting them from the
+ * kernel makes wmt_chrdev_wifi.ko fail with "exports duplicate symbol",
+ * which prevents /dev/wmtWifi creation and therefore wlan0. Do not stub them.
+ */
 
 void *xgf_lookup_name(const char *name)
 {

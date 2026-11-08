@@ -321,7 +321,7 @@ static const struct panel_init_cmd authentic_init_cmds[257] = {
 	/* 253 */ { PKT_DCS, 2, { 0x79, 0x90 }, 0 },
 	/* 254 */ { PKT_GENERIC, 2, { 0xff, 0x10 }, 0 },
 	/* 255 */ { PKT_DCS, 1, { 0x11 }, 120 },
-	/* 256 */ { PKT_DCS, 1, { 0x29 }, 20 },
+	/* 256: 0x29 (Display On) moved to lcm_enable() when video stream is active */
 };
 
 
@@ -353,15 +353,13 @@ static int lcm_unprepare(struct drm_panel *panel)
 {
 	struct lcm *ctx = panel_to_lcm(panel);
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
-	static const u8 dcs_sleep_off = 0x28;
 	static const u8 dcs_sleep_in  = 0x10;
 	struct gpio_desc *bias_neg, *bias_pos;
 
 	if (!ctx->prepared)
 		return 0;
 
-	/* 1. Send single-byte DCS Sleep Commands (0x28 Display Off, 0x10 Sleep In) */
-	mipi_dsi_dcs_write_buffer(dsi, &dcs_sleep_off, 1);
+	/* 1. Send single-byte DCS Sleep In Command (0x10) */
 	mipi_dsi_dcs_write_buffer(dsi, &dcs_sleep_in, 1);
 	msleep(120);
 
@@ -436,9 +434,15 @@ static int lcm_prepare(struct drm_panel *panel)
 static int lcm_disable(struct drm_panel *panel)
 {
 	struct lcm *ctx = panel_to_lcm(panel);
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
+	u8 dcs_display_off = 0x28;
 
 	if (!ctx->enabled)
 		return 0;
+
+	/* Send Display Off while DSI video clock is still active */
+	mipi_dsi_dcs_write_buffer(dsi, &dcs_display_off, 1);
+	msleep(20);
 
 	if (ctx->backlight) {
 		ctx->backlight->props.power = FB_BLANK_POWERDOWN;
@@ -452,9 +456,15 @@ static int lcm_disable(struct drm_panel *panel)
 static int lcm_enable(struct drm_panel *panel)
 {
 	struct lcm *ctx = panel_to_lcm(panel);
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
+	u8 dcs_display_on = 0x29;
 
 	if (ctx->enabled)
 		return 0;
+
+	/* Send Display On when video stream is actively running (guarantees 1st wake success) */
+	mipi_dsi_dcs_write_buffer(dsi, &dcs_display_on, 1);
+	msleep(20);
 
 	if (ctx->backlight) {
 		ctx->backlight->props.power = FB_BLANK_UNBLANK;
@@ -545,7 +555,7 @@ static const struct drm_panel_funcs lcm_drm_funcs = {
 #if defined(CONFIG_MTK_PANEL_EXT)
 static struct mtk_panel_params ext_params_120hz = {
 	.data_rate = 960,
-	.vfp_low_power = 0,
+	.vfp_low_power = 4277,
 	.dyn = {
 		.switch_en = 1,
 		.data_rate = 900,
@@ -604,7 +614,7 @@ static struct mtk_panel_params ext_params_120hz = {
 
 static struct mtk_panel_params ext_params_90hz = {
 	.data_rate = 960,
-	.vfp_low_power = 0,
+	.vfp_low_power = 4277,
 	.dyn = {
 		.switch_en = 1,
 		.data_rate = 900,
@@ -663,7 +673,7 @@ static struct mtk_panel_params ext_params_90hz = {
 
 static struct mtk_panel_params ext_params_60hz = {
 	.data_rate = 960,
-	.vfp_low_power = 0,
+	.vfp_low_power = 4277,
 	.dyn = {
 		.switch_en = 1,
 		.data_rate = 900,

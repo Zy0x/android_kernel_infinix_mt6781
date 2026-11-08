@@ -274,6 +274,10 @@ static int fsm_md_data_ioctl(int md_id, unsigned int cmd, unsigned long arg)
 				retry--;
 			} while (retry);
 		}
+#if defined(CONFIG_MTK_MD1_SUPPORT) && (CONFIG_MTK_MD1_SUPPORT == 9)
+		if (data == 12)
+			data = 9;
+#endif
 		CCCI_NORMAL_LOG(md_id, FSM,
 			"CCCI_IOC_GET_MD_TYPE: %d!\n", data);
 		ret = put_user((unsigned int)data,

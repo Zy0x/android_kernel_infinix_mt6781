@@ -53,7 +53,7 @@ uint8_t esd_retry;
 #endif				/* #if NVT_TOUCH_ESD_PROTECT */
 
 struct nvt_ts_data *ts;
-char novatek_firmware[25];
+char novatek_firmware[25] = "novatek_ts_fw.bin";
 /* For SPI mode */
 static struct pinctrl *nt36672_pinctrl;
 static struct pinctrl_state *nt36672_spi_mode_default;
@@ -1645,13 +1645,19 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	input_mt_init_slots(ts->input_dev, ts->max_touch_num, 0);
 #endif
 
-	input_set_abs_params(ts->input_dev, ABS_MT_PRESSURE, 0, TOUCH_FORCE_NUM, 0, 0);	//pressure = TOUCH_FORCE_NUM
+	input_set_abs_params(ts->input_dev, ABS_MT_PRESSURE, 0, 1000, 0, 0);	//pressure = 1000
+	input_set_abs_params(ts->input_dev, ABS_PRESSURE, 0, 255, 0, 0);
 
 #if TOUCH_MAX_FINGER_NUM > 1
-	input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);	//area = 255
+	input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0, 100, 0, 0);	//area = 100
+	input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MINOR, 0, 100, 0, 0);
 
 	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X, 0, ts->abs_x_max, 0, 0);
 	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0, ts->abs_y_max, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_X, 0, ts->abs_x_max, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_Y, 0, ts->abs_y_max, 0, 0);
+	input_abs_set_res(ts->input_dev, ABS_X, ts->abs_x_max);
+	input_abs_set_res(ts->input_dev, ABS_Y, ts->abs_y_max);
 #if MT_PROTOCOL_B
 	// no need to set ABS_MT_TRACKING_ID, input_mt_init_slots() already set it
 #else
@@ -1671,10 +1677,13 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	}
 #endif
 
-	sprintf(ts->phys, "input/ts");
+	sprintf(ts->phys, "");
 	ts->input_dev->name = NVT_TS_NAME;
-	ts->input_dev->phys = ts->phys;
-	ts->input_dev->id.bustype = BUS_SPI;
+	ts->input_dev->phys = "";
+	ts->input_dev->id.bustype = 0;
+	ts->input_dev->id.vendor = 0x0000;
+	ts->input_dev->id.product = 0x0000;
+	ts->input_dev->id.version = 0x0000;
 
 	//---register input device---
 	ret = input_register_device(ts->input_dev);
@@ -1706,54 +1715,41 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 
 #if BOOT_UPDATE_FIRMWARE
 	NVT_LOG("start to parse lcm name\n");
+	strncpy(novatek_firmware, firmware_name, sizeof(firmware_name));
 	lcm_name = of_find_node_by_path("/chosen");
 	if (lcm_name) {
-		videolfb_tag = (struct tag_videolfb *)
-			of_get_property(lcm_name,
-			"atag,videolfb",
-			(int *)&size);
-		if (!videolfb_tag)
-			NVT_ERR("Invalid lcm name\n");
+		videolfb_tag = (struct tag_videolfb *)of_get_property(lcm_name, "atag,videolfb", (int *)&size);
+		if (videolfb_tag) {
 			NVT_LOG("read lcm name : %s\n", videolfb_tag->lcmname);
 
-		#if defined(CONFIG_TOUCH_FW_MP_ONE)
-		if (strcmp("nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_jdi_lcm_drv",
-			videolfb_tag->lcmname) == 0 ||
-			strcmp("nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_jdi_hfp_lcm_drv",
-			videolfb_tag->lcmname) == 0)
-			strncpy(novatek_firmware, firmware_name_jdi, sizeof(firmware_name_jdi));
-		else if (strcmp("nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_tianma_lcm_drv",
-			videolfb_tag->lcmname) == 0)
-			strncpy(novatek_firmware, firmware_name_tm, sizeof(firmware_name_tm));
-		else if (strcmp("nt36672c_fhdp_dsi_vdo_120hz_shenchao_lcm_drv",
-			videolfb_tag->lcmname) == 0 ||
-			strcmp("nt36672c_fhdp_dsi_vdo_90hz_shenchao_lcm_drv",
-			videolfb_tag->lcmname) == 0 ||
-			strcmp("nt36672c_fhdp_dsi_vdo_60hz_shenchao_lcm_drv",
-			videolfb_tag->lcmname) == 0)
-			strncpy(novatek_firmware, firmware_name, sizeof(firmware_name));
-		else
-			strncpy(novatek_firmware, firmware_name, sizeof(firmware_name));
-		#else
-		if (strcmp("nt36672c_fhdp_dsi_vdo_90hz_jdi_rt4801_lcm_drv",
-			videolfb_tag->lcmname) == 0 ||
-			strcmp("nt36672c_fhdp_dsi_vdo_cphy_90hz_jdi_rt4801_lcm_drv",
-			videolfb_tag->lcmname) == 0 ||
-			strcmp("nt36672c_fhdp_dsi_vdo_cphy_90hz_jdi_rt4801_hfp_lcm_drv",
-			videolfb_tag->lcmname) == 0)
-			strncpy(novatek_firmware, firmware_name_jdi, sizeof(firmware_name_jdi));
-		else if (strcmp("nt36672c_fhdp_dsi_vdo_cphy_90hz_tianma_rt4801_lcm_drv",
-			videolfb_tag->lcmname) == 0 ||
-			strcmp("nt36672c_fhdp_dsi_vdo_cphy_90hz_tianma_rt4801_hfp_lcm_drv",
-			videolfb_tag->lcmname) == 0)
-			strncpy(novatek_firmware, firmware_name_tm, sizeof(firmware_name_tm));
-		else
-			strncpy(novatek_firmware, firmware_name, sizeof(firmware_name));
-		#endif
+#if defined(CONFIG_TOUCH_FW_MP_ONE)
+			if (strcmp("nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_jdi_lcm_drv", videolfb_tag->lcmname) == 0 ||
+			    strcmp("nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_jdi_hfp_lcm_drv", videolfb_tag->lcmname) == 0)
+				strncpy(novatek_firmware, firmware_name_jdi, sizeof(firmware_name_jdi));
+			else if (strcmp("nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_tianma_lcm_drv", videolfb_tag->lcmname) == 0)
+				strncpy(novatek_firmware, firmware_name_tm, sizeof(firmware_name_tm));
+			else
+				strncpy(novatek_firmware, firmware_name, sizeof(firmware_name));
+#else
+			if (strcmp("nt36672c_fhdp_dsi_vdo_90hz_jdi_rt4801_lcm_drv", videolfb_tag->lcmname) == 0 ||
+			    strcmp("nt36672c_fhdp_dsi_vdo_cphy_90hz_jdi_rt4801_lcm_drv", videolfb_tag->lcmname) == 0 ||
+			    strcmp("nt36672c_fhdp_dsi_vdo_cphy_90hz_jdi_rt4801_hfp_lcm_drv", videolfb_tag->lcmname) == 0)
+				strncpy(novatek_firmware, firmware_name_jdi, sizeof(firmware_name_jdi));
+			else if (strcmp("nt36672c_fhdp_dsi_vdo_cphy_90hz_tianma_rt4801_lcm_drv", videolfb_tag->lcmname) == 0 ||
+				 strcmp("nt36672c_fhdp_dsi_vdo_cphy_90hz_tianma_rt4801_hfp_lcm_drv", videolfb_tag->lcmname) == 0)
+				strncpy(novatek_firmware, firmware_name_tm, sizeof(firmware_name_tm));
+			else
+				strncpy(novatek_firmware, firmware_name, sizeof(firmware_name));
+#endif
+		} else {
+			NVT_LOG("videolfb_tag not found, using default fw: %s\n", novatek_firmware);
+		}
 
-		NVT_LOG("nt36672c touch fw name : %s", BOOT_UPDATE_FIRMWARE_NAME);
-	} else
-		NVT_ERR("Can't find node: chose in dts");
+		NVT_LOG("nt36672c touch fw name : %s\n", BOOT_UPDATE_FIRMWARE_NAME);
+	} else {
+		NVT_ERR("Can't find node: chosen in dts\n");
+	}
+	
 	nvt_fwu_worker = kthread_create_worker(0, "nvt_fwu_worker");
 	if (!nvt_fwu_worker) {
 		NVT_ERR("nvt_fwu_worker create kthread failed\n");
@@ -1761,7 +1757,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 		goto err_create_nvt_fwu_wq_failed;
 	}
 	kthread_init_delayed_work(&ts->nvt_fwu_dw, Boot_Update_Firmware);
-	kthread_queue_delayed_work(nvt_fwu_worker, &ts->nvt_fwu_dw, msecs_to_jiffies(14000));
+	kthread_queue_delayed_work(nvt_fwu_worker, &ts->nvt_fwu_dw, msecs_to_jiffies(3000));
 	NVT_LOG("start kthread_queue_delayed_work nt36672c\n");
 #endif
 

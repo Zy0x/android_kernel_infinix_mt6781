@@ -20,6 +20,7 @@
 #include <linux/io.h>
 #include <drm/drm_atomic.h>
 #include "mtk_drm_ddp_comp.h"
+#include "mtk_disp_aal.h"
 #include "mtk_drm_plane.h"
 #include "mtk_drm_crtc.h"
 #include "mtk_drm_ddp.h"
@@ -303,4 +304,8 @@ int lcm_fps_ctx_update(unsigned long long cur_ns,
 		unsigned int crtc_id, unsigned int mode);
 int mtk_mipi_clk_change(struct drm_crtc *crtc, unsigned int data_rate);
 void disp_drm_debug(const char *opt);
+int mtk_drm_open(struct drm_device *dev, struct drm_file *file_priv);
+void mtk_drm_postclose(struct drm_device *dev, struct drm_file *file_priv);
+long mtk_drm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
+
 #endif /* MTK_DRM_DRV_H */

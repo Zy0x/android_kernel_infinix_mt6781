@@ -103,9 +103,6 @@ void __init_rwsem(struct rw_semaphore *sem, const char *name,
 #ifdef CONFIG_MTK_TASK_TURBO
 	sem->turbo_owner = NULL;
 #endif
-#ifdef OPLUS_FEATURE_SCHED_ASSIST
-	sem->ux_dep_task = NULL;
-#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 }
 
 EXPORT_SYMBOL(__init_rwsem);

@@ -289,14 +289,14 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 		}
 	}
 
-	if (pdata->thermal_charging_current_limit != -1) {
+	if (pdata->thermal_charging_current_limit > 0) {
 		if (pdata->thermal_charging_current_limit <
 		    pdata->charging_current_limit)
 			pdata->charging_current_limit =
 					pdata->thermal_charging_current_limit;
 	}
 
-	if (pdata->thermal_input_current_limit != -1) {
+	if (pdata->thermal_input_current_limit > 0) {
 		if (pdata->thermal_input_current_limit <
 		    pdata->input_current_limit)
 			pdata->input_current_limit =

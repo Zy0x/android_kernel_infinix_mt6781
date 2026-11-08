@@ -74,6 +74,196 @@ static int mt6781_spk_i2s_in_type_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+#include <linux/of.h>
+#include <linux/of_gpio.h>
+#include <linux/gpio.h>
+#include <linux/delay.h>
+#include <linux/spinlock.h>
+
+static int tran_extamp_gpio = -EINVAL;
+static int tran_dual_spk_gpio = -EINVAL;
+static u32 tran_extamp_mode = 2;
+static u32 tran_extamp_speech_mode = 2;
+static u32 tran_receiver_mode = 6;
+static bool tran_extamp_inited;
+static bool tran_extamp_on;
+static bool tran_2n1_rcv_on;
+static bool tran_loopback_on;
+static DEFINE_SPINLOCK(tran_extamp_lock);
+static DEFINE_MUTEX(tran_extamp_mutex);
+
+static void tran_pulse_gpio(int gpio, u32 pulses)
+{
+	unsigned long flags;
+	u32 i;
+
+	if (!gpio_is_valid(gpio) || pulses < 1)
+		return;
+
+	gpio_set_value(gpio, 0);
+	usleep_range(500, 700);
+	spin_lock_irqsave(&tran_extamp_lock, flags);
+	for (i = 0; i < pulses; i++) {
+		gpio_set_value(gpio, 0);
+		udelay(2);
+		gpio_set_value(gpio, 1);
+		udelay(2);
+	}
+	spin_unlock_irqrestore(&tran_extamp_lock, flags);
+}
+
+static void tran_extamp_init(struct device *dev)
+{
+	struct device_node *np;
+	int gpio1, gpio2, ret;
+
+	if (tran_extamp_inited)
+		return;
+	tran_extamp_inited = true;
+
+	np = of_find_compatible_node(NULL, NULL, "tran_audio,audio");
+	if (!np) {
+		pr_warn("%s(), tran_audio node not found\n", __func__);
+		return;
+	}
+	gpio1 = of_get_named_gpio(np, "extamp_gpio", 0);
+	gpio2 = of_get_named_gpio(np, "dual_speaker_gpio", 0);
+	if (of_property_read_u32(np, "extamp_mode", &tran_extamp_mode))
+		tran_extamp_mode = 2;
+	if (of_property_read_u32(np, "extamp_speech_mode", &tran_extamp_speech_mode))
+		tran_extamp_speech_mode = 2;
+	if (of_property_read_u32(np, "receiver_mode", &tran_receiver_mode))
+		tran_receiver_mode = 6;
+	of_node_put(np);
+
+	if (gpio_is_valid(gpio1)) {
+		ret = gpio_request_one(gpio1, GPIOF_OUT_INIT_LOW, "tran_extamp");
+		if (!ret)
+			tran_extamp_gpio = gpio1;
+		else
+			pr_warn("%s(), request extamp_gpio %d fail %d\n", __func__, gpio1, ret);
+	}
+	if (gpio_is_valid(gpio2)) {
+		ret = gpio_request_one(gpio2, GPIOF_OUT_INIT_LOW, "tran_dual_spk");
+		if (!ret)
+			tran_dual_spk_gpio = gpio2;
+		else
+			pr_warn("%s(), request dual_speaker_gpio %d fail %d\n", __func__, gpio2, ret);
+	}
+	pr_info("%s(), extamp_gpio=%d dual_speaker_gpio=%d spk_mode=%u rcv_mode=%u\n",
+		__func__, tran_extamp_gpio, tran_dual_spk_gpio,
+		tran_extamp_mode, tran_receiver_mode);
+}
+
+static void tran_extamp_switch(struct device *dev, bool enable)
+{
+	mutex_lock(&tran_extamp_mutex);
+	tran_extamp_init(dev);
+
+	if (enable) {
+		if (tran_extamp_on)
+			goto out;
+		/* Pulse both top speaker (GPIO 164) and bottom speaker (GPIO 165) */
+		if (!tran_loopback_on && gpio_is_valid(tran_extamp_gpio))
+			tran_pulse_gpio(tran_extamp_gpio, tran_extamp_mode);
+		if (gpio_is_valid(tran_dual_spk_gpio))
+			tran_pulse_gpio(tran_dual_spk_gpio, tran_extamp_mode);
+		tran_extamp_on = true;
+		pr_info("tran_ext_amp_switch+++ ON (gpio1=%d gpio2=%d)\n",
+			tran_extamp_gpio, tran_dual_spk_gpio);
+	} else {
+		if (!tran_extamp_on)
+			goto out;
+		if (!tran_loopback_on && gpio_is_valid(tran_extamp_gpio))
+			gpio_set_value(tran_extamp_gpio, 0);
+		if (gpio_is_valid(tran_dual_spk_gpio))
+			gpio_set_value(tran_dual_spk_gpio, 0);
+		usleep_range(500, 700);
+		tran_extamp_on = false;
+		pr_info("tran_ext_amp_switch+++ OFF\n");
+	}
+out:
+	mutex_unlock(&tran_extamp_mutex);
+}
+
+static const char *const tran_switch_str[] = {"Off", "On"};
+static const struct soc_enum tran_switch_enum[] = {
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(tran_switch_str), tran_switch_str),
+};
+
+static int tran_2n1_spk_get(struct snd_kcontrol *kcontrol,
+			    struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = tran_2n1_rcv_on ? 1 : 0;
+	return 0;
+}
+
+static int tran_2n1_spk_set(struct snd_kcontrol *kcontrol,
+			    struct snd_ctl_elem_value *ucontrol)
+{
+	bool on = !!ucontrol->value.integer.value[0];
+
+	mutex_lock(&tran_extamp_mutex);
+	tran_extamp_init(NULL);
+	tran_2n1_rcv_on = on;
+	if (on) {
+		pr_info("Tran_2N1_Speaker_Change+++ ON\n");
+		if (gpio_is_valid(tran_extamp_gpio))
+			tran_pulse_gpio(tran_extamp_gpio,
+					tran_loopback_on ? tran_extamp_mode : tran_receiver_mode);
+		msleep(40);
+	} else {
+		pr_info("Tran_2N1_Speaker_Change+++ OFF\n");
+		if (gpio_is_valid(tran_extamp_gpio) && !tran_extamp_on) {
+			gpio_set_value(tran_extamp_gpio, 0);
+			usleep_range(500, 700);
+		}
+	}
+	mutex_unlock(&tran_extamp_mutex);
+	return 0;
+}
+
+static int tran_loopback_get(struct snd_kcontrol *kcontrol,
+			     struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = tran_loopback_on ? 1 : 0;
+	return 0;
+}
+
+static int tran_loopback_set(struct snd_kcontrol *kcontrol,
+			     struct snd_ctl_elem_value *ucontrol)
+{
+	tran_loopback_on = !!ucontrol->value.integer.value[0];
+	pr_info("%s(), loopback %s!\n", __func__, tran_loopback_on ? "true" : "false");
+	return 0;
+}
+
+static int tran_midtest_loopback_get(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = tran_loopback_on ? 1 : 0;
+	return 0;
+}
+
+static int tran_midtest_loopback_set(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	bool on = !!ucontrol->value.integer.value[0];
+
+	mutex_lock(&tran_extamp_mutex);
+	tran_extamp_init(NULL);
+	tran_loopback_on = on;
+	if (on) {
+		if (gpio_is_valid(tran_extamp_gpio))
+			gpio_set_value(tran_extamp_gpio, 0);
+	} else {
+		if (gpio_is_valid(tran_extamp_gpio))
+			tran_pulse_gpio(tran_extamp_gpio, tran_extamp_mode);
+	}
+	mutex_unlock(&tran_extamp_mutex);
+	return 0;
+}
+
 static int mt6781_mt6366_spk_amp_event(struct snd_soc_dapm_widget *w,
 				       struct snd_kcontrol *kcontrol,
 				       int event)
@@ -86,15 +276,14 @@ static int mt6781_mt6366_spk_amp_event(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		/* spk amp on control */
-		//#ifdef ODM_HQ_EDIT
 		aw87319_audio_speaker();
-		//#endif /* ODM_HQ_EDIT */
+		tran_extamp_switch(card->dev, true);
+		msleep(40);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		/* spk amp off control */
-		//#ifdef ODM_HQ_EDIT
+		tran_extamp_switch(card->dev, false);
 		aw87319_audio_off();
-		//#endif /* ODM_HQ_EDIT */
 		break;
 	default:
 		break;
@@ -122,6 +311,12 @@ static const struct snd_kcontrol_new mt6781_mt6366_controls[] = {
 		     mt6781_spk_i2s_out_type_get, NULL),
 	SOC_ENUM_EXT("MTK_SPK_I2S_IN_TYPE_GET", mt6781_spk_type_enum[1],
 		     mt6781_spk_i2s_in_type_get, NULL),
+	SOC_ENUM_EXT("Tran_2N1_Speaker_Switch", tran_switch_enum[0],
+		     tran_2n1_spk_get, tran_2n1_spk_set),
+	SOC_ENUM_EXT("Tran_LoopBack_Switch", tran_switch_enum[0],
+		     tran_loopback_get, tran_loopback_set),
+	SOC_ENUM_EXT("Tran_MidTest_LoopBack_Switch", tran_switch_enum[0],
+		     tran_midtest_loopback_get, tran_midtest_loopback_set),
 };
 
 /*
@@ -299,8 +494,9 @@ static int mt6781_mt6366_init(struct snd_soc_pcm_runtime *rtd)
 	if (afe_priv->mtkaif_protocol == MTKAIF_PROTOCOL_2_CLK_P2)
 		mt6781_mt6366_mtkaif_calibration(rtd);
 
-	/* disable ext amp connection */
-	snd_soc_dapm_disable_pin(dapm, EXT_SPK_AMP_W_NAME);
+	/* pre-initialize Transsion dual speaker GPIOs and enable pin by default */
+	tran_extamp_init(rtd->card->dev);
+	snd_soc_dapm_enable_pin(dapm, EXT_SPK_AMP_W_NAME);
 
 	return 0;
 }

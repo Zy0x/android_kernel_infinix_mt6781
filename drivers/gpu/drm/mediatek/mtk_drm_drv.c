@@ -3306,7 +3306,11 @@ static const struct drm_ioctl32_desc mtk_compat_ioctls[] = {
 long mtk_drm_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	unsigned int nr = DRM_IOCTL_NR(cmd);
-	struct drm_file *file_priv = filp->private_data;
+	struct drm_file *file_priv = filp ? filp->private_data : NULL;
+	struct lynx_drm_file_ctx *c_ctx = file_priv ? file_priv->driver_priv : NULL;
+	bool is_get_hist = (nr == DRM_COMMAND_BASE + DRM_MTK_AAL_GET_HIST);
+	bool is_set_ccorr = (nr == DRM_COMMAND_BASE + DRM_MTK_SET_CCORR);
+	u64 req_fetch_gen = 0;
 	drm_ioctl_compat_t *fn;
 	int ret;
 
@@ -3314,13 +3318,20 @@ long mtk_drm_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 	if (file_priv)
 		file_priv->authenticated = 1;
 #endif
+	if (is_set_ccorr)
+		lynx_arbiter_claim_ccorr_call_context(c_ctx, arg);
+
 	if (nr < DRM_COMMAND_BASE ||
-	    nr >= DRM_COMMAND_BASE + ARRAY_SIZE(mtk_compat_ioctls))
-		return drm_compat_ioctl(filp, cmd, arg);
+	    nr >= DRM_COMMAND_BASE + ARRAY_SIZE(mtk_compat_ioctls)) {
+		ret = drm_compat_ioctl(filp, cmd, arg);
+		goto out_compat_cleanup;
+	}
 
 	fn = mtk_compat_ioctls[nr - DRM_COMMAND_BASE].fn;
-	if (!fn)
-		return drm_compat_ioctl(filp, cmd, arg);
+	if (!fn) {
+		ret = drm_compat_ioctl(filp, cmd, arg);
+		goto out_compat_cleanup;
+	}
 
 	if (file_priv)
 		DDPDBG("%s: pid=%d, dev=0x%lx, auth=%d, %s\n",
@@ -3331,22 +3342,112 @@ long mtk_drm_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 	ret = (*fn)(filp, cmd, arg);
 	if (ret)
 		DDPMSG("ret = %d\n", ret);
+
+out_compat_cleanup:
+	if (is_set_ccorr)
+		lynx_arbiter_unbind_ccorr_call_context();
+	if (is_get_hist) {
+		req_fetch_gen = disp_aal_get_task_fetch_gen();
+		disp_aal_finalize_get_hist_delivery(file_priv, (int)ret, req_fetch_gen);
+		disp_aal_clear_task_fetch_gen();
+	}
 	return ret;
 }
 #endif
+
+/*
+ * BLK-20 & BLK-24: Wrapper around drm_ioctl() that finalizes GET_HIST token
+ * publication ONLY after drm_ioctl() completes copy_to_user() of the histogram
+ * payload to userspace. If copy_to_user() fails (-EFAULT),
+ * disp_aal_finalize_get_hist_delivery() clears fetch_in_progress,
+ * g_aal_hist_fetch_busy, and fetched_valid.
+ */
+long mtk_drm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	struct drm_file *file_priv = filp ? filp->private_data : NULL;
+	struct lynx_drm_file_ctx *ctx = file_priv ? file_priv->driver_priv : NULL;
+	bool is_get_hist = (DRM_IOCTL_NR(cmd) == DRM_COMMAND_BASE + DRM_MTK_AAL_GET_HIST);
+	bool is_set_ccorr = (DRM_IOCTL_NR(cmd) == DRM_COMMAND_BASE + DRM_MTK_SET_CCORR);
+	u64 req_fetch_gen = 0;
+	long ret;
+
+	if (is_set_ccorr)
+		lynx_arbiter_claim_ccorr_call_context(ctx, arg);
+
+	ret = drm_ioctl(filp, cmd, arg);
+
+	if (is_set_ccorr)
+		lynx_arbiter_unbind_ccorr_call_context();
+
+	if (is_get_hist) {
+		req_fetch_gen = disp_aal_get_task_fetch_gen();
+		disp_aal_finalize_get_hist_delivery(file_priv, (int)ret, req_fetch_gen);
+		disp_aal_clear_task_fetch_gen();
+	}
+
+	return ret;
+}
 
 static const struct file_operations mtk_drm_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
 	.release = drm_release,
-	.unlocked_ioctl = drm_ioctl,
+	.unlocked_ioctl = mtk_drm_ioctl,
 	.mmap = mtk_drm_gem_mmap,
 	.poll = drm_poll,
 	.read = drm_read,
 #ifdef CONFIG_COMPAT
-	.compat_ioctl = mtk_drm_compat_ioctl,
+	.compat_ioctl = mtk_drm_compat_ioctl, /* BLK-24: Bound 32-bit compat IOCTL entry point */
 #endif
 };
+
+/* Lynx Arbiter: DRM File Open Hook (BLK-30) */
+int mtk_drm_open(struct drm_device *dev, struct drm_file *file_priv)
+{
+	static atomic64_t s_open_counter = ATOMIC64_INIT(1);
+	struct lynx_drm_file_ctx *ctx;
+
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+
+	ctx->drm_open_id = (u64)atomic64_inc_return(&s_open_counter);
+	ctx->daemon_epoch = 0;
+	ctx->daemon_secid = 0;
+	ctx->fetched_seq = 0;
+	ctx->staged_seq = 0;
+	ctx->fetch_in_progress = false;
+	ctx->fetch_owner = NULL;
+	ctx->fetched_valid = false;
+	ctx->tgid = get_pid(task_tgid(current));
+	ctx->is_aal_daemon = false;
+
+	file_priv->driver_priv = ctx;
+	return 0;
+}
+
+/* Lynx Arbiter: DRM File Postclose Hook */
+void mtk_drm_postclose(struct drm_device *dev, struct drm_file *file_priv)
+{
+	struct lynx_drm_file_ctx *ctx = file_priv ? file_priv->driver_priv : NULL;
+
+	if (!ctx)
+		return;
+
+	file_priv->driver_priv = NULL;
+
+	/*
+	 * Always notify disp_aal_unregister_daemon_fd() so any in-flight
+	 * g_aal_hist_fetch_open_id reservation or active daemon registration
+	 * bound to this FD is deterministically cleaned up.
+	 */
+	disp_aal_unregister_daemon_fd(ctx->drm_open_id);
+
+	if (ctx->tgid)
+		put_pid(ctx->tgid);
+
+	kfree_rcu(ctx, rcu);
+}
 
 static struct drm_driver mtk_drm_driver = {
 	.driver_features =
@@ -3373,6 +3474,8 @@ static struct drm_driver mtk_drm_driver = {
 	.ioctls = mtk_ioctls,
 	.num_ioctls = ARRAY_SIZE(mtk_ioctls),
 	.fops = &mtk_drm_fops,
+	.open = mtk_drm_open,
+	.postclose = mtk_drm_postclose,
 
 	.name = DRIVER_NAME,
 	.desc = DRIVER_DESC,

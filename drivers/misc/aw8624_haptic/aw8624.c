@@ -3672,13 +3672,9 @@ static int aw8624_parse_dt(struct device *dev, struct aw8624 *aw8624,
 	}
 
 	aw8624->irq_gpio = of_get_named_gpio(np, "irq-gpio", 0);
-	if (aw8624->irq_gpio < 0) {
-		dev_err(dev, "%s: no irq gpio provided.\n", __func__);
-		aw8624->IsUsedIRQ = false;
-	} else {
-		dev_info(dev, "%s: irq gpio provided ok.\n", __func__);
-		aw8624->IsUsedIRQ = true;
-	}
+	/* On MT6781 X698, floating GPIO 52 triggers an interrupt storm (>1.8M wakeups); disable hardware IRQ */
+	aw8624->IsUsedIRQ = false;
+	aw8624->flags |= AW8624_FLAG_SKIP_INTERRUPTS;
 	aw8624->ram_update_delay =
 	of_property_read_bool(np, "ram-update-delay");
 	val = of_property_read_u32(np, "reg-real-addr", &aw8624->reg_real_addr);

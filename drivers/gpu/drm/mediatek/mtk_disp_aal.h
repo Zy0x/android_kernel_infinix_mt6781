@@ -16,6 +16,13 @@
 
 #include <linux/uaccess.h>
 #include <drm/mediatek_drm.h>
+#include <linux/types.h>
+#include <linux/mutex.h>
+#include <linux/spinlock.h>
+#include <linux/workqueue.h>
+#include <linux/pid.h>
+#include <linux/rcupdate.h>
+#include <linux/compiler.h>
 
 #define AAL_SERVICE_FORCE_UPDATE 0x1
 /*******************************/
@@ -151,6 +158,14 @@ void disp_aal_set_ess_level(int level);
 void disp_aal_set_ess_en(int enable);
 void disp_aal_set_dre_en(int enable);
 
+/*
+ * BLK-COMPILE-03: Forward declarations of DRM structures required before
+ * AAL IOCTL prototypes so non-DRM translation units (e.g. leds-mtk-pwm.c)
+ * do not trigger -Wvisibility warnings.
+ */
+struct drm_device;
+struct drm_file;
+
 int mtk_drm_ioctl_aal_eventctl(struct drm_device *dev, void *data,
 	struct drm_file *file_priv);
 int mtk_drm_ioctl_aal_get_hist(struct drm_device *dev, void *data,
@@ -163,6 +178,216 @@ int mtk_drm_ioctl_aal_get_size(struct drm_device *dev, void *data,
 	struct drm_file *file_priv);
 int mtk_drm_ioctl_aal_set_param(struct drm_device *dev, void *data,
 	struct drm_file *file_priv);
+
+/*
+ * Forward declarations. struct mtk_led_data is intentionally OPAQUE outside
+ * leds-mtk-pwm.c (BLK-22); arbiter code must only use accessor helpers.
+ */
+struct mtk_led_data;
+struct drm_device;
+struct drm_file;
+struct drm_crtc;
+struct mtk_ddp_comp;
+struct file;
+struct task_struct;
+
+/*
+ * BLK-39: Producer-Consumer FIFO Queue for Per-Transaction Silky Provenance.
+ * Each SET_PARAM (with silky_bright_flag != 0) enqueues an immutable transaction
+ * token record at silky_fifo_tail. Each Silky SET_CCORR consumer pops the oldest
+ * unconsumed record at silky_fifo_head, preventing a newer SET_PARAM from
+ * overwriting the provenance token of a delayed older SET_CCORR callback.
+ */
+#define LYNX_SILKY_FIFO_DEPTH 16
+
+struct lynx_silky_tx_item {
+	u64 tx_id;
+	u64 seq;
+	u32 epoch;
+	u64 open_id;
+	pid_t tid;
+	int backlight;
+};
+
+/* Lynx Unified Arbiter: Per-File DRM Context (BLK-25, BLK-30, BLK-39, BLK-40, BLK-41, BLK-42) */
+struct lynx_drm_file_ctx {
+	u64 drm_open_id;              /* Monotonically increasing unique 64-bit ID */
+	u32 daemon_epoch;             /* Snapshot of g_aal_daemon_epoch at registration */
+	u32 daemon_secid;             /* SELinux task secid bound at authenticated INIT_REG (BLK-30, BLK-41) */
+	pid_t daemon_tid;             /* Dedicated AALMain thread TID bound at INIT_REG (BLK-40) */
+	u64 fetched_seq;              /* Published sequence bound after drm_ioctl copy_to_user (BLK-20) */
+	u64 staged_seq;               /* Staged sequence captured inside GET_HIST before copy_to_user */
+	u64 fetch_gen;                /* Fetch generation counter for active reservation (BLK-42) */
+	struct lynx_silky_tx_item silky_fifo[LYNX_SILKY_FIFO_DEPTH]; /* Per-tx FIFO queue (BLK-39) */
+	u32 silky_fifo_head;          /* Consumer pop index under g_aal_hist_lock (BLK-39) */
+	u32 silky_fifo_tail;          /* Producer push index under g_aal_hist_lock (BLK-39) */
+	bool fetch_in_progress;       /* True while GET_HIST copy_to_user is in-flight (BLK-20) */
+	struct task_struct *fetch_owner; /* Task that staged the in-flight GET_HIST (BLK-20/23) */
+	bool fetched_valid;           /* True ONLY after drm_ioctl copy_to_user succeeds (BLK-12/14/20) */
+	struct pid *tgid;             /* Process TGID struct pid (holds reference) */
+	bool is_aal_daemon;           /* True if this FD successfully executed synchronous INIT_REG */
+	struct rcu_head rcu;          /* RCU head for safe, non-blocking deallocation */
+};
+
+/*
+ * Lynx Unified Arbiter: Full Backlight Authority Ownership Spectrum (BLK-19, BLK-26, BLK-34)
+ * Every physical PWM backlight mutation on X698 must pass through the arbiter
+ * under g_lynx_arbiter.arbiter_lock and attribute ownership to one of these
+ * six canonical sources.
+ */
+enum lynx_arbiter_owner {
+	LYNX_OWNER_SLIDER   = 0,
+	LYNX_OWNER_AAL      = 1,
+	LYNX_OWNER_CCORR    = 2,
+	LYNX_OWNER_THERMAL  = 3,
+	LYNX_OWNER_LEGACY   = 4,
+	LYNX_OWNER_WATCHDOG = 5,
+};
+
+/*
+ * Lynx Unified Arbiter: Master State Structure
+ *
+ * Lock Ordering & Authority Model (V5.4.8):
+ * 0. Transaction Outer Lock: g_aal_ioctl_lock (struct mutex in mtk_disp_aal.c)
+ *    - Serializes AAL ioctl transactions (INIT_REG, GET_HIST, SET_PARAM),
+ *      post-copy_to_user token publication (disp_aal_finalize_get_hist_delivery),
+ *      global g_aal_param, and callback/GCE completion flags.
+ * 1. Arbiter Transaction Lock: g_lynx_arbiter.arbiter_lock (struct mutex)
+ *    - Held across the ENTIRE synchronous SET_PARAM hardware transaction:
+ *        token validation -> synchronous GCE CMDQ flush & wait
+ *        (mtk_crtc_user_cmd_sync -> cmdq_pkt_flush -> cmdq_pkt_wait_complete) ->
+ *        GCE completion verification -> hardware PWM commit / Silky handoff.
+ *    - Also held across all slider, CCORR Silky handoff, thermal, legacy, and
+ *      watchdog backlight updates (BLK-17, BLK-18, BLK-19, BLK-26, BLK-28, BLK-30..34).
+ * 2. Disjoint Inner / Leaf Locks (Never Nested Inside Each Other):
+ *    - Level 2A: mtk_crtc->lock (struct mutex in mtk_drm_crtc.c, acquired and
+ *      released inside mtk_crtc_user_cmd_sync() / mtk_crtc_user_cmd()).
+ *    - Level 2B: leds_mutex (struct mutex in leds-mtk-pwm.c, acquired and
+ *      released inside mtk_led_pwm_set_hardware()).
+ *    - Level 2C: g_aal_hist_lock (spinlock_t, irqsave) — leaf spinlock
+ *      protecting causal sequence variables (slider_seq, min_valid_seq,
+ *      g_aal_hist_backlight_seq, ctx->staged_seq, ctx->fetch_in_progress,
+ *      ctx->fetched_seq, ctx->fetched_valid, g_aal_hist_fetch_busy,
+ *      silky_pending, silky_pending_seq, silky_pending_epoch,
+ *      silky_pending_backlight, silky_handoff_gen, silky_deadline_jiffies),
+ *      max_backlight, g_aal_hist, daemon secid (BLK-30), and daemon identity.
+ *
+ * Strict Nesting Hierarchy (Never Reversed):
+ *   g_aal_ioctl_lock -> arbiter_lock -> mtk_crtc->lock
+ *                    -> arbiter_lock -> g_aal_hist_lock
+ *                    -> arbiter_lock -> leds_mutex
+ */
+struct lynx_brightness_arbiter {
+	struct mutex arbiter_lock;         /* Master lock for arbiter state & transactions */
+	enum lynx_arbiter_owner active_owner;
+
+	/*
+	 * BLK-21, BLK-28, BLK-31: Explicit Separation of Unclamped Target
+	 * Brightness vs Thermally Clamped Applied Brightness.
+	 * When thermal throttling is released (even from a 0% thermal cap),
+	 * setMaxBrightness() unconditionally restores brightness from the
+	 * active owner's unclamped *_target_level.
+	 */
+	int slider_target_level;           /* Unclamped user slider target (0..4095) */
+	int aal_target_level;              /* Unclamped AAL FinalBacklight target (0..4095) */
+	int ccorr_target_level;            /* Unclamped CCORR Silky target (0..4095) */
+	int legacy_target_level;           /* Unclamped legacy workqueue target (0..4095) */
+	int slider_level;                  /* Latest applied slider level (post-clamp) */
+	int aal_level;                     /* Latest applied AAL level (post-clamp) */
+	int last_applied_level;            /* Current physical hardware PWM level */
+	int max_backlight;                 /* Physical maximum backlight (4095 on X698) */
+
+	/* Causal Sequence Fencing (Protected by g_aal_hist_lock) */
+	u64 slider_seq;                    /* Monotonic sequence for slider events */
+	u64 min_valid_seq;                 /* Causal fence: minimum valid sequence */
+
+	/*
+	 * BLK-26 & BLK-33: Silky Brightness Handoff State (Protected by g_aal_hist_lock
+	 * and serialized by arbiter_lock). Armed ONLY by mtk_drm_ioctl_aal_set_param()
+	 * when silky_bright_flag != 0 after synchronous GCE CMDQ completion.
+	 */
+	bool silky_pending;                /* True when AAL handed off frame to CCORR */
+	u64 silky_pending_seq;             /* Causal sequence bound to pending handoff */
+	u32 silky_pending_epoch;           /* Daemon epoch bound to pending handoff */
+	u64 silky_pending_open_id;         /* Bound DRM open_id for pending handoff (BLK-39) */
+	pid_t silky_pending_tid;           /* Bound daemon thread TID for pending handoff (BLK-39) */
+	int silky_pending_backlight;       /* Expected FinalBacklight from AAL SET_PARAM */
+	u64 silky_handoff_gen;             /* Monotonic handoff generation counter (BLK-33) */
+	u64 silky_pending_gen;             /* Explicit generation for pending handoff (BLK-39) */
+	u64 silky_consumed_gen;            /* Last consumed handoff generation (BLK-39) */
+	unsigned long silky_deadline_jiffies; /* Expiration deadline in jiffies (BLK-33) */
+
+	/* Thermal Throttling Integration (Protected by arbiter_lock) */
+	bool thermal_limited;              /* True when thermal throttling active */
+	int thermal_limit_level;           /* Clamped upper bound during throttle */
+
+	/* Watchdog & Safe Teardown (Protected by arbiter_lock) */
+	struct delayed_work timeout_work;  /* 1500ms watchdog for daemon stalls */
+	u64 watchdog_gen;                  /* Monotonic generation counter (BLK-06) */
+	u64 armed_watchdog_gen;            /* Generation bound to currently armed timer */
+	bool watchdog_armed;               /* True only when timer is actively armed */
+	bool shutting_down;                /* Flag preventing operations during shutdown */
+	bool initialized;                  /* True once lynx_arbiter_init succeeds */
+	struct mtk_led_data *led_dat;      /* Pointer to physical PWM LED data */
+
+	/* Telemetry & Diagnostic Counters */
+	u64 diag_slider_commits;
+	u64 diag_aal_commits;
+	u64 diag_ccorr_commits;
+	u64 diag_ccorr_rejects;
+	u64 diag_thermal_commits;
+	u64 diag_legacy_commits;
+	u64 diag_legacy_rejects;
+	u64 diag_auth_rejects;
+	u64 diag_stale_seq_drops;
+	u64 diag_watchdog_triggers;
+	u64 diag_invalid_pid;
+	u64 diag_daemon_inactive;
+	u64 diag_invalid_epoch;
+	u64 diag_out_of_range;
+	u64 diag_cmdq_sync_failures;
+};
+
+extern struct lynx_brightness_arbiter g_lynx_arbiter;
+
+/* Lynx Arbiter Public APIs */
+int lynx_arbiter_init(struct mtk_led_data *led_dat, int max_bl);
+void lynx_arbiter_deinit(void);
+bool lynx_arbiter_route_slider(struct mtk_led_data *led_dat, int slider_level);
+void lynx_arbiter_claim_ccorr_call_context(struct lynx_drm_file_ctx *ctx, unsigned long user_arg);
+void lynx_arbiter_bind_ccorr_call_context(u64 open_id, u32 epoch, pid_t tid, u64 tx_id, u64 seq, int backlight);
+void lynx_arbiter_unbind_ccorr_call_context(void);
+void lynx_arbiter_get_current_ccorr_context(u64 *open_id, u32 *epoch, pid_t *tid, u64 *tx_id, u64 *seq, int *backlight);
+bool lynx_arbiter_route_ccorr_silky(struct mtk_led_data *led_dat, int level, u64 open_id, u32 epoch, pid_t tid, u64 tx_id, u64 seq, int backlight);
+bool lynx_arbiter_route_ccorr_silky_locked(struct mtk_led_data *led_dat, int level, u64 open_id, u32 epoch, pid_t tid, u64 tx_id, u64 seq, int backlight);
+void lynx_arbiter_cancel_silky_pending_locked(void);
+bool lynx_arbiter_route_legacy(struct mtk_led_data *led_dat, int level);
+bool lynx_arbiter_route_legacy_locked(struct mtk_led_data *led_dat, int level);
+void lynx_arbiter_notify_slider(int slider_level);
+int lynx_arbiter_commit_aal_locked(struct lynx_drm_file_ctx *ctx,
+				   int backlight_level,
+				   u64 causal_seq,
+				   u32 expected_epoch);
+int disp_aal_validate_and_consume_token_locked(struct lynx_drm_file_ctx *ctx,
+					       int backlight_value,
+					       u64 *out_seq,
+					       u32 *out_epoch);
+void disp_aal_set_task_fetch_gen(u64 gen);
+u64 disp_aal_get_task_fetch_gen(void);
+void disp_aal_clear_task_fetch_gen(void);
+void disp_aal_finalize_get_hist_delivery(struct drm_file *file_priv, int ioctl_ret, u64 req_fetch_gen);
+void disp_aal_commit_daemon_registration(struct lynx_drm_file_ctx *ctx);
+void disp_aal_unregister_daemon_fd(u64 open_id);
+int mtk_crtc_user_cmd_sync(struct drm_crtc *crtc, struct mtk_ddp_comp *comp,
+			   unsigned int cmd, void *params,
+			   bool *out_cb_executed, bool *out_hw_completed);
+int mtk_led_pwm_set_hardware(struct mtk_led_data *led_dat, int brightness);
+void mtk_led_pwm_commit_level(struct mtk_led_data *led_dat, int level,
+			      bool update_brightness);
+int mtk_led_pwm_disable_hardware(struct mtk_led_data *led_dat);
+int mtk_drm_open(struct drm_device *dev, struct drm_file *file_priv);
+void mtk_drm_postclose(struct drm_device *dev, struct drm_file *file_priv);
+long mtk_drm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
 #endif
 

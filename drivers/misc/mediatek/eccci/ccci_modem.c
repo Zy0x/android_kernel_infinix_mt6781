@@ -2367,8 +2367,13 @@ int ccci_md_prepare_runtime_data(unsigned char md_id, unsigned char *data,
 				sizeof(struct ccci_misc_info_element);
 				c2k_flags = 0;
 
+#if defined(CONFIG_MTK_MD1_SUPPORT) && (CONFIG_MTK_MD1_SUPPORT == 9)
+				/* MT6781 X698 modem MCU firmware has no CDMA2000 RF front-end; force 0 to prevent assertion */
+				c2k_flags = 0;
+#else
 				if (check_rat_at_rt_setting(MD_SYS1, "C"))
 					c2k_flags |= (1 << 2);
+#endif
 				CCCI_NORMAL_LOG(md_id, TAG,
 					"c2k_flags 0x%X; MD_GENERATION: %d\n",
 					c2k_flags, MD_GENERATION);

@@ -54,6 +54,8 @@
 #include <linux/version.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
 
 #include <net/sock.h>
 #include <linux/spi/spi.h>
@@ -1492,9 +1494,37 @@ static struct spi_driver silfp_driver = {
 
 /*-------------------------------------------------------------------------*/
 
+static struct kobject *g_tran_fp_kobj;
+
+static ssize_t tran_fp_vendor_name_show(struct kobject *kobj,
+					struct kobj_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "silead\n");
+}
+
+static struct kobj_attribute tran_fp_vendor_name_attr =
+	__ATTR(vendor_name, 0444, tran_fp_vendor_name_show, NULL);
+
+static struct attribute *tran_fp_attrs[] = {
+	&tran_fp_vendor_name_attr.attr,
+	NULL,
+};
+
+static struct attribute_group tran_fp_attr_group = {
+	.attrs = tran_fp_attrs,
+};
+
 static int __init silfp_dev_init(void)
 {
     int status = 0;
+
+    g_tran_fp_kobj = kobject_create_and_add("tran_fp", kernel_kobj);
+    if (g_tran_fp_kobj) {
+        if (sysfs_create_group(g_tran_fp_kobj, &tran_fp_attr_group))
+            pr_err("%s: failed to create tran_fp sysfs group\n", __func__);
+        else
+            pr_info("%s: /sys/kernel/tran_fp/vendor_name created successfully\n", __func__);
+    }
 
 #ifndef CONFIG_TRAN_FINGERPRINT
     if ((FP_SILEAD_OPTICAL_70 != get_fpsensor_type())
@@ -1537,6 +1567,10 @@ module_init(silfp_dev_init);
 
 static void __exit silfp_dev_exit(void)
 {
+    if (g_tran_fp_kobj) {
+        sysfs_remove_group(g_tran_fp_kobj, &tran_fp_attr_group);
+        kobject_put(g_tran_fp_kobj);
+    }
     spi_unregister_driver(&silfp_driver);
     class_destroy(silfp_class);
     unregister_chrdev(FP_DEV_MAJOR, silfp_driver.driver.name);

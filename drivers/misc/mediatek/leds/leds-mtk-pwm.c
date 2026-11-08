@@ -20,6 +20,7 @@
 #include <linux/workqueue.h>
 
 #include "leds-mtk-pwm.h"
+#include "../../../gpu/drm/mediatek/mtk_disp_aal.h"
 
 
 #define CONFIG_LEDS_BRIGHTNESS_CHANGED
@@ -169,11 +170,13 @@ static int getLedDespIndex(char *name)
 static void __led_pwm_set(struct led_pwm_info *led_info)
 {
 	int new_duty = led_info->duty;
+	int off_duty = led_info->config.active_low ?
+		led_info->config.pwm_period_ns : 0;
 
 	mutex_lock(&leds_mutex);
 
 	pwm_config(led_info->pwm, new_duty, led_info->config.pwm_period_ns);
-	if (new_duty == 0)
+	if (new_duty == off_duty)
 		pwm_disable(led_info->pwm);
 	else
 		pwm_enable(led_info->pwm);
@@ -181,20 +184,45 @@ static void __led_pwm_set(struct led_pwm_info *led_info)
 	mutex_unlock(&leds_mutex);
 }
 
-static int led_level_pwm_set(struct mtk_led_data *led_dat,
-				int brightness)
+/*
+ * BLK-19 & P2 PWM Level-0 Audit: Low-level hardware PWM register helper.
+ * The legacy static wrapper led_level_pwm_set() has been removed completely.
+ * For the primary display backlight ("lcd-backlight"), this function is
+ * ONLY invoked while holding g_lynx_arbiter.arbiter_lock (or during final
+ * platform teardown after lynx_arbiter_deinit()).
+ * Explicitly clamps negative brightness to 0 and ensures the PWM channel is
+ * disabled whenever brightness == 0 (even if active_low inverts duty).
+ */
+int mtk_led_pwm_set_hardware(struct mtk_led_data *led_dat, int brightness)
 {
 	unsigned int max;
 	unsigned long long duty;
 
-	brightness = min(brightness, led_dat->conf.max_level);
-	if (brightness == led_dat->conf.level)
-		return 0;
+	if (!led_dat)
+		return -EINVAL;
 
+	/* BLK-44: Immediate glitch-free shutdown for zero brightness (period_ns on active_low) */
+	if (brightness <= 0) {
+		int off_duty = led_dat->info.config.active_low ?
+			led_dat->info.config.pwm_period_ns : 0;
+
+		led_dat->conf.level = 0;
+		led_dat->info.duty = off_duty;
+		mutex_lock(&leds_mutex);
+		pwm_config(led_dat->info.pwm, off_duty,
+			   led_dat->info.config.pwm_period_ns);
+		pwm_disable(led_dat->info.pwm);
+		mutex_unlock(&leds_mutex);
+		return 0;
+	}
+
+	brightness = min(brightness, led_dat->conf.max_level);
 	led_dat->conf.level = brightness;
 	max = (1 << led_dat->conf.trans_bits) - 1;
+	if (max <= 0)
+		max = 4095;
 	duty = led_dat->info.config.pwm_period_ns;
-	duty *= brightness;
+	duty *= (unsigned int)brightness;
 	do_div(duty, max);
 
 	if (led_dat->info.config.active_low)
@@ -203,52 +231,134 @@ static int led_level_pwm_set(struct mtk_led_data *led_dat,
 	led_dat->info.duty = duty;
 
 	__led_pwm_set(&led_dat->info);
-
 	return 0;
 }
+EXPORT_SYMBOL(mtk_led_pwm_set_hardware);
 
+/*
+ * BLK-22: Opaque accessor used by the Lynx Arbiter (mtk_disp_aal.c), which
+ * cannot dereference struct mtk_led_data. Programs hardware PWM and updates
+ * last_level (and optionally brightness). Caller must hold
+ * g_lynx_arbiter.arbiter_lock for the "lcd-backlight" device.
+ */
+void mtk_led_pwm_commit_level(struct mtk_led_data *led_dat, int level,
+			      bool update_brightness)
+{
+	if (!led_dat)
+		return;
+
+	mtk_led_pwm_set_hardware(led_dat, level);
+	led_dat->last_level = level;
+	if (update_brightness)
+		led_dat->brightness = level;
+}
+EXPORT_SYMBOL(mtk_led_pwm_commit_level);
+
+/*
+ * BLK-19, BLK-26, BLK-30, BLK-33: Route mt_leds_brightness_set() through the
+ * dedicated CCORR Silky Brightness handoff validator lynx_arbiter_route_ccorr_silky().
+ * Unverified callers attempting to mutate "lcd-backlight" without an active,
+ * unexpired AAL Silky handoff token are rejected by lynx_arbiter_route_ccorr_silky().
+ */
 int mt_leds_brightness_set(char *name, int level)
 {
 	struct mtk_led_data *led_dat;
+	u64 cb_open_id = 0, cb_tx_id = 0, cb_seq = 0;
+	u32 cb_epoch = 0;
+	pid_t cb_tid = 0;
+	int cb_backlight = -1;
 	int index;
+	bool routed;
+
+	/*
+	 * BLK-38: Acquire arbiter_lock BEFORE touching shutting_down or dereferencing
+	 * leds_info to guarantee mutual exclusion against driver teardown / UAF.
+	 */
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	if (unlikely(g_lynx_arbiter.shutting_down || !leds_info)) {
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return 0;
+	}
 
 	index = getLedDespIndex(name);
 	if (index < 0) {
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
 		pr_notice("can not find leds by led_desp %s", name);
 		return -1;
 	}
 	led_dat = container_of(leds_info->leds[index],
 		struct mtk_led_data, desp);
-	led_level_pwm_set(led_dat, level);
-	led_dat->conf.level = level;
+
+	lynx_arbiter_get_current_ccorr_context(&cb_open_id, &cb_epoch, &cb_tid,
+					       &cb_tx_id, &cb_seq, &cb_backlight);
+	/*
+	 * BLK-19, BLK-38, BLK-39: Verify Silky Brightness handoff token
+	 * against full FIFO-popped provenance tuple (open_id + epoch + tid + tx_id + seq + backlight).
+	 */
+	routed = lynx_arbiter_route_ccorr_silky_locked(led_dat, level, cb_open_id, cb_epoch,
+						       cb_tid, cb_tx_id, cb_seq, cb_backlight);
+	if (!routed) {
+		/* BLK-43: Secondary LED (not lcd-backlight) updated under arbiter_lock with thermal clamp */
+		int effective_level = min(level, led_dat->conf.max_level);
+		mtk_led_pwm_set_hardware(led_dat, effective_level);
+		led_dat->conf.level = effective_level;
+		led_dat->brightness = effective_level;
+	}
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
 
 	return 0;
 }
 EXPORT_SYMBOL(mt_leds_brightness_set);
 
+/*
+ * BLK-19, BLK-26, BLK-34, BLK-38: Route mtk_led_work() deferred workqueue path through
+ * lynx_arbiter_route_legacy_locked() with arbiter_lock held throughout.
+ */
 void mtk_led_work(struct work_struct *work)
 {
 	struct mtk_led_data *led_data =
 	    container_of(work, struct mtk_led_data, work);
 
-	led_level_pwm_set(led_data, led_data->conf.level);
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	if (unlikely(g_lynx_arbiter.shutting_down || !leds_info)) {
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return;
+	}
+
+	if (!lynx_arbiter_route_legacy_locked(led_data, led_data->conf.level)) {
+		mtk_led_pwm_set_hardware(led_data, led_data->conf.level);
+	}
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
 }
 
 
-#ifndef CONFIG_MTK_AAL_SUPPORT
 static int led_pwm_disable(struct led_pwm_info *led_info)
 {
+	int off_duty;
+
+	if (unlikely(!led_info || !led_info->pwm))
+		return 0;
+
+	/* BLK-44: Active-low panels require period_ns duty for zero light emission */
+	off_duty = led_info->config.active_low ?
+		led_info->config.pwm_period_ns : 0;
+	led_info->duty = off_duty;
 
 	mutex_lock(&leds_mutex);
-
-	pwm_config(led_info->pwm, 0, led_info->config.pwm_period_ns);
+	pwm_config(led_info->pwm, off_duty, led_info->config.pwm_period_ns);
 	pwm_disable(led_info->pwm);
-
 	mutex_unlock(&leds_mutex);
 
 	return 0;
 }
-#endif
+
+int mtk_led_pwm_disable_hardware(struct mtk_led_data *led_dat)
+{
+	if (!led_dat)
+		return -EINVAL;
+	return led_pwm_disable(&(led_dat->info));
+}
+EXPORT_SYMBOL(mtk_led_pwm_disable_hardware);
 
 static int led_level_set(struct led_classdev *led_cdev,
 					  enum led_brightness brightness)
@@ -260,7 +370,7 @@ static int led_level_set(struct led_classdev *led_cdev,
 	struct mtk_led_data *led_dat =
 		container_of(led_conf, struct mtk_led_data, conf);
 
-	if (led_dat->brightness == brightness)
+	if (unlikely(READ_ONCE(g_lynx_arbiter.shutting_down)))
 		return 0;
 
 	led_dat->brightness = brightness;
@@ -270,6 +380,9 @@ static int led_level_set(struct led_classdev *led_cdev,
 		+ (((1 << led_dat->conf.led_bits) - 1) / 2))
 		/ ((1 << led_dat->conf.led_bits) - 1));
 
+	if (brightness != 0 && trans_level == 0)
+		trans_level = 1;
+
 	led_debug_log(led_dat, brightness, trans_level);
 
 #ifdef MET_USER_EVENT_SUPPORT
@@ -277,15 +390,28 @@ static int led_level_set(struct led_classdev *led_cdev,
 		output_met_backlight_tag(brightness);
 #endif
 
+	/*
+	 * BLK-07, BLK-19, BLK-43: Evaluate lifecycle and pointer identity strictly inside
+	 * arbiter_lock via lynx_arbiter_route_slider(). For secondary LEDs, serialize
+	 * under arbiter_lock and respect thermal max_level clamp.
+	 */
+	if (!lynx_arbiter_route_slider(led_dat, trans_level)) {
+		mutex_lock(&g_lynx_arbiter.arbiter_lock);
+		if (READ_ONCE(g_lynx_arbiter.initialized) &&
+		    !READ_ONCE(g_lynx_arbiter.shutting_down)) {
+			int effective_level = min(trans_level, led_dat->conf.max_level);
+			mtk_led_pwm_set_hardware(led_dat, effective_level);
+			led_dat->last_level = effective_level;
+		}
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+	}
+
 #ifdef CONFIG_LEDS_BRIGHTNESS_CHANGED
 	call_notifier(1, led_dat);
 #endif
 #ifdef CONFIG_MTK_AAL_SUPPORT
-		disp_pq_notify_backlight_changed(trans_level);
+	disp_pq_notify_backlight_changed(trans_level);
 #endif
-	/* Authentic Transsion Hardware PWM Backlight: ALWAYS drive PWM controller */
-	led_level_pwm_set(led_dat, trans_level);
-	led_dat->last_level = trans_level;
 	return 0;
 
 }
@@ -300,9 +426,22 @@ int setMaxBrightness(char *name, int percent, bool enable)
 	struct mtk_led_data *led_dat;
 	int max_l = 0, index = -1, limit_l = 0, cur_l = 0;
 
+	/*
+	 * BLK-38: Acquire arbiter_lock BEFORE accessing leds_info or shutting_down
+	 * to eliminate lifecycle race conditions and UAF.
+	 */
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	if (unlikely(!g_lynx_arbiter.initialized ||
+		     g_lynx_arbiter.shutting_down ||
+		     !leds_info)) {
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return 0;
+	}
+
 	index = getLedDespIndex(name);
 	if (index < 0) {
-		pr_notice("can not find leds by led_desp %s", name);
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		pr_notice("can not find leds by led_desp %s\n", name);
 		return -1;
 	}
 	led_dat = container_of(leds_info->leds[index],
@@ -310,21 +449,96 @@ int setMaxBrightness(char *name, int percent, bool enable)
 
 	max_l = (1 << led_dat->conf.trans_bits) - 1;
 	limit_l = (percent * max_l) / 100;
-	pr_info("before: name: %s, percent : %d, limit_l : %d, enable: %d",
+	limit_l = clamp(limit_l, 0, max_l);
+	pr_info("before: name: %s, percent : %d, limit_l : %d, enable: %d\n",
 		leds_info->leds[index]->name, percent, limit_l, enable);
-	if (enable) {
-		led_dat->conf.max_level = limit_l;
-		cur_l = min(led_dat->last_level, limit_l);
-	} else if (!enable) {
-		led_dat->conf.max_level = max_l;
-		cur_l = led_dat->last_level;
+
+	/*
+	 * BLK-35 & BLK-43: Validate that led_dat strictly matches g_lynx_arbiter.led_dat.
+	 * If it is a secondary LED (e.g. button, flash, notification), execute local
+	 * secondary LED thermal throttling without modifying master arbiter state,
+	 * keeping arbiter_lock held throughout hardware write (BLK-43).
+	 */
+	if (unlikely(!g_lynx_arbiter.led_dat ||
+		     g_lynx_arbiter.led_dat != led_dat)) {
+		if (enable) {
+			led_dat->conf.max_level = limit_l;
+			cur_l = min(led_dat->last_level, limit_l);
+		} else {
+			led_dat->conf.max_level = max_l;
+			cur_l = led_dat->last_level;
+		}
+#ifdef CONFIG_LEDS_BRIGHTNESS_CHANGED
+		call_notifier(3, led_dat);
+#endif
+		if (led_dat->conf.cdev.brightness != 0)
+			mtk_led_pwm_set_hardware(led_dat, cur_l);
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return 0;
 	}
+
+	if (enable) {
+		g_lynx_arbiter.thermal_limited = true;
+		g_lynx_arbiter.thermal_limit_level = limit_l;
+		led_dat->conf.max_level = limit_l;
+	} else {
+		g_lynx_arbiter.thermal_limited = false;
+		g_lynx_arbiter.thermal_limit_level = max_l;
+		led_dat->conf.max_level = max_l;
+	}
+
+	/*
+	 * BLK-33: Explicitly invalidate any pending Silky Brightness handoff
+	 * via encapsulated arbiter helper whenever thermal limits change.
+	 */
+	lynx_arbiter_cancel_silky_pending_locked();
+
+	/*
+	 * BLK-21, BLK-28, BLK-31: Select the active owner's UNCLAMPED target
+	 * brightness (aal_target_level, ccorr_target_level, legacy_target_level,
+	 * or slider_target_level).
+	 */
+	switch (g_lynx_arbiter.active_owner) {
+	case LYNX_OWNER_AAL:
+		cur_l = g_lynx_arbiter.aal_target_level;
+		break;
+	case LYNX_OWNER_CCORR:
+		cur_l = g_lynx_arbiter.ccorr_target_level;
+		break;
+	case LYNX_OWNER_LEGACY:
+		cur_l = g_lynx_arbiter.legacy_target_level;
+		break;
+	case LYNX_OWNER_SLIDER:
+	case LYNX_OWNER_WATCHDOG:
+	case LYNX_OWNER_THERMAL:
+	default:
+		cur_l = g_lynx_arbiter.slider_target_level;
+		break;
+	}
+
+	if (g_lynx_arbiter.thermal_limited && cur_l > g_lynx_arbiter.thermal_limit_level)
+		cur_l = g_lynx_arbiter.thermal_limit_level;
+
+	if (g_lynx_arbiter.active_owner == LYNX_OWNER_AAL)
+		g_lynx_arbiter.aal_level = cur_l;
+	else if (g_lynx_arbiter.active_owner == LYNX_OWNER_SLIDER ||
+		 g_lynx_arbiter.active_owner == LYNX_OWNER_WATCHDOG)
+		g_lynx_arbiter.slider_level = cur_l;
+
+	g_lynx_arbiter.diag_thermal_commits++;
+
+	if (cur_l > 0 ||
+	    g_lynx_arbiter.last_applied_level != cur_l ||
+	    led_dat->conf.level != cur_l) {
+		g_lynx_arbiter.last_applied_level = cur_l;
+		mtk_led_pwm_set_hardware(led_dat, cur_l);
+		led_dat->last_level = cur_l;
+	}
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+
 #ifdef CONFIG_LEDS_BRIGHTNESS_CHANGED
 	call_notifier(3, led_dat);
 #endif
-
-	if (led_dat->conf.cdev.brightness != 0)
-		led_level_pwm_set(led_dat, cur_l);
 
 	pr_info("after: name: %s, cur_l : %d, max_level : %d",
 		led_dat->conf.cdev.name, cur_l, led_dat->conf.max_level);
@@ -339,7 +553,7 @@ static int led_data_init(struct device *dev, struct mtk_led_data *s_led)
 
 	s_led->conf.cdev.default_trigger = s_led->info.config.default_trigger;
 	s_led->conf.cdev.max_brightness = s_led->info.config.max_brightness;
-	s_led->conf.cdev.flags = LED_CORE_SUSPENDRESUME;
+	s_led->conf.cdev.flags = 0;
 	s_led->conf.cdev.brightness_set_blocking = led_level_set;
 	s_led->brightness = 0;
 	s_led->conf.level = s_led->brightness;
@@ -484,8 +698,38 @@ static int mtk_leds_parse_dt(struct device *dev,
 		ret = led_data_init(dev, s_led);
 		if (ret)
 			goto out_led_dt;
-		led_pwm_config_add(dev, s_led, child);
-		led_level_set(&s_led->conf.cdev, level);
+		ret = led_pwm_config_add(dev, s_led, child);
+		if (ret)
+			goto out_led_dt;
+
+		/*
+		 * BLK-09 & BLK-22: Match strictly by the canonical "lcd-backlight"
+		 * device name (do not use num == 0) and mark s_led->parent = m_leds
+		 * ONLY after led_data_init, led_pwm_config_add, and
+		 * lynx_arbiter_init have all succeeded.
+		 */
+		if (!strcmp(s_led->conf.cdev.name, "lcd-backlight")) {
+			ret = lynx_arbiter_init(s_led,
+				(1 << s_led->conf.trans_bits) - 1);
+			if (ret < 0) {
+				pr_notice("Failed to init Lynx Arbiter: %d\n", ret);
+				goto out_led_dt;
+			}
+			/*
+			 * BLK-45: Set initial boot hardware level directly without
+			 * invoking led_level_set(), preserving LYNX_OWNER_LEGACY
+			 * until actual user slider interaction.
+			 */
+			s_led->parent = m_leds;
+			s_led->conf.level = level;
+			mtk_led_pwm_set_hardware(s_led, level);
+			mtk_led_pwm_commit_level(s_led, level, true);
+			g_lynx_arbiter.legacy_target_level = level;
+			g_lynx_arbiter.last_applied_level = level;
+		} else {
+			s_led->parent = m_leds;
+			led_level_set(&s_led->conf.cdev, level);
+		}
 		num++;
 	}
 	m_leds->nums = num;
@@ -532,6 +776,9 @@ static int mtk_leds_probe(struct platform_device *pdev)
 	ret = mtk_leds_parse_dt(&(pdev->dev), m_leds);
 	if (ret) {
 		pr_notice("Failed to parse devicetree!\n");
+		lynx_arbiter_deinit();
+		leds_info = NULL;
+		platform_set_drvdata(pdev, NULL);
 		goto err;
 	}
 
@@ -539,6 +786,8 @@ static int mtk_leds_probe(struct platform_device *pdev)
 	return 0;
  err:
 	pr_notice("Failed to probe!\n");
+	leds_info = NULL;
+	platform_set_drvdata(pdev, NULL);
 	ret = -ENOMEM;
 	return ret;
 }
@@ -546,19 +795,33 @@ static int mtk_leds_probe(struct platform_device *pdev)
 static int mtk_leds_remove(struct platform_device *pdev)
 {
 	int i;
-	struct mtk_leds_info *m_leds = dev_get_platdata(&pdev->dev);
+	struct mtk_leds_info *m_leds = platform_get_drvdata(pdev);
+
+	/*
+	 * BLK-38: Deinitialize Lynx Arbiter first under lock; cancels watchdog
+	 * synchronously while initialized flag is still recorded as true.
+	 */
+	lynx_arbiter_deinit();
+
+	/* Atomically nullify leds_info and ensure no in-flight brightness setters proceed */
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	leds_info = NULL;
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
 
 	if (!m_leds)
 		return 0;
+
+	/* Step 2: Unregister LED class devices that completed full initialization */
 	for (i = 0; i < m_leds->nums; i++) {
 		if (!m_leds->leds[i].parent)
 			continue;
 		led_classdev_unregister(&m_leds->leds[i].conf.cdev);
 		cancel_work_sync(&m_leds->leds[i].work);
+		mtk_led_pwm_disable_hardware(&(m_leds->leds[i]));
 		m_leds->leds[i].parent = NULL;
 	}
-	kfree(m_leds);
-	m_leds = NULL;
+	platform_set_drvdata(pdev, NULL);
+	devm_kfree(&pdev->dev, m_leds);
 
 	return 0;
 }
@@ -566,25 +829,30 @@ static int mtk_leds_remove(struct platform_device *pdev)
 static void mtk_leds_shutdown(struct platform_device *pdev)
 {
 	int i;
-	struct mtk_leds_info *m_leds = dev_get_platdata(&pdev->dev);
+	struct mtk_leds_info *m_leds = platform_get_drvdata(pdev);
 
 	pr_info("Turn off backlight\n");
 
+	/*
+	 * BLK-38: Deinitialize Lynx Arbiter first under lock; cancels watchdog
+	 * synchronously while initialized flag is still recorded as true.
+	 */
+	lynx_arbiter_deinit();
+
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	leds_info = NULL;
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+
 	for (i = 0; m_leds && i < m_leds->nums; i++) {
-		if (!&(m_leds->leds[i]))
+		if (!m_leds->leds[i].parent)
 			continue;
 #ifdef CONFIG_LEDS_BRIGHTNESS_CHANGED
+		/* BLK-36: Preserve shutdown notification event for kernel subsystems */
 		call_notifier(2, &(m_leds->leds[i]));
-#ifdef CONFIG_MTK_AAL_SUPPORT
-		continue;
-#else
-		led_pwm_disable(&(m_leds->leds[i].info));
 #endif
-#else
-		led_pwm_disable(&(m_leds->leds[i].info));
-#endif
+		mtk_led_pwm_set_hardware(&(m_leds->leds[i]), 0);
+		mtk_led_pwm_disable_hardware(&(m_leds->leds[i]));
 	}
-
 }
 
 static const struct of_device_id of_mtk_pwm_leds_match[] = {

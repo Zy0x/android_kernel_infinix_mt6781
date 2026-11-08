@@ -88,6 +88,7 @@ unsigned int get_PCB_Version(void);
 #include <linux/iio/consumer.h>
 extern bool is_vooc_project(void);
 #include <soc/oplus/system/oplus_project.h>
+
 extern unsigned int is_project(int project);
 extern bool prj_use_mt6768(void);
 extern void oplus_chg_fg_can_not_update(char *fg_erro_info);
@@ -831,6 +832,7 @@ void fg_custom_init_from_header(void)
 
 	fgauge_get_profile_id();
 
+	BUILD_BUG_ON(sizeof(struct fuel_gauge_custom_data) != 664);
 	fg_cust_data.versionID1 = FG_DAEMON_CMD_FROM_USER_NUMBER;
 	fg_cust_data.versionID2 = sizeof(fg_cust_data);
 	fg_cust_data.versionID3 = FG_KERNEL_CMD_FROM_USER_NUMBER;
@@ -988,7 +990,7 @@ void fg_custom_init_from_header(void)
 	fg_cust_data.pseudo1_sel = PSEUDO1_SEL;
 
 	fg_cust_data.d0_sel = D0_SEL;
-	fg_cust_data.dlpt_ui_remap_en = DLPT_UI_REMAP_EN;
+	fg_cust_ext.dlpt_ui_remap_en = DLPT_UI_REMAP_EN;
 
 	fg_cust_data.aging_sel = AGING_SEL;
 	fg_cust_data.bat_par_i = BAT_PAR_I;
@@ -1025,16 +1027,16 @@ void fg_custom_init_from_header(void)
 	fg_cust_data.ui_full_limit_ith4 = UI_FULL_LIMIT_ITH4;
 	fg_cust_data.ui_full_limit_time = UI_FULL_LIMIT_TIME;
 
-	fg_cust_data.ui_full_limit_fc_soc0 = UI_FULL_LIMIT_FC_SOC0;
-	fg_cust_data.ui_full_limit_fc_ith0 = UI_FULL_LIMIT_FC_ITH0;
-	fg_cust_data.ui_full_limit_fc_soc1 = UI_FULL_LIMIT_FC_SOC1;
-	fg_cust_data.ui_full_limit_fc_ith1 = UI_FULL_LIMIT_FC_ITH1;
-	fg_cust_data.ui_full_limit_fc_soc2 = UI_FULL_LIMIT_FC_SOC2;
-	fg_cust_data.ui_full_limit_fc_ith2 = UI_FULL_LIMIT_FC_ITH2;
-	fg_cust_data.ui_full_limit_fc_soc3 = UI_FULL_LIMIT_FC_SOC3;
-	fg_cust_data.ui_full_limit_fc_ith3 = UI_FULL_LIMIT_FC_ITH3;
-	fg_cust_data.ui_full_limit_fc_soc4 = UI_FULL_LIMIT_FC_SOC4;
-	fg_cust_data.ui_full_limit_fc_ith4 = UI_FULL_LIMIT_FC_ITH4;
+	fg_cust_ext.ui_full_limit_fc_soc0 = UI_FULL_LIMIT_FC_SOC0;
+	fg_cust_ext.ui_full_limit_fc_ith0 = UI_FULL_LIMIT_FC_ITH0;
+	fg_cust_ext.ui_full_limit_fc_soc1 = UI_FULL_LIMIT_FC_SOC1;
+	fg_cust_ext.ui_full_limit_fc_ith1 = UI_FULL_LIMIT_FC_ITH1;
+	fg_cust_ext.ui_full_limit_fc_soc2 = UI_FULL_LIMIT_FC_SOC2;
+	fg_cust_ext.ui_full_limit_fc_ith2 = UI_FULL_LIMIT_FC_ITH2;
+	fg_cust_ext.ui_full_limit_fc_soc3 = UI_FULL_LIMIT_FC_SOC3;
+	fg_cust_ext.ui_full_limit_fc_ith3 = UI_FULL_LIMIT_FC_ITH3;
+	fg_cust_ext.ui_full_limit_fc_soc4 = UI_FULL_LIMIT_FC_SOC4;
+	fg_cust_ext.ui_full_limit_fc_ith4 = UI_FULL_LIMIT_FC_ITH4;
 
 	/* voltage limit for uisoc 1% */
 	fg_cust_data.ui_low_limit_en = UI_LOW_LIMIT_EN;
@@ -1714,25 +1716,25 @@ void fg_custom_init_from_dts(struct platform_device *dev)
 
 
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_SOC0",
-		&(fg_cust_data.ui_full_limit_fc_soc0), 1);
+		&(fg_cust_ext.ui_full_limit_fc_soc0), 1);
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_ITH0",
-		&(fg_cust_data.ui_full_limit_fc_ith0), 1);
+		&(fg_cust_ext.ui_full_limit_fc_ith0), 1);
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_SOC1",
-		&(fg_cust_data.ui_full_limit_fc_soc1), 1);
+		&(fg_cust_ext.ui_full_limit_fc_soc1), 1);
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_ITH1",
-		&(fg_cust_data.ui_full_limit_fc_ith1), 1);
+		&(fg_cust_ext.ui_full_limit_fc_ith1), 1);
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_SOC2",
-		&(fg_cust_data.ui_full_limit_fc_soc2), 1);
+		&(fg_cust_ext.ui_full_limit_fc_soc2), 1);
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_ITH2",
-		&(fg_cust_data.ui_full_limit_fc_ith2), 1);
+		&(fg_cust_ext.ui_full_limit_fc_ith2), 1);
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_SOC3",
-		&(fg_cust_data.ui_full_limit_fc_soc3), 1);
+		&(fg_cust_ext.ui_full_limit_fc_soc3), 1);
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_ITH3",
-		&(fg_cust_data.ui_full_limit_fc_ith3), 1);
+		&(fg_cust_ext.ui_full_limit_fc_ith3), 1);
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_SOC4",
-		&(fg_cust_data.ui_full_limit_fc_soc4), 1);
+		&(fg_cust_ext.ui_full_limit_fc_soc4), 1);
 	fg_read_dts_val(np, "UI_FULL_LIMIT_FC_ITH4",
-		&(fg_cust_data.ui_full_limit_fc_ith4), 1);
+		&(fg_cust_ext.ui_full_limit_fc_ith4), 1);
 
 	/* voltage limit for uisoc 1% */
 	fg_read_dts_val(np, "UI_LOW_LIMIT_EN", &(fg_cust_data.ui_low_limit_en),
@@ -1768,33 +1770,33 @@ void fg_custom_init_from_dts(struct platform_device *dev)
 
 	/* battery health */
 	fg_read_dts_val(np, "AGING_DIFF_MAX_THRESHOLD",
-		&(fg_cust_data.aging_diff_max_threshold), 1);
+		&(fg_cust_ext.aging_diff_max_threshold), 1);
 	fg_read_dts_val(np, "AGING_DIFF_MAX_LEVEL",
-		&(fg_cust_data.aging_diff_max_level), 1);
+		&(fg_cust_ext.aging_diff_max_level), 1);
 	fg_read_dts_val(np, "AGING_FACTOR_T_MIN",
-		&(fg_cust_data.aging_factor_t_min), 1);
+		&(fg_cust_ext.aging_factor_t_min), 1);
 	fg_read_dts_val(np, "CYCLE_DIFF",
-		&(fg_cust_data.cycle_diff), 1);
+		&(fg_cust_ext.cycle_diff), 1);
 	fg_read_dts_val(np, "AGING_COUNT_MIN",
-		&(fg_cust_data.aging_count_min), 1);
+		&(fg_cust_ext.aging_count_min), 1);
 	fg_read_dts_val(np, "DEFAULT_SCORE",
-		&(fg_cust_data.default_score), 1);
+		&(fg_cust_ext.default_score), 1);
 	fg_read_dts_val(np, "DEFAULT_SCORE_QUANTITY",
-		&(fg_cust_data.default_score_quantity), 1);
+		&(fg_cust_ext.default_score_quantity), 1);
 	fg_read_dts_val(np, "FAST_CYCLE_SET",
-		&(fg_cust_data.fast_cycle_set), 1);
+		&(fg_cust_ext.fast_cycle_set), 1);
 	fg_read_dts_val(np, "LEVEL_MAX_CHANGE_BAT",
-		&(fg_cust_data.level_max_change_bat), 1);
+		&(fg_cust_ext.level_max_change_bat), 1);
 	fg_read_dts_val(np, "DIFF_MAX_CHANGE_BAT",
-		&(fg_cust_data.diff_max_change_bat), 1);
+		&(fg_cust_ext.diff_max_change_bat), 1);
 	fg_read_dts_val(np, "AGING_TRACKING_START",
-		&(fg_cust_data.aging_tracking_start), 1);
+		&(fg_cust_ext.aging_tracking_start), 1);
 	fg_read_dts_val(np, "MAX_AGING_DATA",
-		&(fg_cust_data.max_aging_data), 1);
+		&(fg_cust_ext.max_aging_data), 1);
 	fg_read_dts_val(np, "MAX_FAST_DATA",
-		&(fg_cust_data.max_fast_data), 1);
+		&(fg_cust_ext.max_fast_data), 1);
 	fg_read_dts_val(np, "FAST_DATA_THRESHOLD_SCORE",
-		&(fg_cust_data.fast_data_threshold_score), 1);
+		&(fg_cust_ext.fast_data_threshold_score), 1);
 
 	fg_read_dts_val(np, "DISABLE_MTKBATTERY",
 		(int *)&(gm.disable_mtkbattery), 1);

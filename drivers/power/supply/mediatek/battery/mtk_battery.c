@@ -529,6 +529,8 @@ static int mtk_battery_get_ui_capacity(struct battery_data *data)
 		return gm.fixed_uisoc;
 	if (gm.ui_soc >= 0 && gm.ui_soc <= 100)
 		return gm.ui_soc;
+	if (gm.soc > 0 && gm.soc <= 10000)
+		return (gm.soc + 50) / 100;
 	if (data && data->BAT_CAPACITY >= 0 && data->BAT_CAPACITY <= 100)
 		return data->BAT_CAPACITY;
 	return -1;
@@ -601,11 +603,16 @@ static int battery_get_property(struct power_supply *psy,
 			fg_table_cust_data.fg_profile[gm.battery_id].q_max
 			* 1000;
 		break;
-	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
-		val->intval = gm.ui_soc *
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER: {
+		int cap = mtk_battery_get_ui_capacity(data);
+
+		if (cap < 0)
+			cap = 0;
+		val->intval = cap *
 			fg_table_cust_data.fg_profile[gm.battery_id].q_max
 			* 1000 / 100;
 		break;
+	}
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		val->intval = data->BAT_batt_vol * 1000;
 		if (val->intval <= 0)
@@ -803,6 +810,7 @@ int bat_get_debug_level(void)
 static void nl_send_to_user(u32 pid, int seq, struct fgd_nl_msg_t *reply_msg);
 
 struct fuel_gauge_custom_data fg_cust_data;
+struct fuel_gauge_custom_data_ext fg_cust_ext;
 struct fuel_gauge_table_custom_data fg_table_cust_data;
 
 
@@ -2812,7 +2820,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 600:
 		{
-			fg_cust_data.aging_diff_max_threshold = param;
+			fg_cust_ext.aging_diff_max_threshold = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, aging_diff_max_threshold:%d\n",
 				cmd, param);
@@ -2820,7 +2828,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 601:
 		{
-			fg_cust_data.aging_diff_max_level = param;
+			fg_cust_ext.aging_diff_max_level = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, aging_diff_max_level:%d\n",
 				cmd, param);
@@ -2828,7 +2836,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 602:
 		{
-			fg_cust_data.aging_factor_t_min = param;
+			fg_cust_ext.aging_factor_t_min = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, aging_factor_t_min:%d\n",
 				cmd, param);
@@ -2836,7 +2844,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 603:
 		{
-			fg_cust_data.cycle_diff = param;
+			fg_cust_ext.cycle_diff = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, cycle_diff:%d\n",
 				cmd, param);
@@ -2844,7 +2852,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 604:
 		{
-			fg_cust_data.aging_count_min = param;
+			fg_cust_ext.aging_count_min = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, aging_count_min:%d\n",
 				cmd, param);
@@ -2852,7 +2860,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 605:
 		{
-			fg_cust_data.default_score = param;
+			fg_cust_ext.default_score = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, default_score:%d\n",
 				cmd, param);
@@ -2860,7 +2868,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 606:
 		{
-			fg_cust_data.default_score_quantity = param;
+			fg_cust_ext.default_score_quantity = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, default_score_quantity:%d\n",
 				cmd, param);
@@ -2868,7 +2876,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 607:
 		{
-			fg_cust_data.fast_cycle_set = param;
+			fg_cust_ext.fast_cycle_set = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, fast_cycle_set:%d\n",
 				cmd, param);
@@ -2876,7 +2884,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 608:
 		{
-			fg_cust_data.level_max_change_bat = param;
+			fg_cust_ext.level_max_change_bat = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, level_max_change_bat:%d\n",
 				cmd, param);
@@ -2884,7 +2892,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 609:
 		{
-			fg_cust_data.diff_max_change_bat = param;
+			fg_cust_ext.diff_max_change_bat = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, diff_max_change_bat:%d\n",
 				cmd, param);
@@ -2892,7 +2900,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 610:
 		{
-			fg_cust_data.aging_tracking_start = param;
+			fg_cust_ext.aging_tracking_start = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, aging_tracking_start:%d\n",
 				cmd, param);
@@ -2900,7 +2908,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 611:
 		{
-			fg_cust_data.max_aging_data = param;
+			fg_cust_ext.max_aging_data = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, max_aging_data:%d\n",
 				cmd, param);
@@ -2908,7 +2916,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 612:
 		{
-			fg_cust_data.max_fast_data = param;
+			fg_cust_ext.max_fast_data = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, max_fast_data:%d\n",
 				cmd, param);
@@ -2916,7 +2924,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 613:
 		{
-			fg_cust_data.fast_data_threshold_score = param;
+			fg_cust_ext.fast_data_threshold_score = param;
 			bm_err(
 				"exe_BAT_EC cmd %d, fast_data_threshold_score:%d\n",
 				cmd, param);

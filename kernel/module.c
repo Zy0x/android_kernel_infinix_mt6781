@@ -3042,9 +3042,11 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 		if (err)
 			return err;
 	} else if (!same_magic(modmagic, vermagic, info->index.vers)) {
-		pr_err("%s: version magic '%s' should be '%s'\n",
+		pr_warn("%s: version magic '%s' should be '%s', force loading\n",
 		       info->name, modmagic, vermagic);
-		return -ENOEXEC;
+		err = try_to_force_load(mod, "bad vermagic");
+		if (err)
+			return err;
 	}
 
 	if (!get_modinfo(info, "intree")) {

@@ -3012,10 +3012,18 @@ static ssize_t store_input_current(struct device *dev,
 	pr_debug("[Battery] %s\n", __func__);
 	if (buf != NULL && size != 0) {
 		pr_debug("[Battery] buf is %s and size is %zu\n", buf, size);
-		ret = kstrtouint(buf, 16, &reg);
-		pinfo->chg1_data.thermal_input_current_limit = reg;
+		{
+			int val = 0;
+
+			ret = kstrtoint(buf, 10, &val);
+			if (ret < 0 || val <= 0)
+				val = -1;
+			reg = val;
+		}
+		pinfo->chg1_data.thermal_input_current_limit = (int)reg;
 		if (pinfo->data.parallel_vbus)
-			pinfo->chg2_data.thermal_input_current_limit = reg;
+			pinfo->chg2_data.thermal_input_current_limit = (int)reg;
+		_wake_up_charger(pinfo);
 		pr_debug("[Battery] %s: %x\n",
 			__func__, pinfo->chg1_data.thermal_input_current_limit);
 	}
@@ -3045,8 +3053,15 @@ static ssize_t store_chg1_current(struct device *dev,
 	pr_debug("[Battery] %s\n", __func__);
 	if (buf != NULL && size != 0) {
 		pr_debug("[Battery] buf is %s and size is %zu\n", buf, size);
-		ret = kstrtouint(buf, 16, &reg);
-		pinfo->chg1_data.thermal_charging_current_limit = reg;
+		{
+			int val = 0;
+
+			ret = kstrtoint(buf, 10, &val);
+			if (ret < 0 || val <= 0)
+				val = -1;
+			reg = val;
+		}
+		pinfo->chg1_data.thermal_charging_current_limit = (int)reg;
 		pr_debug("[Battery] %s: %x\n", __func__,
 			pinfo->chg1_data.thermal_charging_current_limit);
 	}
@@ -3075,8 +3090,15 @@ static ssize_t store_chg2_current(struct device *dev,
 	pr_debug("[Battery] %s\n", __func__);
 	if (buf != NULL && size != 0) {
 		pr_debug("[Battery] buf is %s and size is %zu\n", buf, size);
-		ret = kstrtouint(buf, 16, &reg);
-		pinfo->chg2_data.thermal_charging_current_limit = reg;
+		{
+			int val = 0;
+
+			ret = kstrtoint(buf, 10, &val);
+			if (ret < 0 || val <= 0)
+				val = -1;
+			reg = val;
+		}
+		pinfo->chg2_data.thermal_charging_current_limit = (int)reg;
 		pr_debug("[Battery] %s: %x\n", __func__,
 			pinfo->chg2_data.thermal_charging_current_limit);
 	}
@@ -7198,7 +7220,7 @@ static int mtk_charger_probe(struct platform_device *pdev)
 	    boot_mode != KERNEL_POWER_OFF_CHARGING_BOOT &&
 	    boot_mode != LOW_POWER_OFF_CHARGING_BOOT)
 		charger_manager_force_disable_power_path(
-			info->chg1_consumer, MAIN_CHARGER, true);
+			info->chg1_consumer, MAIN_CHARGER, false);
 
 	info->init_done = true;
 	_wake_up_charger(info);

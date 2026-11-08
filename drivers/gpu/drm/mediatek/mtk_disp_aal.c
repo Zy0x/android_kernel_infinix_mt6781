@@ -20,6 +20,18 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/soc/mediatek/mtk-cmdq.h>
+#include <linux/sched.h>
+#include <linux/pid.h>
+#include <linux/rcupdate.h>
+#include <linux/slab.h>
+#include <linux/compiler.h>
+#include <linux/lockdep.h>
+#include <linux/cred.h>
+#include <linux/uidgid.h>
+#include <linux/security.h>
+#include <linux/string.h>
+#include <linux/jiffies.h>
+#include <linux/uaccess.h>
 #include <linux/module.h>
 #include <linux/workqueue.h>
 
@@ -87,7 +99,6 @@ static struct DISP_AAL_HIST g_aal_hist = {
 	.dre_enable = DRE_EN_BY_CUSTOM_LIB
 };
 
-static struct DISP_AAL_HIST g_aal_hist_db;
 //static ddp_module_notify g_ddp_notify;
 static atomic_t g_aal0_hist_available = ATOMIC_INIT(0);
 static atomic_t g_aal1_hist_available = ATOMIC_INIT(0);
@@ -130,7 +141,6 @@ static struct DISP_DRE30_INIT g_aal_init_dre30;
 static struct DISP_DRE30_PARAM g_aal_gain;
 static struct DISP_DRE30_PARAM g_aal_gain_db;
 static struct DISP_DRE30_HIST g_aal_dre30_hist;
-static struct DISP_DRE30_HIST g_aal_dre30_hist_db;
 
 static atomic_t g_aal_change_to_dre30 = ATOMIC_INIT(0);
 
@@ -142,6 +152,424 @@ static atomic_t g_aal1_first_frame_flip = ATOMIC_INIT(0);
 #define AAL_SRAM_EOF 0
 static u32 aal_sram_method = AAL_SRAM_SOF;
 #endif	/* CONFIG_MTK_DRE30_SUPPORT */
+
+/*
+ * BLK-COMPILE-01: Common Lynx Brightness Arbiter declarations, locks,
+ * per-task registries, and daemon authentication gate placed outside
+ * CONFIG_MTK_DRE30_SUPPORT so they remain active on MT6781 (where
+ * CONFIG_MTK_AAL_SUPPORT=y and CONFIG_MTK_DRE30_SUPPORT is not set).
+ *
+ * BLK-01, BLK-04, BLK-10, BLK-11, BLK-17, BLK-18, BLK-20, BLK-25, BLK-27, BLK-30:
+ * Transaction mutex serializing AAL ioctl operations (INIT_REG, GET_HIST,
+ * SET_PARAM), post-copy_to_user token finalization, global g_aal_param, and
+ * explicit callback/GCE hardware completion flags.
+ */
+static DEFINE_MUTEX(g_aal_ioctl_lock);
+static bool g_aal_init_reg_executed = false;
+static bool g_aal_set_param_executed = false;
+
+/* Lynx Unified Arbiter Global Instance (Static Mutex Initialization) */
+struct lynx_brightness_arbiter g_lynx_arbiter = {
+	.arbiter_lock = __MUTEX_INITIALIZER(g_lynx_arbiter.arbiter_lock),
+	.active_owner = LYNX_OWNER_LEGACY, /* BLK-45: Initialized to LEGACY for early-boot activation */
+	.max_backlight = 4095,
+	.thermal_limit_level = 4095,
+	.silky_pending = false,
+	.silky_handoff_gen = 0,
+	.silky_pending_gen = 0,
+	.silky_consumed_gen = 0,
+	.silky_deadline_jiffies = 0,
+	.watchdog_gen = 0,
+	.armed_watchdog_gen = 0,
+	.watchdog_armed = false,
+	.shutting_down = false,
+	.initialized = false,
+	.led_dat = NULL,
+};
+EXPORT_SYMBOL(g_lynx_arbiter);
+
+/*
+ * Lynx Arbiter: Daemon Identity, Sequence Fencing, Global GET_HIST
+ * Reservation Tracking, and Continuous SELinux Identity Security Context.
+ * All variables below are strictly protected by g_aal_hist_lock
+ * (BLK-02 / BLK-03 / BLK-25 / BLK-27 / BLK-30).
+ */
+static struct pid *g_aal_tgid_struct_pid = NULL;
+static u64 g_aal_init_open_id = 0;
+static u32 g_aal_daemon_epoch = 0;
+static u32 g_aal_daemon_secid = 0;
+static pid_t g_aal_daemon_tid = 0; /* BLK-40: Dedicated bound AALMain thread TID */
+static bool g_aal_daemon_active = false;
+static u64 g_aal_hist_backlight_seq = 0;
+static bool g_aal_hist_fetch_busy = false;
+static u64 g_aal_hist_fetch_open_id = 0;
+static u64 g_aal_hist_fetch_gen = 0; /* BLK-42: Monotonic generation for active GET_HIST reservation */
+
+/*
+ * BLK-39: Per-task active CCORR transaction context registry.
+ * Bound by mtk_drm_ioctl() in mtk_drm_drv.c during DRM_IOCTL_MTK_SET_CCORR,
+ * retrieved by mt_leds_brightness_set() in leds-mtk-pwm.c, and compared
+ * against g_lynx_arbiter.silky_pending_gen before consuming the handoff token.
+ */
+#define LYNX_CCORR_MAX_ACTIVE_CALLS 8
+struct lynx_ccorr_call_slot {
+	struct task_struct *task;
+	u64 tx_id;
+	u64 seq;
+	u64 open_id;
+	u32 epoch;
+	pid_t tid;
+	int backlight;
+};
+static struct lynx_ccorr_call_slot g_lynx_ccorr_slots[LYNX_CCORR_MAX_ACTIVE_CALLS];
+static DEFINE_SPINLOCK(g_lynx_ccorr_call_lock);
+
+void lynx_arbiter_bind_ccorr_call_context(u64 open_id, u32 epoch, pid_t tid,
+					 u64 tx_id, u64 seq, int backlight)
+{
+	unsigned long flags;
+	int i, empty_slot = -1;
+
+	spin_lock_irqsave(&g_lynx_ccorr_call_lock, flags);
+	for (i = 0; i < LYNX_CCORR_MAX_ACTIVE_CALLS; i++) {
+		if (g_lynx_ccorr_slots[i].task == current) {
+			empty_slot = i;
+			break;
+		}
+		if (empty_slot < 0 && g_lynx_ccorr_slots[i].task == NULL)
+			empty_slot = i;
+	}
+	if (empty_slot >= 0) {
+		g_lynx_ccorr_slots[empty_slot].task = current;
+		g_lynx_ccorr_slots[empty_slot].tx_id = tx_id;
+		g_lynx_ccorr_slots[empty_slot].seq = seq;
+		g_lynx_ccorr_slots[empty_slot].open_id = open_id;
+		g_lynx_ccorr_slots[empty_slot].epoch = epoch;
+		g_lynx_ccorr_slots[empty_slot].tid = tid;
+		g_lynx_ccorr_slots[empty_slot].backlight = backlight;
+	}
+	spin_unlock_irqrestore(&g_lynx_ccorr_call_lock, flags);
+}
+EXPORT_SYMBOL(lynx_arbiter_bind_ccorr_call_context);
+
+/*
+ * BLK-39: Atomic Producer-Consumer FIFO Pop for Silky SET_CCORR Calls.
+ * Inspects the user DRM_DISP_CCORR_COEF_T header; if and only if the request
+ * carries silky_bright_flag == 1 and FinalBacklight != 0, atomically pops the
+ * oldest unconsumed transaction provenance item from ctx->silky_fifo[silky_fifo_head]
+ * under g_aal_hist_lock, then binds it into the current task's slot under
+ * g_lynx_ccorr_call_lock (strictly non-nested leaf spinlocks).
+ * If Transaction A is delayed while Transaction B enqueues a newer token,
+ * delayed CCORR A pops its original token (e.g. tx_id=41) rather than B's
+ * token (tx_id=42), and is deterministically rejected against silky_pending_gen.
+ */
+void lynx_arbiter_claim_ccorr_call_context(struct lynx_drm_file_ctx *ctx,
+					   unsigned long user_arg)
+{
+	struct DRM_DISP_CCORR_COEF_T __user *u_ccorr;
+	unsigned long flags;
+	u64 open_id = 0, tx_id = 0, seq = 0;
+	u32 epoch = 0;
+	pid_t tid = 0;
+	int backlight = -1;
+	int silky_flag = 0;
+	int req_bl = 0;
+	bool is_silky_req = false;
+
+	if (ctx && user_arg != 0) {
+		u_ccorr = (struct DRM_DISP_CCORR_COEF_T __user *)user_arg;
+		if (get_user(silky_flag, &u_ccorr->silky_bright_flag) == 0 &&
+		    get_user(req_bl, &u_ccorr->FinalBacklight) == 0 &&
+		    silky_flag == 1 && req_bl != 0) {
+			is_silky_req = true;
+		}
+	}
+
+	if (is_silky_req && ctx) {
+		spin_lock_irqsave(&g_aal_hist_lock, flags);
+		if (ctx->is_aal_daemon &&
+		    ctx->daemon_tid > 0 &&
+		    task_pid_nr(current) == ctx->daemon_tid &&
+		    ctx->silky_fifo_head != ctx->silky_fifo_tail) {
+			u32 idx = ctx->silky_fifo_head % LYNX_SILKY_FIFO_DEPTH;
+
+			tx_id = ctx->silky_fifo[idx].tx_id;
+			seq = ctx->silky_fifo[idx].seq;
+			epoch = ctx->silky_fifo[idx].epoch;
+			open_id = ctx->silky_fifo[idx].open_id;
+			tid = ctx->silky_fifo[idx].tid;
+			backlight = ctx->silky_fifo[idx].backlight;
+			memset(&ctx->silky_fifo[idx], 0, sizeof(ctx->silky_fifo[idx]));
+			ctx->silky_fifo_head++;
+		}
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+	}
+
+	/* Bind popped provenance tuple outside g_aal_hist_lock (zero spinlock nesting) */
+	lynx_arbiter_bind_ccorr_call_context(open_id, epoch, tid, tx_id, seq, backlight);
+}
+EXPORT_SYMBOL(lynx_arbiter_claim_ccorr_call_context);
+
+void lynx_arbiter_unbind_ccorr_call_context(void)
+{
+	unsigned long flags;
+	int i;
+
+	spin_lock_irqsave(&g_lynx_ccorr_call_lock, flags);
+	for (i = 0; i < LYNX_CCORR_MAX_ACTIVE_CALLS; i++) {
+		if (g_lynx_ccorr_slots[i].task == current) {
+			g_lynx_ccorr_slots[i].task = NULL;
+			g_lynx_ccorr_slots[i].tx_id = 0;
+			g_lynx_ccorr_slots[i].seq = 0;
+			g_lynx_ccorr_slots[i].open_id = 0;
+			g_lynx_ccorr_slots[i].epoch = 0;
+			g_lynx_ccorr_slots[i].tid = 0;
+			g_lynx_ccorr_slots[i].backlight = -1;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&g_lynx_ccorr_call_lock, flags);
+}
+EXPORT_SYMBOL(lynx_arbiter_unbind_ccorr_call_context);
+
+void lynx_arbiter_get_current_ccorr_context(u64 *open_id, u32 *epoch, pid_t *tid,
+					    u64 *tx_id, u64 *seq, int *backlight)
+{
+	unsigned long flags;
+	int i;
+
+	if (open_id)
+		*open_id = 0;
+	if (epoch)
+		*epoch = 0;
+	if (tid)
+		*tid = 0;
+	if (tx_id)
+		*tx_id = 0;
+	if (seq)
+		*seq = 0;
+	if (backlight)
+		*backlight = -1;
+
+	spin_lock_irqsave(&g_lynx_ccorr_call_lock, flags);
+	for (i = 0; i < LYNX_CCORR_MAX_ACTIVE_CALLS; i++) {
+		if (g_lynx_ccorr_slots[i].task == current) {
+			if (open_id)
+				*open_id = g_lynx_ccorr_slots[i].open_id;
+			if (epoch)
+				*epoch = g_lynx_ccorr_slots[i].epoch;
+			if (tid)
+				*tid = g_lynx_ccorr_slots[i].tid;
+			if (tx_id)
+				*tx_id = g_lynx_ccorr_slots[i].tx_id;
+			if (seq)
+				*seq = g_lynx_ccorr_slots[i].seq;
+			if (backlight)
+				*backlight = g_lynx_ccorr_slots[i].backlight;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&g_lynx_ccorr_call_lock, flags);
+}
+EXPORT_SYMBOL(lynx_arbiter_get_current_ccorr_context);
+
+void lynx_arbiter_cancel_silky_pending_locked(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	if (g_lynx_arbiter.silky_pending) {
+		g_lynx_arbiter.silky_pending = false;
+		g_lynx_arbiter.silky_consumed_gen = g_lynx_arbiter.silky_pending_gen;
+	}
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+}
+EXPORT_SYMBOL(lynx_arbiter_cancel_silky_pending_locked);
+
+/*
+ * BLK-42: Per-task active GET_HIST request generation registry.
+ * Bound by mtk_drm_ioctl_aal_get_hist() upon claiming a reservation,
+ * read by mtk_drm_ioctl() wrapper, and explicitly passed to
+ * disp_aal_finalize_get_hist_delivery(file_priv, ret, req_fetch_gen).
+ */
+#define LYNX_HIST_MAX_ACTIVE_CALLS 8
+struct lynx_hist_call_slot {
+	struct task_struct *task;
+	u64 gen;
+};
+static struct lynx_hist_call_slot g_aal_active_hist_slots[LYNX_HIST_MAX_ACTIVE_CALLS];
+static DEFINE_SPINLOCK(g_aal_active_hist_lock);
+
+void disp_aal_set_task_fetch_gen(u64 gen)
+{
+	unsigned long flags;
+	int i, empty_slot = -1;
+
+	spin_lock_irqsave(&g_aal_active_hist_lock, flags);
+	for (i = 0; i < LYNX_HIST_MAX_ACTIVE_CALLS; i++) {
+		if (g_aal_active_hist_slots[i].task == current) {
+			empty_slot = i;
+			break;
+		}
+		if (empty_slot < 0 && g_aal_active_hist_slots[i].task == NULL)
+			empty_slot = i;
+	}
+	if (empty_slot >= 0) {
+		g_aal_active_hist_slots[empty_slot].task = current;
+		g_aal_active_hist_slots[empty_slot].gen = gen;
+	}
+	spin_unlock_irqrestore(&g_aal_active_hist_lock, flags);
+}
+EXPORT_SYMBOL(disp_aal_set_task_fetch_gen);
+
+u64 disp_aal_get_task_fetch_gen(void)
+{
+	unsigned long flags;
+	u64 gen = 0;
+	int i;
+
+	spin_lock_irqsave(&g_aal_active_hist_lock, flags);
+	for (i = 0; i < LYNX_HIST_MAX_ACTIVE_CALLS; i++) {
+		if (g_aal_active_hist_slots[i].task == current) {
+			gen = g_aal_active_hist_slots[i].gen;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&g_aal_active_hist_lock, flags);
+	return gen;
+}
+EXPORT_SYMBOL(disp_aal_get_task_fetch_gen);
+
+void disp_aal_clear_task_fetch_gen(void)
+{
+	unsigned long flags;
+	int i;
+
+	spin_lock_irqsave(&g_aal_active_hist_lock, flags);
+	for (i = 0; i < LYNX_HIST_MAX_ACTIVE_CALLS; i++) {
+		if (g_aal_active_hist_slots[i].task == current) {
+			g_aal_active_hist_slots[i].task = NULL;
+			g_aal_active_hist_slots[i].gen = 0;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&g_aal_active_hist_lock, flags);
+}
+EXPORT_SYMBOL(disp_aal_clear_task_fetch_gen);
+
+/*
+ * BLK-25 & BLK-30: Fail-Closed Candidate AAL Daemon Multi-Layer Authentication Gate
+ * Verifies that the calling task attempting DRM_IOCTL_MTK_AAL_INIT_REG is the
+ * legitimate vendor PQ/AAL HAL service:
+ *   1. Both effective UID (current_euid) and real UID (current_uid) must be
+ *      AID_SYSTEM (1000).
+ *   2. Group leader comm must strictly match "pq@2.2-service", and calling thread
+ *      comm must match "pq@2.2-service", "AALMain", "PQServiceHAL", or "HwBinder:*".
+ *   3. Strict Fail-Closed SELinux Verification:
+ *      - security_task_getsecid(current, &secid) must succeed and return secid != 0.
+ *      - security_secid_to_secctx(secid, &secctx, &seclen) must succeed (rc == 0)
+ *        with a valid non-NULL secctx.
+ *      - Context string must match the exact vendor domain "u:r:mtk_hal_pq:s0" or
+ *        contain ":mtk_hal_pq:". Any failure immediately rejects the caller (-EACCES)
+ *        and records diag_auth_rejects.
+ *   4. Outputs the validated secid to *out_secid so it can be bound to ctx and
+ *      re-validated continuously across all subsequent operations.
+ */
+static int disp_aal_authenticate_daemon_candidate(u32 *out_secid)
+{
+	kuid_t euid = current_euid();
+	kuid_t ruid = current_uid();
+	char leader_comm[TASK_COMM_LEN];
+	char self_comm[TASK_COMM_LEN];
+	u32 secid = 0;
+	char *secctx = NULL;
+	u32 seclen = 0;
+	int sec_rc;
+	bool domain_ok = false;
+
+	if (unlikely(!out_secid))
+		return -EINVAL;
+	*out_secid = 0;
+
+	/* Layer 1: Strict AID_SYSTEM UID Check (Effective + Real) */
+	if (!uid_eq(euid, KUIDT_INIT(1000)) || !uid_eq(ruid, KUIDT_INIT(1000))) {
+		g_lynx_arbiter.diag_auth_rejects++;
+		pr_warn_ratelimited("[LYNX_AAL] Reject INIT_REG: unauthorized uid euid=%u ruid=%u (expected 1000)\n",
+				    from_kuid(&init_user_ns, euid),
+				    from_kuid(&init_user_ns, ruid));
+		return -EACCES;
+	}
+
+	/* Layer 2: Process & Thread Name Verification */
+	get_task_comm(leader_comm, current->group_leader);
+	get_task_comm(self_comm, current);
+
+	if (strcmp(leader_comm, "pq@2.2-service") != 0) {
+		g_lynx_arbiter.diag_auth_rejects++;
+		pr_warn_ratelimited("[LYNX_AAL] Reject INIT_REG: unauthorized process leader_comm='%s'\n",
+				    leader_comm);
+		return -EACCES;
+	}
+
+	if (strcmp(self_comm, "pq@2.2-service") != 0 &&
+	    strcmp(self_comm, "AALMain") != 0 &&
+	    strcmp(self_comm, "PQServiceHAL") != 0 &&
+	    strncmp(self_comm, "HwBinder:", 9) != 0) {
+		g_lynx_arbiter.diag_auth_rejects++;
+		pr_warn_ratelimited("[LYNX_AAL] Reject INIT_REG: unauthorized thread self_comm='%s'\n",
+				    self_comm);
+		return -EACCES;
+	}
+
+	/* Layer 3: Strict Fail-Closed SELinux Domain Verification */
+	security_task_getsecid(current, &secid);
+	if (unlikely(secid == 0)) {
+		g_lynx_arbiter.diag_auth_rejects++;
+		pr_warn_ratelimited("[LYNX_AAL] Reject INIT_REG: security_task_getsecid returned 0\n");
+		return -EACCES;
+	}
+
+	sec_rc = security_secid_to_secctx(secid, &secctx, &seclen);
+	if (unlikely(sec_rc != 0 || !secctx || seclen == 0)) {
+		g_lynx_arbiter.diag_auth_rejects++;
+		pr_warn_ratelimited("[LYNX_AAL] Reject INIT_REG: security_secid_to_secctx failed (rc=%d)\n",
+				    sec_rc);
+		return -EACCES;
+	}
+
+	/*
+	 * BLK-41: Exact field parsing for SELinux context: "user:role:type:level[:category]"
+	 * (e.g. "u:r:mtk_hal_pq:s0"). We verify that the 3rd field (type) is exactly "mtk_hal_pq".
+	 */
+	{
+		char *p = secctx;
+		char *colon1, *colon2, *colon3;
+		size_t type_len;
+
+		colon1 = strchr(p, ':');
+		if (colon1) {
+			colon2 = strchr(colon1 + 1, ':');
+			if (colon2) {
+				colon3 = strchr(colon2 + 1, ':');
+				type_len = colon3 ? (size_t)(colon3 - (colon2 + 1)) : strlen(colon2 + 1);
+				if (type_len == 10 && strncmp(colon2 + 1, "mtk_hal_pq", 10) == 0)
+					domain_ok = true;
+			}
+		}
+	}
+
+	security_release_secctx(secctx, seclen);
+
+	if (unlikely(!domain_ok)) {
+		g_lynx_arbiter.diag_auth_rejects++;
+		pr_warn_ratelimited("[LYNX_AAL] Reject INIT_REG: invalid SELinux domain for '%s'\n",
+				    leader_comm);
+		return -EACCES;
+	}
+
+	*out_secid = secid;
+	return 0;
+}
 
 static DECLARE_WAIT_QUEUE_HEAD(g_aal_size_wq);
 static bool g_aal_get_size_available;
@@ -467,25 +895,39 @@ void disp_aal_notify_backlight_changed(int trans_backlight)
 	if (trans_backlight > g_max_backlight)
 		trans_backlight = g_max_backlight;
 
-	atomic_set(&g_aal_backlight_notified, trans_backlight);
+	if (!READ_ONCE(g_lynx_arbiter.initialized))
+		atomic_set(&g_aal_backlight_notified, trans_backlight);
 
 	service_flags = 0;
 	if (trans_backlight == 0) {
-		mt_leds_brightness_set("lcd-backlight", 0);
-		/* set backlight = 0 may be not from AAL, */
-		/* we have to let AALService can turn on backlight */
-		/* on phone resumption */
+		/*
+		 * BLK-19: When Lynx Arbiter is initialized, led_level_set() has
+		 * already committed the slider change under arbiter_lock before
+		 * invoking call_notifier(). Only invoke the fallback if the
+		 * arbiter is not yet initialized.
+		 */
+		if (!READ_ONCE(g_lynx_arbiter.initialized))
+			mt_leds_brightness_set("lcd-backlight", 0);
 		service_flags = AAL_SERVICE_FORCE_UPDATE;
 	} else if (atomic_read(&g_aal_is_init_regs_valid) == 0 ||
 		(atomic_read(&g_aal_force_relay) == 1 &&
 		!m_new_pq_persist_property[DISP_PQ_CCORR_SILKY_BRIGHTNESS])) {
-		/* AAL Service is not running */
-
-		mt_leds_brightness_set("lcd-backlight", trans_backlight);
+		/* AAL Service is not running; only use fallback if arbiter is not yet initialized */
+		if (!READ_ONCE(g_lynx_arbiter.initialized))
+			mt_leds_brightness_set("lcd-backlight", trans_backlight);
 	}
 
+	/*
+	 * BLK-02 & BLK-31: When Lynx Arbiter is initialized,
+	 * lynx_arbiter_apply_slider_locked() is the single authoritative writer
+	 * for g_aal_hist.backlight, g_aal_hist_backlight_seq, and
+	 * g_aal_backlight_notified.
+	 */
 	spin_lock_irqsave(&g_aal_hist_lock, flags);
-	g_aal_hist.backlight = trans_backlight;
+	if (!READ_ONCE(g_lynx_arbiter.initialized)) {
+		g_aal_hist.backlight = trans_backlight;
+		g_aal_hist_backlight_seq = g_lynx_arbiter.slider_seq;
+	}
 	g_aal_hist.serviceFlags |= service_flags;
 	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
 	// always notify aal service for LED changed
@@ -897,22 +1339,65 @@ static bool disp_aal_read_single_hist(struct mtk_ddp_comp *comp)
 	return read_success;
 }
 
-static int disp_aal_copy_hist_to_user(struct DISP_AAL_HIST *hist)
+static int disp_aal_copy_hist_to_user(struct DISP_AAL_HIST *hist, u64 *out_seq)
 {
 	unsigned long flags;
+	struct DISP_AAL_HIST *hist_snapshot = NULL;
+#if defined(CONFIG_MTK_DRE30_SUPPORT)
+	struct DISP_DRE30_HIST *dre30_snapshot = NULL;
+	unsigned long long dre30_user_addr = 0;
+#endif
+	bool hist_ready = false;
 	int ret = 0;
 
 	if (hist == NULL) {
 		AALERR("%s DstHist is NULL\n", __func__);
-		return -1;
+		return -EINVAL;
 	}
 
-	/* We assume only one thread will call this function */
-	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	/*
+	 * BLK-01: Allocate per-request private snapshot buffers so concurrent
+	 * or back-to-back GET_HIST requests never overwrite a shared global
+	 * buffer (g_aal_hist_db / g_aal_dre30_hist_db) during copy_to_user().
+	 */
+	hist_snapshot = kmalloc(sizeof(*hist_snapshot), GFP_KERNEL);
+	if (!hist_snapshot)
+		return -ENOMEM;
 
 #if defined(CONFIG_MTK_DRE30_SUPPORT)
-	memcpy(&g_aal_dre30_hist_db, &g_aal_dre30_hist,
-		sizeof(g_aal_dre30_hist));
+	dre30_snapshot = kmalloc(sizeof(*dre30_snapshot), GFP_KERNEL);
+	if (!dre30_snapshot) {
+		kfree(hist_snapshot);
+		return -ENOMEM;
+	}
+#endif
+
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+
+	/*
+	 * BLK-27: Verify inside g_aal_hist_lock that a fresh hardware
+	 * histogram is actually available before consuming and clearing the
+	 * availability flags.
+	 */
+	if (isDualPQ) {
+		hist_ready = (atomic_read(&g_aal0_hist_available) == 1 &&
+			      atomic_read(&g_aal1_hist_available) == 1);
+	} else {
+		hist_ready = (atomic_read(&g_aal0_hist_available) == 1);
+	}
+
+	if (unlikely(!hist_ready)) {
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+#if defined(CONFIG_MTK_DRE30_SUPPORT)
+		kfree(dre30_snapshot);
+#endif
+		kfree(hist_snapshot);
+		return -EAGAIN;
+	}
+
+#if defined(CONFIG_MTK_DRE30_SUPPORT)
+	memcpy(dre30_snapshot, &g_aal_dre30_hist, sizeof(*dre30_snapshot));
+	dre30_user_addr = g_aal_init_dre30.dre30_hist_addr;
 #endif
 
 	g_aal_hist.panel_type = atomic_read(&g_aal_panel_type);
@@ -920,23 +1405,28 @@ static int disp_aal_copy_hist_to_user(struct DISP_AAL_HIST *hist)
 	g_aal_hist.ess_enable = g_aal_ess_en;
 	g_aal_hist.dre_enable = g_aal_dre_en;
 
+	memcpy(hist_snapshot, &g_aal_hist, sizeof(*hist_snapshot));
+	if (out_seq)
+		*out_seq = g_aal_hist_backlight_seq;
+
 	g_aal_hist.serviceFlags = 0;
 	atomic_set(&g_aal0_hist_available, 0);
 	atomic_set(&g_aal1_hist_available, 0);
 
-	memcpy(&g_aal_hist_db, &g_aal_hist, sizeof(g_aal_hist));
-
 	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
 
 #if defined(CONFIG_MTK_DRE30_SUPPORT)
-	g_aal_hist_db.dre30_hist = g_aal_init_dre30.dre30_hist_addr;
+	hist_snapshot->dre30_hist = dre30_user_addr;
+	if (copy_to_user(AAL_U32_PTR(dre30_user_addr),
+			 dre30_snapshot, sizeof(*dre30_snapshot)) != 0)
+		ret = -EFAULT;
+	kfree(dre30_snapshot);
 #endif
-	memcpy(hist, &g_aal_hist_db, sizeof(g_aal_hist_db));
 
-#if defined(CONFIG_MTK_DRE30_SUPPORT)
-	ret = copy_to_user(AAL_U32_PTR(g_aal_init_dre30.dre30_hist_addr),
-		&g_aal_dre30_hist_db, sizeof(g_aal_dre30_hist_db));
-#endif
+	if (ret == 0)
+		memcpy(hist, hist_snapshot, sizeof(*hist_snapshot));
+
+	kfree(hist_snapshot);
 
 	AALFLOW_LOG("%s set g_aal_force_enable_irq to 0 +\n", __func__);
 	atomic_set(&g_aal_force_enable_irq, 0);
@@ -1006,12 +1496,203 @@ void dump_hist(struct DISP_AAL_HIST *data)
 }
 
 static bool debug_dump_aal_hist;
+/*
+ * BLK-20, BLK-23, BLK-25, BLK-27, BLK-30: Post-copy_to_user Token Finalization Hook
+ * Invoked by mtk_drm_ioctl() (and mtk_drm_compat_ioctl()) AFTER drm_ioctl()
+ * completes copy_to_user((void __user *)arg, kdata, out_size).
+ * - Only the task that staged this GET_HIST (ctx->fetch_owner == current) may
+ *   finalize it and release the global g_aal_hist_fetch_busy reservation.
+ * - Publishes ctx->fetched_seq = ctx->staged_seq and ctx->fetched_valid = true
+ *   ONLY if ioctl_ret == 0 AND the FD is still the active registered daemon
+ *   for the current epoch and matches the authenticated SELinux secid.
+ */
+void disp_aal_finalize_get_hist_delivery(struct drm_file *file_priv, int ioctl_ret, u64 req_fetch_gen)
+{
+	struct lynx_drm_file_ctx *ctx = file_priv ? file_priv->driver_priv : NULL;
+	unsigned long flags;
+	u32 cur_secid = 0;
+
+	if (unlikely(!ctx))
+		return;
+
+	security_task_getsecid(current, &cur_secid);
+
+	mutex_lock(&g_aal_ioctl_lock);
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	if (ctx->fetch_in_progress && ctx->fetch_owner == current) {
+		if (ioctl_ret == 0 &&
+		    req_fetch_gen != 0 &&
+		    req_fetch_gen == g_aal_hist_fetch_gen &&
+		    g_aal_daemon_active &&
+		    ctx->is_aal_daemon &&
+		    ctx->drm_open_id == g_aal_init_open_id &&
+		    ctx->daemon_epoch == g_aal_daemon_epoch &&
+		    cur_secid != 0 &&
+		    cur_secid == g_aal_daemon_secid &&
+		    cur_secid == ctx->daemon_secid &&
+		    g_aal_tgid_struct_pid == task_tgid(current)) {
+			ctx->fetched_seq = ctx->staged_seq;
+			ctx->fetched_valid = true;
+		} else {
+			ctx->fetched_valid = false;
+		}
+		ctx->fetch_in_progress = false;
+		ctx->fetch_owner = NULL;
+		/*
+		 * BLK-42: Release reservation ONLY if matching open_id AND explicit req_fetch_gen.
+		 * Never read or trust shared ctx->fetch_gen which could be modified by concurrent calls.
+		 */
+		if (g_aal_hist_fetch_open_id == ctx->drm_open_id &&
+		    req_fetch_gen != 0 &&
+		    g_aal_hist_fetch_gen == req_fetch_gen) {
+			g_aal_hist_fetch_busy = false;
+			g_aal_hist_fetch_open_id = 0;
+		}
+	}
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+	mutex_unlock(&g_aal_ioctl_lock);
+}
+EXPORT_SYMBOL(disp_aal_finalize_get_hist_delivery);
+
 int mtk_drm_ioctl_aal_get_hist(struct drm_device *dev, void *data,
 	struct drm_file *file_priv)
 {
+	struct lynx_drm_file_ctx *ctx = file_priv ? file_priv->driver_priv : NULL;
+	struct pid *cur_tgid = task_tgid(current);
+	unsigned long flags;
+	u64 captured_seq = 0;
+	u64 req_fetch_gen = 0;
+	u32 cur_secid = 0;
+	int ret;
+
+	if (unlikely(!ctx || !data))
+		return -EINVAL;
+
+	/*
+	 * BLK-12, BLK-14, BLK-20, BLK-25, BLK-27, BLK-30:
+	 * 1. Authenticate that the caller is the active registered AAL daemon
+	 *    (g_aal_daemon_active, ctx->is_aal_daemon, drm_open_id, daemon_epoch,
+	 *    TGID struct pid, and matching SELinux secid) BEFORE waiting for or
+	 *    consuming any histogram.
+	 * 2. Enforce BOTH per-FD single active token (ctx->fetched_valid /
+	 *    ctx->fetch_in_progress) AND global single consumer reservation
+	 *    (g_aal_hist_fetch_busy) BEFORE disp_aal_wait_hist() so two FDs or
+	 *    threads can never concurrently wait on or consume the same
+	 *    histogram event.
+	 */
+	security_task_getsecid(current, &cur_secid);
+
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	if (unlikely(!g_aal_daemon_active)) {
+		g_lynx_arbiter.diag_daemon_inactive++;
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+		return -EACCES;
+	}
+	if (unlikely(!ctx->is_aal_daemon ||
+		     !g_aal_tgid_struct_pid ||
+		     g_aal_tgid_struct_pid != cur_tgid)) {
+		g_lynx_arbiter.diag_invalid_pid++;
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+		return -EACCES;
+	}
+	if (unlikely(cur_secid == 0 ||
+		     cur_secid != g_aal_daemon_secid ||
+		     cur_secid != ctx->daemon_secid)) {
+		g_lynx_arbiter.diag_auth_rejects++;
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+		return -EACCES;
+	}
+	if (unlikely(ctx->drm_open_id != g_aal_init_open_id ||
+		     ctx->daemon_epoch != g_aal_daemon_epoch)) {
+		g_lynx_arbiter.diag_invalid_epoch++;
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+		return -ESTALE;
+	}
+	/* BLK-40: Gate GET_HIST reservation on bound daemon TID - strict fail-closed */
+	if (unlikely(ctx->daemon_tid <= 0 || task_pid_nr(current) != ctx->daemon_tid)) {
+		g_lynx_arbiter.diag_invalid_pid++;
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+		return -EACCES;
+	}
+	if (ctx->fetched_valid || ctx->fetch_in_progress || g_aal_hist_fetch_busy) {
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+		return -EBUSY;
+	}
+	g_aal_hist_fetch_busy = true;
+	g_aal_hist_fetch_open_id = ctx->drm_open_id;
+	req_fetch_gen = ++g_aal_hist_fetch_gen; /* BLK-42: Monotonic fetch generation */
+	ctx->fetch_gen = req_fetch_gen;
+	ctx->fetch_in_progress = true;
+	ctx->fetch_owner = current;
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+
+	/* BLK-42: Call disp_aal_set_task_fetch_gen after releasing g_aal_hist_lock to eliminate spinlock nesting */
+	disp_aal_set_task_fetch_gen(req_fetch_gen);
+
 	disp_aal_wait_hist();
-	if (disp_aal_copy_hist_to_user((struct DISP_AAL_HIST *) data) < 0)
-		return -EFAULT;
+
+	mutex_lock(&g_aal_ioctl_lock);
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	if (unlikely(!g_aal_daemon_active ||
+		     !ctx->is_aal_daemon ||
+		     ctx->drm_open_id != g_aal_init_open_id ||
+		     ctx->daemon_epoch != g_aal_daemon_epoch ||
+		     g_aal_tgid_struct_pid != cur_tgid ||
+		     ctx->daemon_tid <= 0 ||
+		     task_pid_nr(current) != ctx->daemon_tid ||
+		     cur_secid == 0 ||
+		     cur_secid != g_aal_daemon_secid ||
+		     cur_secid != ctx->daemon_secid ||
+		     ctx->fetched_valid ||
+		     !ctx->fetch_in_progress ||
+		     ctx->fetch_owner != current)) {
+		if (ctx->fetch_owner == current) {
+			ctx->fetch_in_progress = false;
+			ctx->fetch_owner = NULL;
+		}
+		/* BLK-42: Release reservation strictly matching open_id and req_fetch_gen */
+		if (g_aal_hist_fetch_open_id == ctx->drm_open_id &&
+		    g_aal_hist_fetch_gen == req_fetch_gen) {
+			g_aal_hist_fetch_busy = false;
+			g_aal_hist_fetch_open_id = 0;
+		}
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+		/* BLK-42: Clear task fetch gen strictly OUTSIDE g_aal_hist_lock */
+		disp_aal_clear_task_fetch_gen();
+		mutex_unlock(&g_aal_ioctl_lock);
+		return -ESTALE;
+	}
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+
+	ret = disp_aal_copy_hist_to_user((struct DISP_AAL_HIST *) data, &captured_seq);
+	if (ret < 0) {
+		disp_aal_clear_task_fetch_gen();
+		spin_lock_irqsave(&g_aal_hist_lock, flags);
+		ctx->fetch_in_progress = false;
+		ctx->fetch_owner = NULL;
+		ctx->fetched_valid = false;
+		/* BLK-42: Release reservation strictly matching open_id and req_fetch_gen */
+		if (g_aal_hist_fetch_open_id == ctx->drm_open_id &&
+		    g_aal_hist_fetch_gen == req_fetch_gen) {
+			g_aal_hist_fetch_busy = false;
+			g_aal_hist_fetch_open_id = 0;
+		}
+		spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+		mutex_unlock(&g_aal_ioctl_lock);
+		return ret;
+	}
+
+	/*
+	 * BLK-20: Do NOT set ctx->fetched_valid = true here because drm_ioctl()
+	 * has not yet executed copy_to_user() of kdata to userspace. Keep
+	 * ctx->fetch_in_progress = true and g_aal_hist_fetch_busy = true until
+	 * disp_aal_finalize_get_hist_delivery() runs after drm_ioctl() completes.
+	 */
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	ctx->staged_seq = captured_seq;
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+	mutex_unlock(&g_aal_ioctl_lock);
+
 	if (debug_dump_aal_hist)
 		dump_hist(data);
 	return 0;
@@ -1216,40 +1897,840 @@ static int disp_aal_set_init_reg(struct mtk_ddp_comp *comp,
 	if (!disp_aal_is_support())
 		return ret;
 
+	if (unlikely(!user_regs || !comp || !comp->mtk_crtc))
+		return -EINVAL;
+
 	init_regs = &g_aal_init_regs;
 
 	memcpy(init_regs, user_regs, sizeof(*init_regs));
 	if (debug_dump_init_reg)
 		dump_init_reg(init_regs);
 
-	atomic_set(&g_aal_is_init_regs_valid, 1);
-
 	AALFLOW_LOG("Set init reg: %lu\n", sizeof(*init_regs));
 	AALFLOW_LOG("init_reg.dre_map_bypass:%d\n", init_regs->dre_map_bypass);
-	ret = disp_aal_write_init_regs(comp, handle);
+
 	if (comp->mtk_crtc->is_dual_pipe) {
 		struct mtk_drm_crtc *mtk_crtc = comp->mtk_crtc;
 		struct drm_crtc *crtc = &mtk_crtc->base;
-		struct mtk_drm_private *priv = crtc->dev->dev_private;
-		struct mtk_ddp_comp *comp_aal1 = priv->ddp_comp[DDP_COMPONENT_AAL1];
+		struct mtk_drm_private *priv = crtc->dev ? crtc->dev->dev_private : NULL;
+		struct mtk_ddp_comp *comp_aal1 = priv ? priv->ddp_comp[DDP_COMPONENT_AAL1] : NULL;
+
+		if (unlikely(!comp_aal1))
+			return -ENODEV;
+
+		ret = disp_aal_write_init_regs(comp, handle);
+		if (ret < 0)
+			return ret;
 
 		ret = disp_aal_write_init_regs(comp_aal1, handle);
+		if (ret < 0)
+			return ret;
+	} else {
+		ret = disp_aal_write_init_regs(comp, handle);
+		if (ret < 0)
+			return ret;
 	}
+
+	/*
+	 * BLK-11 & BLK-17: Only mark g_aal_init_reg_executed = true here;
+	 * atomic_set(&g_aal_is_init_regs_valid, 1) and daemon registration are
+	 * deferred until mtk_crtc_user_cmd_sync() confirms actual GCE hardware
+	 * completion (hw_completed == true).
+	 */
+	g_aal_init_reg_executed = true;
 
 	AALFLOW_LOG("ret = %d\n", ret);
 
 	return ret;
 }
 
+/*
+ * Lynx Arbiter: Watchdog Worker Function (BLK-06, BLK-19, BLK-21, BLK-26, BLK-31, BLK-33)
+ * Verifies watchdog_armed and armed_watchdog_gen == watchdog_gen inside
+ * arbiter_lock so an already-running worker that blocked on arbiter_lock
+ * while a new AAL commit succeeded will NEVER overwrite the new AAL commit.
+ * Restores from unclamped slider_target_level (clamped by thermal_limit_level
+ * if thermal_limited is active), clears any pending Silky handoff, and records
+ * LYNX_OWNER_WATCHDOG ownership.
+ */
+static void lynx_arbiter_watchdog_work(struct work_struct *work)
+{
+	unsigned long flags;
+	int restore_level;
+
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	if (unlikely(!g_lynx_arbiter.initialized ||
+		     g_lynx_arbiter.shutting_down ||
+		     !g_lynx_arbiter.led_dat)) {
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return;
+	}
+
+	/* BLK-06: Abort if disarmed or superseded by a newer commit/slider generation */
+	if (!g_lynx_arbiter.watchdog_armed ||
+	    g_lynx_arbiter.armed_watchdog_gen != g_lynx_arbiter.watchdog_gen) {
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return;
+	}
+
+	g_lynx_arbiter.watchdog_armed = false;
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	g_lynx_arbiter.silky_pending = false;
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+
+	restore_level = g_lynx_arbiter.slider_target_level;
+	if (g_lynx_arbiter.thermal_limited &&
+	    restore_level > g_lynx_arbiter.thermal_limit_level)
+		restore_level = g_lynx_arbiter.thermal_limit_level;
+
+	g_lynx_arbiter.active_owner = LYNX_OWNER_WATCHDOG;
+	g_lynx_arbiter.slider_level = restore_level;
+	g_lynx_arbiter.last_applied_level = restore_level;
+	g_lynx_arbiter.diag_watchdog_triggers++;
+	mtk_led_pwm_commit_level(g_lynx_arbiter.led_dat, restore_level, false);
+	pr_notice("[LYNX_ARBITER] Watchdog fired (gen=%llu): restored slider_target=%d (applied=%d)\n",
+		  g_lynx_arbiter.armed_watchdog_gen,
+		  g_lynx_arbiter.slider_target_level, restore_level);
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+}
+
+/* Internal Locked Slider Commit Helper (Called with arbiter_lock held) */
+static void lynx_arbiter_apply_slider_locked(int slider_level)
+{
+	unsigned long flags;
+	int unclamped_level;
+	int applied_level;
+	int max_bl = READ_ONCE(g_lynx_arbiter.max_backlight);
+
+	unclamped_level = clamp(slider_level, 0, max_bl);
+	g_lynx_arbiter.slider_target_level = unclamped_level;
+	g_lynx_arbiter.active_owner = LYNX_OWNER_SLIDER;
+	g_lynx_arbiter.diag_slider_commits++;
+
+	applied_level = unclamped_level;
+	if (g_lynx_arbiter.thermal_limited &&
+	    applied_level > g_lynx_arbiter.thermal_limit_level)
+		applied_level = g_lynx_arbiter.thermal_limit_level;
+
+	g_lynx_arbiter.slider_level = applied_level;
+	g_lynx_arbiter.last_applied_level = applied_level;
+
+	/*
+	 * BLK-02, BLK-26, BLK-31: Single authoritative writer for slider_seq,
+	 * min_valid_seq, g_aal_hist.backlight, g_aal_hist_backlight_seq, and
+	 * g_aal_backlight_notified under g_aal_hist_lock (inner leaf lock).
+	 * Crucially, g_aal_backlight_notified is set to unclamped_level so
+	 * thermal throttling (even a 0% cap) NEVER corrupts AAL/CCORR's
+	 * knowledge of the user's true requested brightness target!
+	 * Also invalidates any stale silky_pending handoff.
+	 */
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	g_lynx_arbiter.slider_seq++;
+	g_lynx_arbiter.min_valid_seq = g_lynx_arbiter.slider_seq;
+	g_lynx_arbiter.silky_pending = false;
+	g_aal_hist.backlight = unclamped_level;
+	g_aal_hist_backlight_seq = g_lynx_arbiter.slider_seq;
+	g_aal_hist.serviceFlags |= AAL_SERVICE_FORCE_UPDATE;
+	atomic_set(&g_aal_backlight_notified, unclamped_level);
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+
+	mtk_led_pwm_commit_level(g_lynx_arbiter.led_dat, applied_level, false);
+
+	/* BLK-06: Advance watchdog generation and arm/disarm deterministically */
+	g_lynx_arbiter.watchdog_gen++;
+	if (applied_level > 0) {
+		g_lynx_arbiter.armed_watchdog_gen = g_lynx_arbiter.watchdog_gen;
+		g_lynx_arbiter.watchdog_armed = true;
+		mod_delayed_work(system_wq, &g_lynx_arbiter.timeout_work,
+				 msecs_to_jiffies(1500));
+	} else {
+		g_lynx_arbiter.watchdog_armed = false;
+		cancel_delayed_work(&g_lynx_arbiter.timeout_work);
+	}
+}
+
+/*
+ * BLK-22: struct mtk_led_data is private to leds-mtk-pwm.c (incomplete type
+ * here). The LED driver therefore passes the physical maximum backlight
+ * level explicitly instead of this file dereferencing led_dat->conf.
+ */
+int lynx_arbiter_init(struct mtk_led_data *led_dat, int max_bl)
+{
+	unsigned long flags;
+
+	if (!led_dat)
+		return -EINVAL;
+
+	if (max_bl <= 0)
+		max_bl = 4095;
+
+	/* BLK-38: Synchronously cancel any pending watchdog work prior to re-init */
+	if (READ_ONCE(g_lynx_arbiter.initialized))
+		cancel_delayed_work_sync(&g_lynx_arbiter.timeout_work);
+
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	if (!g_lynx_arbiter.initialized)
+		INIT_DELAYED_WORK(&g_lynx_arbiter.timeout_work, lynx_arbiter_watchdog_work);
+
+	g_lynx_arbiter.led_dat = led_dat;
+	/* BLK-45: Initial runtime ownership strictly defaults to LEGACY */
+	g_lynx_arbiter.active_owner = LYNX_OWNER_LEGACY;
+	g_lynx_arbiter.slider_target_level = 0;
+	g_lynx_arbiter.aal_target_level = 0;
+	g_lynx_arbiter.ccorr_target_level = 0;
+	g_lynx_arbiter.legacy_target_level = 0;
+	g_lynx_arbiter.slider_level = 0;
+	g_lynx_arbiter.aal_level = 0;
+	g_lynx_arbiter.last_applied_level = 0;
+	g_lynx_arbiter.thermal_limited = false;
+	g_lynx_arbiter.thermal_limit_level = max_bl;
+	g_lynx_arbiter.watchdog_gen = 0;
+	g_lynx_arbiter.armed_watchdog_gen = 0;
+	g_lynx_arbiter.watchdog_armed = false;
+
+	/* BLK-08 & BLK-26: Synchronize max_backlight, sequence, and Silky state under g_aal_hist_lock */
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	WRITE_ONCE(g_lynx_arbiter.max_backlight, max_bl);
+	g_lynx_arbiter.slider_seq = 0;
+	g_lynx_arbiter.min_valid_seq = 0;
+	g_lynx_arbiter.silky_pending = false;
+	g_lynx_arbiter.silky_pending_seq = 0;
+	g_lynx_arbiter.silky_pending_epoch = 0;
+	g_lynx_arbiter.silky_pending_open_id = 0;
+	g_lynx_arbiter.silky_pending_tid = 0;
+	g_lynx_arbiter.silky_pending_backlight = 0;
+	g_lynx_arbiter.silky_handoff_gen = 0;
+	g_lynx_arbiter.silky_pending_gen = 0;
+	g_lynx_arbiter.silky_consumed_gen = 0;
+	g_lynx_arbiter.silky_deadline_jiffies = 0;
+	g_aal_hist_backlight_seq = 0;
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+
+	WRITE_ONCE(g_lynx_arbiter.shutting_down, false);
+	WRITE_ONCE(g_lynx_arbiter.initialized, true);
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+
+	pr_info("[LYNX_ARBITER] Initialized with max_backlight=%d\n", max_bl);
+	return 0;
+}
+EXPORT_SYMBOL(lynx_arbiter_init);
+
+/* Lynx Arbiter: Driver Teardown */
+void lynx_arbiter_deinit(void)
+{
+	unsigned long flags;
+	bool was_init = false;
+
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	was_init = g_lynx_arbiter.initialized;
+	WRITE_ONCE(g_lynx_arbiter.shutting_down, true);
+	WRITE_ONCE(g_lynx_arbiter.initialized, false);
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	g_lynx_arbiter.silky_pending = false;
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+	g_lynx_arbiter.watchdog_gen++;
+	g_lynx_arbiter.watchdog_armed = false;
+	g_lynx_arbiter.led_dat = NULL;
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+
+	if (was_init)
+		cancel_delayed_work_sync(&g_lynx_arbiter.timeout_work);
+
+	pr_info("[LYNX_ARBITER] Deinitialized\n");
+}
+EXPORT_SYMBOL(lynx_arbiter_deinit);
+
+/*
+ * Lynx Arbiter: Lock-Safe Slider Routing Entry Point (BLK-07)
+ * Evaluates lifecycle state and pointer identity strictly INSIDE arbiter_lock.
+ */
+bool lynx_arbiter_route_slider(struct mtk_led_data *led_dat, int slider_level)
+{
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	if (unlikely(g_lynx_arbiter.shutting_down)) {
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return true;
+	}
+
+	if (unlikely(!g_lynx_arbiter.initialized ||
+		     g_lynx_arbiter.led_dat != led_dat)) {
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return false;
+	}
+
+	lynx_arbiter_apply_slider_locked(slider_level);
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+	return true;
+}
+EXPORT_SYMBOL(lynx_arbiter_route_slider);
+
+/*
+ * BLK-19, BLK-26, BLK-30, BLK-31, BLK-33: Dedicated CCORR Silky Brightness Handoff Routing
+ * Called by mt_leds_brightness_set() when invoked for "lcd-backlight".
+ * Strictly validates under arbiter_lock + g_aal_hist_lock:
+ *   1. Disp PQ Silky Brightness property is active.
+ *   2. Caller is the registered AAL/PQ daemon process (g_aal_daemon_active &&
+ *      g_aal_tgid_struct_pid == task_tgid(current)).
+ *   3. Caller matches the authenticated SELinux secid (cur_secid == g_aal_daemon_secid) (BLK-30).
+ *   4. A valid single-use Silky handoff token is armed (silky_pending == true).
+ *   5. Token deadline has not expired: time_before_eq(jiffies, silky_deadline_jiffies) (BLK-33).
+ *   6. silky_pending_epoch == g_aal_daemon_epoch.
+ *   7. silky_pending_seq >= min_valid_seq (no slider event occurred since
+ *      GET_HIST / SET_PARAM).
+ *   8. level == silky_pending_backlight (matches the FinalBacklight authorized
+ *      by AAL SET_PARAM) and is within [0..max_backlight].
+ * Any caller of mt_leds_brightness_set("lcd-backlight", ...) that fails these
+ * checks is rejected and suppressed (returns true so no direct PWM write occurs).
+ */
+/*
+ * BLK-19, BLK-26, BLK-30, BLK-31, BLK-33, BLK-38, BLK-40:
+ * Core routing function with caller already holding g_lynx_arbiter.arbiter_lock.
+ */
+bool lynx_arbiter_route_ccorr_silky_locked(struct mtk_led_data *led_dat, int level,
+					   u64 open_id, u32 epoch, pid_t tid,
+					   u64 tx_id, u64 seq, int backlight)
+{
+	unsigned long flags;
+	struct pid *cur_tgid = task_tgid(current);
+	int unclamped_level;
+	int applied_level;
+	int max_bl;
+	u32 cur_secid = 0;
+	bool handoff_valid = false;
+
+	if (unlikely(g_lynx_arbiter.shutting_down))
+		return true;
+
+	if (unlikely(!g_lynx_arbiter.initialized ||
+		     g_lynx_arbiter.led_dat != led_dat))
+		return false;
+
+	security_task_getsecid(current, &cur_secid);
+
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	max_bl = READ_ONCE(g_lynx_arbiter.max_backlight);
+	if (m_new_pq_persist_property[DISP_PQ_CCORR_SILKY_BRIGHTNESS] &&
+	    g_aal_daemon_active &&
+	    g_aal_daemon_tid > 0 &&
+	    task_pid_nr(current) == g_aal_daemon_tid &&
+	    g_aal_tgid_struct_pid &&
+	    g_aal_tgid_struct_pid == cur_tgid &&
+	    cur_secid != 0 &&
+	    cur_secid == g_aal_daemon_secid &&
+	    g_lynx_arbiter.silky_pending &&
+	    tx_id != 0 &&
+	    tx_id == g_lynx_arbiter.silky_pending_gen &&
+	    g_lynx_arbiter.silky_consumed_gen != tx_id &&
+	    seq == g_lynx_arbiter.silky_pending_seq &&
+	    seq >= g_lynx_arbiter.min_valid_seq &&
+	    open_id != 0 &&
+	    open_id == g_lynx_arbiter.silky_pending_open_id &&
+	    epoch != 0 &&
+	    epoch == g_lynx_arbiter.silky_pending_epoch &&
+	    epoch == g_aal_daemon_epoch &&
+	    tid > 0 &&
+	    tid == g_lynx_arbiter.silky_pending_tid &&
+	    tid == g_aal_daemon_tid &&
+	    time_before_eq(jiffies, g_lynx_arbiter.silky_deadline_jiffies) &&
+	    g_lynx_arbiter.silky_pending_seq >= g_lynx_arbiter.min_valid_seq &&
+	    backlight == g_lynx_arbiter.silky_pending_backlight &&
+	    level == backlight &&
+	    level == g_lynx_arbiter.silky_pending_backlight &&
+	    level >= 0 && level <= max_bl) {
+		handoff_valid = true;
+		/* BLK-39: Single-use token consumed ONLY on valid matching transaction ID */
+		g_lynx_arbiter.silky_consumed_gen = tx_id;
+		g_lynx_arbiter.silky_pending = false;
+	}
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+
+	if (unlikely(!handoff_valid)) {
+		g_lynx_arbiter.diag_ccorr_rejects++;
+		pr_notice_ratelimited("[LYNX_ARBITER] Rejected unauthorized/stale/expired CCORR Silky write (level=%d)\n",
+				      level);
+		return true;
+	}
+
+	unclamped_level = clamp(level, 0, max_bl);
+	if (atomic_read(&g_aal_backlight_notified) == 0)
+		unclamped_level = 0;
+
+	applied_level = unclamped_level;
+	if (g_lynx_arbiter.thermal_limited &&
+	    applied_level > g_lynx_arbiter.thermal_limit_level)
+		applied_level = g_lynx_arbiter.thermal_limit_level;
+
+	/* BLK-31: Record unclamped intent in ccorr_target_level */
+	g_lynx_arbiter.ccorr_target_level = unclamped_level;
+	g_lynx_arbiter.active_owner = LYNX_OWNER_CCORR;
+	g_lynx_arbiter.last_applied_level = applied_level;
+	g_lynx_arbiter.diag_ccorr_commits++;
+
+	mtk_led_pwm_commit_level(g_lynx_arbiter.led_dat, applied_level, true);
+
+	g_lynx_arbiter.watchdog_gen++;
+	g_lynx_arbiter.watchdog_armed = false;
+	cancel_delayed_work(&g_lynx_arbiter.timeout_work);
+
+	return true;
+}
+EXPORT_SYMBOL(lynx_arbiter_route_ccorr_silky_locked);
+
+bool lynx_arbiter_route_ccorr_silky(struct mtk_led_data *led_dat, int level,
+				    u64 open_id, u32 epoch, pid_t tid,
+				    u64 tx_id, u64 seq, int backlight)
+{
+	bool ret;
+
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	ret = lynx_arbiter_route_ccorr_silky_locked(led_dat, level, open_id, epoch, tid,
+						    tx_id, seq, backlight);
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+	return ret;
+}
+EXPORT_SYMBOL(lynx_arbiter_route_ccorr_silky);
+
+/*
+ * BLK-19, BLK-26, BLK-34, BLK-38:
+ * Legacy workqueue routing policy executed with arbiter_lock held.
+ */
+bool lynx_arbiter_route_legacy_locked(struct mtk_led_data *led_dat, int level)
+{
+	unsigned long flags;
+	bool daemon_active;
+	int unclamped_level;
+	int applied_level;
+	int max_bl;
+
+	if (unlikely(g_lynx_arbiter.shutting_down))
+		return true;
+
+	if (unlikely(!g_lynx_arbiter.initialized ||
+		     g_lynx_arbiter.led_dat != led_dat))
+		return false;
+
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	daemon_active = g_aal_daemon_active;
+	max_bl = READ_ONCE(g_lynx_arbiter.max_backlight);
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+
+	if (daemon_active || g_lynx_arbiter.active_owner != LYNX_OWNER_LEGACY) {
+		g_lynx_arbiter.diag_legacy_rejects++;
+		return true;
+	}
+
+	unclamped_level = clamp(level, 0, max_bl);
+	applied_level = unclamped_level;
+	if (g_lynx_arbiter.thermal_limited &&
+	    applied_level > g_lynx_arbiter.thermal_limit_level)
+		applied_level = g_lynx_arbiter.thermal_limit_level;
+
+	g_lynx_arbiter.legacy_target_level = unclamped_level;
+	g_lynx_arbiter.active_owner = LYNX_OWNER_LEGACY;
+	g_lynx_arbiter.last_applied_level = applied_level;
+	g_lynx_arbiter.diag_legacy_commits++;
+
+	mtk_led_pwm_commit_level(g_lynx_arbiter.led_dat, applied_level, true);
+	return true;
+}
+EXPORT_SYMBOL(lynx_arbiter_route_legacy_locked);
+
+bool lynx_arbiter_route_legacy(struct mtk_led_data *led_dat, int level)
+{
+	bool ret;
+
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	ret = lynx_arbiter_route_legacy_locked(led_dat, level);
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+	return ret;
+}
+EXPORT_SYMBOL(lynx_arbiter_route_legacy);
+
+/* Lynx Arbiter: Direct Slider Callback Handler */
+void lynx_arbiter_notify_slider(int slider_level)
+{
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	if (unlikely(!g_lynx_arbiter.initialized ||
+		     g_lynx_arbiter.shutting_down ||
+		     !g_lynx_arbiter.led_dat)) {
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return;
+	}
+
+	lynx_arbiter_apply_slider_locked(slider_level);
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+}
+EXPORT_SYMBOL(lynx_arbiter_notify_slider);
+
+/*
+ * Lynx Arbiter: Safe Atomic Daemon Registration with Decoupled RCU
+ * (BLK-14, BLK-20, BLK-25, BLK-26, BLK-27, BLK-30)
+ * Binds ctx->daemon_secid to g_aal_daemon_secid and resets ctx->fetched_seq,
+ * ctx->staged_seq, ctx->fetch_in_progress, ctx->fetched_valid, global
+ * g_aal_hist_fetch_busy, and silky_pending on registration.
+ */
+void disp_aal_commit_daemon_registration(struct lynx_drm_file_ctx *ctx)
+{
+	unsigned long flags;
+	struct pid *old_tgid = NULL;
+	struct pid *new_tgid;
+
+	if (!ctx)
+		return;
+
+	new_tgid = ctx->tgid;
+	if (new_tgid)
+		get_pid(new_tgid);
+
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	old_tgid = g_aal_tgid_struct_pid;
+	g_aal_tgid_struct_pid = new_tgid;
+	g_aal_init_open_id = ctx->drm_open_id;
+	g_aal_daemon_epoch++;
+	g_aal_daemon_secid = ctx->daemon_secid;
+	g_aal_daemon_active = (new_tgid != NULL);
+	g_aal_hist_fetch_busy = false;
+	g_aal_hist_fetch_open_id = 0;
+	g_lynx_arbiter.silky_pending = false;
+	ctx->is_aal_daemon = true;
+	ctx->daemon_epoch = g_aal_daemon_epoch;
+	ctx->daemon_tid = task_pid_nr(current); /* BLK-40: Bind dedicated daemon TID */
+	g_aal_daemon_tid = ctx->daemon_tid; /* BLK-40: Store bound TID globally */
+	ctx->fetched_seq = 0;
+	ctx->staged_seq = 0;
+	ctx->fetch_gen = 0;
+	ctx->silky_fifo_head = 0;
+	ctx->silky_fifo_tail = 0;
+	memset(ctx->silky_fifo, 0, sizeof(ctx->silky_fifo));
+	ctx->fetch_in_progress = false;
+	ctx->fetch_owner = NULL;
+	ctx->fetched_valid = false;
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+
+	if (old_tgid) {
+		synchronize_rcu();
+		put_pid(old_tgid);
+	}
+}
+
+/* Lynx Arbiter: Daemon Deregistration on DRM Postclose */
+void disp_aal_unregister_daemon_fd(u64 open_id)
+{
+	unsigned long flags;
+	struct pid *old_pid = NULL;
+
+	mutex_lock(&g_aal_ioctl_lock);
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	if (g_aal_hist_fetch_open_id == open_id) {
+		g_aal_hist_fetch_busy = false;
+		g_aal_hist_fetch_open_id = 0;
+	}
+	if (g_aal_init_open_id == open_id) {
+		old_pid = g_aal_tgid_struct_pid;
+		g_aal_tgid_struct_pid = NULL;
+		g_aal_init_open_id = 0;
+		g_aal_daemon_secid = 0;
+		g_aal_daemon_tid = 0; /* BLK-40: Clear globally bound TID */
+		g_aal_daemon_active = false;
+		g_aal_daemon_epoch++;
+		g_lynx_arbiter.silky_pending = false;
+		atomic_set(&g_aal_is_init_regs_valid, 0); /* BLK-46: Revoke hardware init readiness */
+	}
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+	mutex_unlock(&g_aal_ioctl_lock);
+
+	if (old_pid) {
+		synchronize_rcu();
+		put_pid(old_pid);
+	}
+}
+
+/*
+ * Lynx Arbiter: Internal Identity & Sequence Helper (Must be called with g_aal_hist_lock held)
+ * Returns 0 on valid token/identity, or negative errno (-EINVAL, -EACCES, -ESTALE)
+ * so callers can propagate exact failure reasons (BLK-03, BLK-14, BLK-15, BLK-20, BLK-30).
+ */
+static int disp_aal_check_identity_and_seq_locked(struct lynx_drm_file_ctx *ctx,
+						  struct pid *cur_tgid,
+						  int backlight_value,
+						  bool is_post_cmdq_recheck,
+						  u64 expected_seq,
+						  u32 expected_epoch,
+						  u64 *out_seq,
+						  u32 *out_epoch)
+{
+	int max_bl = READ_ONCE(g_lynx_arbiter.max_backlight);
+	u64 seq_to_check;
+	u32 cur_secid = 0;
+
+	if (unlikely(!ctx))
+		return -EINVAL;
+
+	if (unlikely(!g_aal_daemon_active)) {
+		g_lynx_arbiter.diag_daemon_inactive++;
+		return -EACCES;
+	}
+
+	if (unlikely(!ctx->is_aal_daemon)) {
+		g_lynx_arbiter.diag_invalid_pid++;
+		return -EACCES;
+	}
+
+	/* BLK-30: Continuous SELinux secid verification */
+	security_task_getsecid(current, &cur_secid);
+	if (unlikely(cur_secid == 0 ||
+		     cur_secid != g_aal_daemon_secid ||
+		     cur_secid != ctx->daemon_secid)) {
+		g_lynx_arbiter.diag_auth_rejects++;
+		return -EACCES;
+	}
+
+	if (unlikely(ctx->drm_open_id != g_aal_init_open_id)) {
+		g_lynx_arbiter.diag_invalid_epoch++;
+		return -ESTALE;
+	}
+
+	if (unlikely(ctx->daemon_epoch != g_aal_daemon_epoch)) {
+		g_lynx_arbiter.diag_invalid_epoch++;
+		return -ESTALE;
+	}
+
+	if (is_post_cmdq_recheck && unlikely(expected_epoch != g_aal_daemon_epoch)) {
+		g_lynx_arbiter.diag_invalid_epoch++;
+		return -ESTALE;
+	}
+
+	if (unlikely(!g_aal_tgid_struct_pid || g_aal_tgid_struct_pid != cur_tgid)) {
+		g_lynx_arbiter.diag_invalid_pid++;
+		return -EACCES;
+	}
+
+	/* BLK-40: Strict numeric thread identity validation - fail-closed rejection */
+	if (unlikely(ctx->daemon_tid <= 0 ||
+		     task_pid_nr(current) != ctx->daemon_tid)) {
+		g_lynx_arbiter.diag_invalid_pid++;
+		return -EACCES;
+	}
+
+	/*
+	 * BLK-14 & BLK-20: Pre-CMDQ check requires a fully delivered, unconsumed
+	 * GET_HIST token (ctx->fetched_valid == true && !ctx->fetch_in_progress).
+	 */
+	if (!is_post_cmdq_recheck &&
+	    unlikely(!ctx->fetched_valid || ctx->fetch_in_progress)) {
+		g_lynx_arbiter.diag_stale_seq_drops++;
+		return -ESTALE;
+	}
+
+	seq_to_check = is_post_cmdq_recheck ? expected_seq : ctx->fetched_seq;
+	if (unlikely(seq_to_check < g_lynx_arbiter.min_valid_seq)) {
+		g_lynx_arbiter.diag_stale_seq_drops++;
+		return -ESTALE;
+	}
+
+	if (unlikely(backlight_value < 0 || backlight_value > max_bl)) {
+		g_lynx_arbiter.diag_out_of_range++;
+		return -EINVAL;
+	}
+
+	if (out_seq)
+		*out_seq = ctx->fetched_seq;
+	if (out_epoch)
+		*out_epoch = ctx->daemon_epoch;
+	return 0;
+}
+
+/*
+ * Lynx Arbiter: Pre-CMDQ Token Validation & Consumption (BLK-12, BLK-14, BLK-15, BLK-20)
+ * Called with g_aal_ioctl_lock and g_lynx_arbiter.arbiter_lock held.
+ */
+int disp_aal_validate_and_consume_token_locked(struct lynx_drm_file_ctx *ctx,
+					       int backlight_value,
+					       u64 *out_seq,
+					       u32 *out_epoch)
+{
+	unsigned long flags;
+	int ret;
+	struct pid *cur_tgid = task_tgid(current);
+
+	if (!ctx)
+		return -EINVAL;
+
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	ret = disp_aal_check_identity_and_seq_locked(ctx, cur_tgid, backlight_value,
+						     false, 0, 0, out_seq, out_epoch);
+	/*
+	 * If caller is the legitimate active daemon on this FD and no GET_HIST
+	 * copy_to_user is currently in-flight, consume the single-use GET_HIST
+	 * token whether it succeeded or was rejected as stale.
+	 */
+	if (ctx->is_aal_daemon &&
+	    ctx->drm_open_id == g_aal_init_open_id &&
+	    g_aal_tgid_struct_pid == cur_tgid &&
+	    !ctx->fetch_in_progress) {
+		ctx->fetched_valid = false;
+	}
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+	return ret;
+}
+
+/*
+ * Lynx Arbiter: Re-Validated Hardware Backlight Commit Routine
+ * (BLK-03, BLK-06, BLK-08, BLK-13, BLK-15, BLK-17, BLK-18, BLK-21, BLK-26, BLK-31)
+ * Must be called with g_lynx_arbiter.arbiter_lock ALREADY HELD across the
+ * synchronous SET_PARAM transaction AFTER mtk_crtc_user_cmd_sync() confirms
+ * actual GCE hardware completion.
+ * Preserves unclamped aal_target_level separately from thermally clamped
+ * aal_level / last_applied_level (BLK-21 & BLK-31).
+ */
+int lynx_arbiter_commit_aal_locked(struct lynx_drm_file_ctx *ctx,
+				   int backlight_level,
+				   u64 causal_seq,
+				   u32 expected_epoch)
+{
+	unsigned long flags;
+	struct pid *cur_tgid = task_tgid(current);
+	int ret;
+	int unclamped_level;
+	int final_level;
+	int max_bl;
+
+	lockdep_assert_held(&g_lynx_arbiter.arbiter_lock);
+
+	/* Authoritative lifecycle and pointer validation INSIDE arbiter_lock */
+	if (unlikely(!g_lynx_arbiter.initialized ||
+		     g_lynx_arbiter.shutting_down ||
+		     !g_lynx_arbiter.led_dat)) {
+		return -ENODEV;
+	}
+
+	/*
+	 * BLK-03 & BLK-30: Re-validate FULL daemon identity (active flag, open_id,
+	 * epoch, TGID, and SELinux secid) AND causal sequence fence under
+	 * g_aal_hist_lock at the moment of PWM commit.
+	 */
+	spin_lock_irqsave(&g_aal_hist_lock, flags);
+	ret = disp_aal_check_identity_and_seq_locked(ctx, cur_tgid,
+						     backlight_level,
+						     true, causal_seq,
+						     expected_epoch,
+						     NULL, NULL);
+	max_bl = READ_ONCE(g_lynx_arbiter.max_backlight);
+	if (ret == 0)
+		g_lynx_arbiter.silky_pending = false;
+	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+
+	if (unlikely(ret < 0)) {
+		pr_notice_ratelimited("[LYNX_ARBITER] Commit aborted at re-validation (seq=%llu, epoch=%u, ret=%d)\n",
+				      causal_seq, expected_epoch, ret);
+		return ret;
+	}
+
+	/*
+	 * BLK-21 & BLK-31: Record unclamped AAL target brightness in aal_target_level
+	 * BEFORE applying thermal_limit_level so thermal release can restore
+	 * the true unclamped AAL request.
+	 */
+	unclamped_level = clamp(backlight_level, 0, max_bl);
+	g_lynx_arbiter.aal_target_level = unclamped_level;
+
+	final_level = unclamped_level;
+	if (g_lynx_arbiter.thermal_limited &&
+	    final_level > g_lynx_arbiter.thermal_limit_level)
+		final_level = g_lynx_arbiter.thermal_limit_level;
+
+	g_lynx_arbiter.active_owner = LYNX_OWNER_AAL;
+	g_lynx_arbiter.aal_level = final_level;
+	g_lynx_arbiter.last_applied_level = final_level;
+	g_lynx_arbiter.diag_aal_commits++;
+
+	mtk_led_pwm_commit_level(g_lynx_arbiter.led_dat, final_level, false);
+
+	/*
+	 * BLK-06: Advance watchdog generation and clear watchdog_armed BEFORE
+	 * cancel_delayed_work() so any concurrently running worker waiting on
+	 * arbiter_lock will see watchdog_armed == false and abort safely.
+	 */
+	g_lynx_arbiter.watchdog_gen++;
+	g_lynx_arbiter.watchdog_armed = false;
+	cancel_delayed_work(&g_lynx_arbiter.timeout_work);
+
+	return 0;
+}
+
 int mtk_drm_ioctl_aal_init_reg(struct drm_device *dev, void *data,
 	struct drm_file *file_priv)
 {
+	struct lynx_drm_file_ctx *ctx = file_priv ? file_priv->driver_priv : NULL;
 	struct mtk_drm_private *private = dev->dev_private;
 	struct mtk_ddp_comp *comp = private->ddp_comp[DDP_COMPONENT_AAL0];
 	struct drm_crtc *crtc = private->crtc[0];
-	g_aal_data->crtc = crtc;
+	bool cb_executed = false;
+	bool hw_completed = false;
+	u32 candidate_secid = 0;
+	int ret;
 
-	return mtk_crtc_user_cmd(crtc, comp, INIT_REG, data);
+	if (unlikely(!ctx || !data))
+		return -EINVAL;
+
+	/*
+	 * BLK-30: Enforce that caller's TGID strictly matches ctx->tgid
+	 * initialized when this DRM file descriptor was opened.
+	 */
+	if (unlikely(!ctx->tgid || ctx->tgid != task_tgid(current))) {
+		g_lynx_arbiter.diag_auth_rejects++;
+		pr_warn_ratelimited("[LYNX_AAL] Reject INIT_REG: TGID mismatch with DRM open context\n");
+		return -EACCES;
+	}
+
+	/*
+	 * BLK-25 & BLK-30: Enforce fail-closed multi-layer candidate daemon authentication
+	 * (UID 1000, comm pq@2.2-service/AALMain, SELinux domain :mtk_hal_pq:)
+	 * BEFORE acquiring g_aal_ioctl_lock or programming hardware registers.
+	 */
+	ret = disp_aal_authenticate_daemon_candidate(&candidate_secid);
+	if (unlikely(ret < 0))
+		return ret;
+
+	ctx->daemon_secid = candidate_secid;
+
+	/* BLK-40: Require caller thread to be AALMain or daemon leader pq@2.2-service */
+	if (strcmp(current->comm, "AALMain") != 0 &&
+	    strcmp(current->comm, "pq@2.2-service") != 0) {
+		g_lynx_arbiter.diag_invalid_pid++;
+		pr_warn_ratelimited("[LYNX_AAL] Reject INIT_REG: unauthorized thread comm '%s'\n",
+				    current->comm);
+		return -EACCES;
+	}
+
+	/*
+	 * BLK-11 & BLK-17: Execute INIT_REG synchronously via
+	 * mtk_crtc_user_cmd_sync() under g_aal_ioctl_lock and require BOTH
+	 * callback execution (g_aal_init_reg_executed && cb_executed) AND
+	 * actual GCE hardware completion (hw_completed == true) before marking
+	 * g_aal_is_init_regs_valid = 1 and registering the daemon FD.
+	 */
+	mutex_lock(&g_aal_ioctl_lock);
+	g_aal_data->crtc = crtc;
+	g_aal_init_reg_executed = false;
+
+	ret = mtk_crtc_user_cmd_sync(crtc, comp, INIT_REG, data,
+				     &cb_executed, &hw_completed);
+	if (ret == 0 && (!g_aal_init_reg_executed || !cb_executed || !hw_completed)) {
+		AALAPI_LOG("[LYNX_AAL] INIT_REG incomplete (cb=%d, hw=%d), daemon not registered\n",
+			   cb_executed, hw_completed);
+		ret = -EAGAIN;
+	} else if (ret == 0) {
+		atomic_set(&g_aal_is_init_regs_valid, 1);
+		disp_aal_commit_daemon_registration(ctx);
+	}
+	mutex_unlock(&g_aal_ioctl_lock);
+
+	return ret;
 }
 
 static struct DISP_AAL_PARAM g_aal_param;
@@ -1434,8 +2915,11 @@ int disp_aal_set_param(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle,
 	int ret = -EFAULT;
 	u64 time_use = 0;
 
+	if (unlikely(!param))
+		return -EINVAL;
+
 	if (debug_dump_input_param)
-		dump_param(&g_aal_param);
+		dump_param(param);
 	//For 120Hz rotation issue
 	do_gettimeofday(&end);
 	time_use = (end.tv_sec-start.tv_sec) * 1000000
@@ -1452,18 +2936,53 @@ int disp_aal_set_param(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle,
 		usleep_range(260-time_use, 270-time_use);
 	}
 
-	ret = disp_aal_write_param_to_reg(comp, handle, &g_aal_param);
-	disp_aal_flip_sram(comp, handle, __func__);
+	if (unlikely(!comp || !comp->mtk_crtc)) {
+		AALERR("Invalid AAL0 component or mtk_crtc\n");
+		return -ENODEV;
+	}
+
+	/*
+	 * BLK-04, BLK-05, BLK-10, BLK-17: Use the per-transaction param pointer,
+	 * validate dual-pipe AAL1 upfront BEFORE writing to AAL0 or flipping
+	 * SRAM, and set g_aal_set_param_executed = true ONLY when all register
+	 * writes and SRAM flips have been appended to the CMDQ packet.
+	 */
 	if (comp->mtk_crtc->is_dual_pipe) {
 		struct mtk_drm_crtc *mtk_crtc = comp->mtk_crtc;
 		struct drm_crtc *crtc = &mtk_crtc->base;
-		struct mtk_drm_private *priv = crtc->dev->dev_private;
-		struct mtk_ddp_comp *comp_aal1 = priv->ddp_comp[DDP_COMPONENT_AAL1];
+		struct mtk_drm_private *priv = crtc->dev ? crtc->dev->dev_private : NULL;
+		struct mtk_ddp_comp *comp_aal1 = priv ? priv->ddp_comp[DDP_COMPONENT_AAL1] : NULL;
 
-		ret = disp_aal_write_param_to_reg(comp_aal1, handle, &g_aal_param);
+		if (unlikely(!comp_aal1)) {
+			AALERR("Dual-pipe active but AAL1 component is NULL\n");
+			return -ENODEV;
+		}
+
+		ret = disp_aal_write_param_to_reg(comp, handle, param);
+		if (ret < 0) {
+			AALERR("AAL0 write_param_to_reg failed: %d\n", ret);
+			return ret;
+		}
+
+		ret = disp_aal_write_param_to_reg(comp_aal1, handle, param);
+		if (ret < 0) {
+			AALERR("Dual-pipe AAL1 write_param_to_reg failed: %d\n", ret);
+			return ret;
+		}
+
+		disp_aal_flip_sram(comp, handle, __func__);
 		disp_aal_flip_sram(comp_aal1, handle, __func__);
+	} else {
+		ret = disp_aal_write_param_to_reg(comp, handle, param);
+		if (ret < 0) {
+			AALERR("AAL0 write_param_to_reg failed: %d\n", ret);
+			return ret;
+		}
 
+		disp_aal_flip_sram(comp, handle, __func__);
 	}
+
+	g_aal_set_param_executed = true;
 /* FIXME
  *	if (ret == 0)
  *		ret |= disp_pwm_set_backlight_cmdq(DISP_PWM0,
@@ -1531,41 +3050,168 @@ int mtk_drm_ioctl_aal_set_param(struct drm_device *dev, void *data,
 	int backlight_value = 0;
 	struct DISP_AAL_PARAM *param = (struct DISP_AAL_PARAM *) data;
 	bool delay_refresh = false;
+	struct lynx_drm_file_ctx *ctx = file_priv ? file_priv->driver_priv : NULL;
+	u64 seq_snapshot = 0;
+	u32 epoch_snapshot = 0;
+	bool cb_executed = false;
+	bool hw_completed = false;
+	unsigned long flags;
 
 	if (debug_skip_set_param) {
 		pr_notice("skip_set_param for debug\n");
 		return ret;
 	}
-	/* Not need to protect g_aal_param, */
-	/* since only AALService can set AAL parameters. */
-	memcpy(&g_aal_param, param, sizeof(*param));
-	backlight_value = g_aal_param.FinalBacklight;
-	/* set cabc gain zero when detect backlight */
-	/* setting equal to zero */
+
+	if (unlikely(!param || !ctx))
+		return -EINVAL;
+
+	/*
+	 * BLK-04, BLK-05, BLK-10, BLK-13, BLK-17, BLK-18, BLK-26, BLK-30, BLK-31, BLK-33:
+	 * Hold BOTH g_aal_ioctl_lock (Level 0) and g_lynx_arbiter.arbiter_lock
+	 * (Level 1) across the ENTIRE synchronous hardware transaction:
+	 *   1. Pre-CMDQ token, identity, & SELinux validation (consuming fetched_valid)
+	 *   2. Synchronous CMDQ DRE/CABC register write, SRAM flip, AND GCE
+	 *      mailbox wait-for-completion (mtk_crtc_user_cmd_sync ->
+	 *      cmdq_pkt_flush -> cmdq_pkt_wait_complete)
+	 *   3. Verification that BOTH callback execution AND GCE hardware
+	 *      execution completed with 0 error
+	 *   4. Hardware PWM commit (or verified Silky Brightness handoff token
+	 *      arming with generation + 100ms TTL when silky_bright_flag != 0)
+	 * Because arbiter_lock is held until GCE hardware execution AND PWM
+	 * commit have both completed, no slider, CCORR, thermal, or watchdog
+	 * write can ever interleave while GCE is executing DRE/CABC updates.
+	 */
+	mutex_lock(&g_aal_ioctl_lock);
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+
+	backlight_value = param->FinalBacklight;
+	ret = disp_aal_validate_and_consume_token_locked(ctx, backlight_value,
+							 &seq_snapshot,
+							 &epoch_snapshot);
+	if (ret < 0) {
+		AALAPI_LOG("[LYNX_AAL] Rejected unauthorized/stale SET_PARAM before CMDQ: %d\n", ret);
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		mutex_unlock(&g_aal_ioctl_lock);
+		return ret;
+	}
+
 	if (backlight_value == 0)
-		g_aal_param.cabc_fltgain_force = 0;
+		param->cabc_fltgain_force = 0;
 
-	ret = mtk_crtc_user_cmd(crtc, comp, SET_PARAM, data);
+	memcpy(&g_aal_param, param, sizeof(*param));
+	g_aal_set_param_executed = false;
 
-	atomic_set(&g_aal_allowPartial, g_aal_param.allowPartial);
+	/*
+	 * BLK-17 & BLK-18: Synchronous GCE CMDQ flush & hardware completion wait
+	 * while holding arbiter_lock.
+	 */
+	ret = mtk_crtc_user_cmd_sync(crtc, comp, SET_PARAM, &g_aal_param,
+				     &cb_executed, &hw_completed);
 
-	if (atomic_read(&g_aal_backlight_notified) == 0)
-		backlight_value = 0;
+	if (ret == 0 && (!g_aal_set_param_executed || !cb_executed || !hw_completed)) {
+		g_lynx_arbiter.diag_cmdq_sync_failures++;
+		pr_warn_ratelimited("[LYNX_AAL] SET_PARAM incomplete (cb=%d, hw=%d), aborting PWM commit\n",
+				    cb_executed, hw_completed);
+		ret = -EIO;
+	} else if (ret < 0) {
+		g_lynx_arbiter.diag_cmdq_sync_failures++;
+	}
 
-	if (m_new_pq_persist_property[DISP_PQ_CCORR_SILKY_BRIGHTNESS]) {
-		if (g_aal_param.silky_bright_flag == 0) {
-			AALAPI_LOG("backlight_value = %d, silky_bright_flag = %d",
-				backlight_value, g_aal_param.silky_bright_flag);
-			mt_leds_brightness_set("lcd-backlight", backlight_value);
+	if (ret == 0) {
+		atomic_set(&g_aal_allowPartial, g_aal_param.allowPartial);
+
+		/*
+		 * BLK-31: If user slider intent is truly 0 (screen off),
+		 * force backlight_value to 0. Otherwise keep AAL target intent.
+		 */
+		if (atomic_read(&g_aal_backlight_notified) == 0)
+			backlight_value = 0;
+
+		/*
+		 * BLK-15, BLK-16, BLK-26, BLK-30, BLK-33: Preserve CCORR Silky Brightness gating.
+		 * When silky_bright_flag != 0, re-validate daemon identity, secid, &
+		 * sequence under g_aal_hist_lock and arm the single-use Silky
+		 * handoff token with dedicated generation and 100ms TTL deadline for
+		 * lynx_arbiter_route_ccorr_silky().
+		 */
+		if (m_new_pq_persist_property[DISP_PQ_CCORR_SILKY_BRIGHTNESS]) {
+			if (g_aal_param.silky_bright_flag == 0) {
+				AALAPI_LOG("backlight_value = %d, silky_bright_flag = %d",
+					backlight_value, g_aal_param.silky_bright_flag);
+				spin_lock_irqsave(&g_aal_hist_lock, flags);
+				ctx->silky_fifo_head = ctx->silky_fifo_tail;
+				spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+				ret = lynx_arbiter_commit_aal_locked(ctx, backlight_value,
+								     seq_snapshot, epoch_snapshot);
+			} else {
+				struct pid *cur_tgid = task_tgid(current);
+				u64 new_tx_id;
+				u32 slot_idx;
+
+				spin_lock_irqsave(&g_aal_hist_lock, flags);
+				ret = disp_aal_check_identity_and_seq_locked(
+					ctx, cur_tgid, g_aal_param.FinalBacklight,
+					true, seq_snapshot, epoch_snapshot,
+					NULL, NULL);
+				if (ret == 0) {
+					g_lynx_arbiter.silky_handoff_gen++;
+					new_tx_id = g_lynx_arbiter.silky_handoff_gen;
+					g_lynx_arbiter.silky_pending = true;
+					g_lynx_arbiter.silky_pending_seq = seq_snapshot;
+					g_lynx_arbiter.silky_pending_epoch = epoch_snapshot;
+					g_lynx_arbiter.silky_pending_open_id = ctx->drm_open_id;
+					g_lynx_arbiter.silky_pending_tid = ctx->daemon_tid;
+					g_lynx_arbiter.silky_pending_backlight =
+						g_aal_param.FinalBacklight;
+					g_lynx_arbiter.silky_pending_gen = new_tx_id;
+					g_lynx_arbiter.silky_deadline_jiffies =
+						jiffies + msecs_to_jiffies(100);
+
+					/*
+					 * BLK-39: Enqueue immutable per-transaction record in FIFO
+					 * so a subsequent SET_PARAM never overwrites the token of
+					 * an earlier delayed SET_CCORR callback.
+					 */
+					if ((u32)(ctx->silky_fifo_tail - ctx->silky_fifo_head) >=
+					    LYNX_SILKY_FIFO_DEPTH) {
+						ctx->silky_fifo_head =
+							ctx->silky_fifo_tail - (LYNX_SILKY_FIFO_DEPTH - 1);
+					}
+					slot_idx = ctx->silky_fifo_tail % LYNX_SILKY_FIFO_DEPTH;
+					ctx->silky_fifo[slot_idx].tx_id = new_tx_id;
+					ctx->silky_fifo[slot_idx].seq = seq_snapshot;
+					ctx->silky_fifo[slot_idx].epoch = epoch_snapshot;
+					ctx->silky_fifo[slot_idx].open_id = ctx->drm_open_id;
+					ctx->silky_fifo[slot_idx].tid = ctx->daemon_tid;
+					ctx->silky_fifo[slot_idx].backlight =
+						g_aal_param.FinalBacklight;
+					ctx->silky_fifo_tail++;
+				} else {
+					g_lynx_arbiter.silky_pending = false;
+				}
+				spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+			}
+		} else {
+			AALAPI_LOG("%d", backlight_value);
+			spin_lock_irqsave(&g_aal_hist_lock, flags);
+			ctx->silky_fifo_head = ctx->silky_fifo_tail;
+			spin_unlock_irqrestore(&g_aal_hist_lock, flags);
+			ret = lynx_arbiter_commit_aal_locked(ctx, backlight_value,
+							     seq_snapshot, epoch_snapshot);
 		}
 	} else {
-		AALAPI_LOG("%d", backlight_value);
-		mt_leds_brightness_set("lcd-backlight", backlight_value);
+		pr_warn_ratelimited("[LYNX_AAL] SET_PARAM synchronous CMDQ failed (%d), skip arbiter commit\n", ret);
 	}
+
 	AALFLOW_LOG("delay refresh: %d", g_aal_param.refreshLatency);
 	if (g_aal_param.refreshLatency == 33)
 		delay_refresh = true;
-	mtk_crtc_check_trigger(comp->mtk_crtc, delay_refresh, true);
+
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+	mutex_unlock(&g_aal_ioctl_lock);
+
+	if (ret == 0)
+		mtk_crtc_check_trigger(comp->mtk_crtc, delay_refresh, true);
 	return ret;
 }
 

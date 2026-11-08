@@ -396,12 +396,20 @@ int set_soc_md_rt_rat_str(int md_id, char str[])
 
 	if (!str) {
 		pr_info("CCCI: %s get NULL ptr!\n", __func__);
+#if defined(CONFIG_MTK_MD1_SUPPORT) && (CONFIG_MTK_MD1_SUPPORT == 9)
+		id = 9;
+		cap = md_rat_map[9];
+#endif
 		set_soc_md_rt_rat(md_id, cap, id);
 		return 1;
 	}
 
 	if (strlen(str) == 0) {
 		pr_info("CCCI: %s str empty, set default value!\n", __func__);
+#if defined(CONFIG_MTK_MD1_SUPPORT) && (CONFIG_MTK_MD1_SUPPORT == 9)
+		id = 9;
+		cap = md_rat_map[9];
+#endif
 		set_soc_md_rt_rat(md_id, cap, id);
 		return 1;
 	}

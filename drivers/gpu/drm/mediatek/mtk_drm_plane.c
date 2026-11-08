@@ -159,6 +159,7 @@ static struct mtk_drm_property mtk_plane_property[PLANE_PROP_MAX] = {
 static void mtk_plane_reset(struct drm_plane *plane)
 {
 	struct mtk_plane_state *state;
+	unsigned int plane_index;
 
 	if (plane->state) {
 		__drm_atomic_helper_plane_destroy_state(plane->state);
@@ -175,6 +176,18 @@ static void mtk_plane_reset(struct drm_plane *plane)
 	state->prop_val[PLANE_PROP_PLANE_ALPHA] = 0xFF;
 	state->base.plane = plane;
 	state->pending.format = DRM_FORMAT_RGB565;
+
+	/* Inisialisasi pemetaan default hardware OVL sejak pembuatan plane */
+	plane_index = to_crtc_plane_index(plane->index);
+	if (plane_index < 2) {
+		state->comp_state.comp_id = DDP_COMPONENT_OVL0_2L;
+		state->comp_state.lye_id = plane_index;
+		state->comp_state.ext_lye_id = 0;
+	} else if (plane_index < 6) {
+		state->comp_state.comp_id = DDP_COMPONENT_OVL0;
+		state->comp_state.lye_id = plane_index - 2;
+		state->comp_state.ext_lye_id = 0;
+	}
 }
 
 static struct drm_plane_state *
@@ -296,7 +309,7 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 	struct drm_rect clip = {
 		0,
 	};
-	/* struct mtk_drm_private *private = plane->dev->dev_private; */
+	struct mtk_drm_private *private = plane->dev->dev_private;
 
 	if (!fb)
 		return 0;
@@ -309,6 +322,25 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 	if (!state->crtc)
 		return 0;
 
+	/* Pastikan plane state memiliki pemetaan component OVL yang valid sebelum commit */
+	{
+		struct mtk_plane_state *mtk_state = to_mtk_plane_state(state);
+
+		if (mtk_state->comp_state.comp_id == 0) {
+			unsigned int plane_index = to_crtc_plane_index(plane->index);
+
+			if (plane_index < 2) {
+				mtk_state->comp_state.comp_id = DDP_COMPONENT_OVL0_2L;
+				mtk_state->comp_state.lye_id = plane_index;
+				mtk_state->comp_state.ext_lye_id = 0;
+			} else if (plane_index < 6) {
+				mtk_state->comp_state.comp_id = DDP_COMPONENT_OVL0;
+				mtk_state->comp_state.lye_id = plane_index - 2;
+				mtk_state->comp_state.ext_lye_id = 0;
+			}
+		}
+	}
+
 	crtc_state = drm_atomic_get_crtc_state(state->state, state->crtc);
 	if (IS_ERR(crtc_state))
 		return PTR_ERR(crtc_state);
@@ -316,14 +348,14 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 	clip.x2 = crtc_state->mode.hdisplay;
 	clip.y2 = crtc_state->mode.vdisplay;
 
-	/*
-	 * MT6781 OVL has no hardware scaling capability on primary path.
-	 * Enforce NO_SCALING so that any scaled media layer (e.g. TikTok, video players)
-	 * is routed to GPU Client Composition rather than crashing OVL scanout.
-	 */
-	return drm_plane_helper_check_state(
-		state, &clip, DRM_PLANE_HELPER_NO_SCALING,
-		DRM_PLANE_HELPER_NO_SCALING, true, true);
+	if (mtk_drm_helper_get_opt(private->helper_opt, MTK_DRM_OPT_RPO))
+		return drm_plane_helper_check_state(
+			state, &clip, MTK_DRM_PLANE_SCALING_MIN,
+			MTK_DRM_PLANE_SCALING_MAX, true, true);
+	else
+		return drm_plane_helper_check_state(
+			state, &clip, DRM_PLANE_HELPER_NO_SCALING,
+			DRM_PLANE_HELPER_NO_SCALING, true, true);
 }
 
 #ifdef MTK_DRM_ADVANCE
@@ -438,13 +470,6 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 	for (i = 0; i < PLANE_PROP_MAX; i++)
 		state->pending.prop_val[i] = state->prop_val[i];
 
-	/* Auto-detect AFBC compression from framebuffer modifier */
-	if (fb->modifier[0] && fb->modifier[0] != DRM_FORMAT_MOD_LINEAR) {
-		state->pending.prop_val[PLANE_PROP_COMPRESS] = 1;
-		if (!state->pending.prop_val[PLANE_PROP_VPITCH])
-			state->pending.prop_val[PLANE_PROP_VPITCH] = ALIGN_TO(dst_h, 16);
-	}
-
 	wmb(); /* Make sure the above parameters are set before update */
 	state->pending.dirty = true;
 
@@ -496,16 +521,26 @@ static void mtk_plane_atomic_disable(struct drm_plane *plane,
 				     struct drm_plane_state *old_state)
 {
 	struct mtk_plane_state *state = to_mtk_plane_state(plane->state);
+	struct drm_crtc *crtc = old_state ? old_state->crtc : NULL;
 
 	state->pending.enable = false;
-	wmb(); /* Make sure the above parameter is set before update */
+	state->pending.config = true;
 	state->pending.dirty = true;
 
+	/* Wariskan pemetaan hardware OVL lama agar layer hardware yang tepat dimatikan */
+	if (old_state) {
+		struct mtk_plane_state *old_mtk_state = to_mtk_plane_state(old_state);
+
+		state->comp_state = old_mtk_state->comp_state;
+	}
+
+	wmb(); /* Make sure the above parameters are set before update */
+
 #ifdef MTK_DRM_ADVANCE
-	if (!state->crtc) {
-		DDPPR_ERR("%s, empty crtc state\n", __func__);
+	if (!crtc) {
+		DDPPR_ERR("%s, empty crtc state in old_state\n", __func__);
 	} else {
-		mtk_drm_crtc_plane_update(state->crtc, plane, state);
+		mtk_drm_crtc_plane_update(crtc, plane, state);
 	}
 #endif
 }

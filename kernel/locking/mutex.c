@@ -47,9 +47,6 @@ __mutex_init(struct mutex *lock, const char *name, struct lock_class_key *key)
 #ifdef CONFIG_MUTEX_SPIN_ON_OWNER
 	osq_lock_init(&lock->osq);
 #endif
-#ifdef OPLUS_FEATURE_SCHED_ASSIST
-	lock->ux_dep_task = NULL;
-#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 	debug_mutex_init(lock, name, key);
 }
 EXPORT_SYMBOL(__mutex_init);

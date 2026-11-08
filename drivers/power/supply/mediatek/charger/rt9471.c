@@ -1559,9 +1559,9 @@ static int rt9471_vbus_gd_irq_handler(struct rt9471_chip *chip)
 	bool vbus_gd = false;
 	struct chgdev_notify *noti = &(chip->chg_dev->noti);
 
-	ret = rt9471_enable_hz(chip, true, RT9471_HZU_VBUS_GD);
+	ret = rt9471_enable_hz(chip, false, RT9471_HZU_VBUS_GD);
 	if (ret < 0)
-		dev_notice(chip->dev, "%s en hz fail(%d)\n", __func__, ret);
+		dev_notice(chip->dev, "%s dis hz fail(%d)\n", __func__, ret);
 
 	vbus_gd = rt9471_is_vbus_gd(chip);
 	dev_info(chip->dev, "%s vbus_gd = %d\n", __func__, vbus_gd);
@@ -2295,6 +2295,11 @@ static int rt9471_plug_in(struct charger_device *chg_dev)
 	ret = __rt9471_set_wdt(chip, chip->desc->wdt);
 	if (ret < 0)
 		dev_notice(chip->dev, "%s set wdt fail(%d)\n", __func__, ret);
+
+	if (chip->is_primary) {
+		rt9471_enable_hz(chip, false, RT9471_HZU_VBUS_GD);
+		rt9471_enable_hz(chip, false, RT9471_HZU_PP);
+	}
 
 	return ret;
 }

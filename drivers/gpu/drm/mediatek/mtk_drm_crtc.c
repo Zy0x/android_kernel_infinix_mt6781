@@ -2168,9 +2168,26 @@ mtk_crtc_get_plane_comp(struct drm_crtc *crtc,
 	struct mtk_ddp_comp *comp = NULL;
 	int i, j;
 
-	/* Tanpa comp_id yang valid, jangan melakukan fallback acak ke OVL0_2L */
-	if (plane_state->comp_state.comp_id == 0)
-		return NULL;
+	/* Tanpa comp_id yang valid, lakukan mapping default sesuai plane index */
+	if (plane_state->comp_state.comp_id == 0) {
+		if (plane_state->base.plane) {
+			unsigned int plane_index = to_crtc_plane_index(plane_state->base.plane->index);
+
+			if (plane_index < 2) {
+				plane_state->comp_state.comp_id = DDP_COMPONENT_OVL0_2L;
+				plane_state->comp_state.lye_id = plane_index;
+				plane_state->comp_state.ext_lye_id = 0;
+			} else if (plane_index < 6) {
+				plane_state->comp_state.comp_id = DDP_COMPONENT_OVL0;
+				plane_state->comp_state.lye_id = plane_index - 2;
+				plane_state->comp_state.ext_lye_id = 0;
+			} else {
+				return NULL;
+			}
+		} else {
+			return NULL;
+		}
+	}
 
 	for_each_comp_in_cur_crtc_path(comp, mtk_crtc, i, j) {
 		if (comp->id == plane_state->comp_state.comp_id)

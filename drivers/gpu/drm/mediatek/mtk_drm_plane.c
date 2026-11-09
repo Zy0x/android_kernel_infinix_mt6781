@@ -310,6 +310,8 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 		0,
 	};
 	struct mtk_drm_private *private = plane->dev->dev_private;
+	unsigned int plane_index = to_crtc_plane_index(plane->index);
+	int ret;
 
 	if (!fb)
 		return 0;
@@ -327,8 +329,6 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 		struct mtk_plane_state *mtk_state = to_mtk_plane_state(state);
 
 		if (mtk_state->comp_state.comp_id == 0) {
-			unsigned int plane_index = to_crtc_plane_index(plane->index);
-
 			if (plane_index < 2) {
 				mtk_state->comp_state.comp_id = DDP_COMPONENT_OVL0_2L;
 				mtk_state->comp_state.lye_id = plane_index;
@@ -349,13 +349,26 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 	clip.y2 = crtc_state->mode.vdisplay;
 
 	if (mtk_drm_helper_get_opt(private->helper_opt, MTK_DRM_OPT_RPO))
-		return drm_plane_helper_check_state(
+		ret = drm_plane_helper_check_state(
 			state, &clip, MTK_DRM_PLANE_SCALING_MIN,
 			MTK_DRM_PLANE_SCALING_MAX, true, true);
 	else
-		return drm_plane_helper_check_state(
+		ret = drm_plane_helper_check_state(
 			state, &clip, DRM_PLANE_HELPER_NO_SCALING,
 			DRM_PLANE_HELPER_NO_SCALING, true, true);
+
+	if (ret)
+		return ret;
+
+	/* MT6781 physical hardware display path only supports 6 OVL layers:
+	 * OVL0_2L (layers 0-1) and OVL0 (layers 0-3).
+	 * If plane_index >= 6 and visible, reject it so SurfaceFlinger immediately
+	 * routes the layer to GPU client composition without latency or freeze.
+	 */
+	if (plane_index >= 6 && state->visible)
+		return -EINVAL;
+
+	return 0;
 }
 
 #ifdef MTK_DRM_ADVANCE
@@ -405,6 +418,18 @@ void mtk_plane_get_comp_state(struct drm_plane *plane,
 
 	if (lock)
 		mutex_unlock(&mtk_drm->lyeblob_list_mutex);
+
+	if (comp_state->comp_id == 0) {
+		if (plane_index < 2) {
+			comp_state->comp_id = DDP_COMPONENT_OVL0_2L;
+			comp_state->lye_id = plane_index;
+			comp_state->ext_lye_id = 0;
+		} else if (plane_index < 6) {
+			comp_state->comp_id = DDP_COMPONENT_OVL0;
+			comp_state->lye_id = plane_index - 2;
+			comp_state->ext_lye_id = 0;
+		}
+	}
 }
 #endif
 
@@ -469,6 +494,18 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 	}
 	for (i = 0; i < PLANE_PROP_MAX; i++)
 		state->pending.prop_val[i] = state->prop_val[i];
+
+	if (state->comp_state.comp_id == 0) {
+		if (plane_index < 2) {
+			state->comp_state.comp_id = DDP_COMPONENT_OVL0_2L;
+			state->comp_state.lye_id = plane_index;
+			state->comp_state.ext_lye_id = 0;
+		} else if (plane_index < 6) {
+			state->comp_state.comp_id = DDP_COMPONENT_OVL0;
+			state->comp_state.lye_id = plane_index - 2;
+			state->comp_state.ext_lye_id = 0;
+		}
+	}
 
 	wmb(); /* Make sure the above parameters are set before update */
 	state->pending.dirty = true;

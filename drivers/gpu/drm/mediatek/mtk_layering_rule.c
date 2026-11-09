@@ -322,6 +322,7 @@ static void filter_by_bounds(struct drm_device *dev,
 	struct drm_mtk_layer_config *c;
 	struct drm_crtc *crtc = NULL;
 	unsigned int disp_w = 0, disp_h = 0;
+	bool has_dim = false;
 
 	if (dev) {
 		drm_for_each_crtc(crtc, dev) {
@@ -341,7 +342,7 @@ static void filter_by_bounds(struct drm_device *dev,
 		c = &disp_info->input_config[HRT_PRIMARY][i];
 
 		/*
-		 * Rollback to GPU if layer has negative destination offsets
+		 * 1. Negative or overflowing destination coordinates
 		 * (e.g. Android 14 elevation shadow insets where displayFrame.left < 0,
 		 * stored as unsigned int with sign bit set or exceeding register capacity)
 		 */
@@ -353,7 +354,7 @@ static void filter_by_bounds(struct drm_device *dev,
 		}
 
 		/*
-		 * Rollback to GPU if destination rectangle exceeds active display scanout bounds
+		 * 2. Destination coordinates exceeding active display scanout bounds
 		 */
 		if (disp_w > 0 && disp_h > 0) {
 			if ((c->dst_offset_x + c->dst_width) > disp_w ||
@@ -361,6 +362,36 @@ static void filter_by_bounds(struct drm_device *dev,
 				mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
 				continue;
 			}
+		}
+
+		/*
+		 * 3. Cropped source offsets (elevation shadows, window insets, panning)
+		 * Hardware OVL DMA engine cannot reliably scan out cropped non-AFBC window buffers
+		 * without corrupting scanout address / clipping registers
+		 */
+		if (c->src_offset_x > 0 || c->src_offset_y > 0) {
+			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
+			continue;
+		}
+
+		/*
+		 * 4. SOLID_COLOR / Dim layers
+		 * MTK OVL hardware constant color dimming corrupts or occludes overlay planes
+		 */
+		if (c->src_fmt == MTK_DRM_FORMAT_DIM || c->src_fmt == DRM_FORMAT_C8) {
+			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
+			has_dim = true;
+			continue;
+		}
+
+		/*
+		 * 5. If a DIM layer is present underneath this layer,
+		 * roll back subsequent layers to GPU so modal dialogs/popups
+		 * composite smoothly with the dim layer via GLES RenderEngine
+		 */
+		if (has_dim && i > 0) {
+			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
+			continue;
 		}
 	}
 
@@ -373,7 +404,9 @@ static void filter_by_bounds(struct drm_device *dev,
 
 			if ((int32_t)c->dst_offset_x < 0 || (int32_t)c->dst_offset_y < 0 ||
 			    c->dst_offset_x >= 0x80000000 || c->dst_offset_y >= 0x80000000 ||
-			    c->dst_offset_x > 4095 || c->dst_offset_y > 4095) {
+			    c->dst_offset_x > 4095 || c->dst_offset_y > 4095 ||
+			    c->src_offset_x > 0 || c->src_offset_y > 0 ||
+			    c->src_fmt == MTK_DRM_FORMAT_DIM || c->src_fmt == DRM_FORMAT_C8) {
 				mtk_rollback_layer_to_GPU(disp_info, i, j);
 			}
 		}

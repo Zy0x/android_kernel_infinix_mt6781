@@ -320,20 +320,6 @@ static void filter_by_bounds(struct drm_device *dev,
 {
 	unsigned int i, j;
 	struct drm_mtk_layer_config *c;
-	struct drm_crtc *crtc = NULL;
-	unsigned int disp_w = 0, disp_h = 0;
-	bool has_dim = false;
-
-	if (dev) {
-		drm_for_each_crtc(crtc, dev) {
-			if (drm_crtc_index(crtc) == 0)
-				break;
-		}
-		if (crtc && crtc->mode.hdisplay > 0 && crtc->mode.vdisplay > 0) {
-			disp_w = crtc->mode.hdisplay;
-			disp_h = crtc->mode.vdisplay;
-		}
-	}
 
 	for (i = 0; i < disp_info->layer_num[HRT_PRIMARY]; i++) {
 		if (mtk_is_gles_layer(disp_info, HRT_PRIMARY, i))
@@ -341,11 +327,7 @@ static void filter_by_bounds(struct drm_device *dev,
 
 		c = &disp_info->input_config[HRT_PRIMARY][i];
 
-		/*
-		 * 1. Negative or overflowing destination coordinates
-		 * (e.g. Android 14 elevation shadow insets where displayFrame.left < 0,
-		 * stored as unsigned int with sign bit set or exceeding register capacity)
-		 */
+		/* 1. Koordinat tujuan negatif atau melebihi kapasitas register 12-bit */
 		if ((int32_t)c->dst_offset_x < 0 || (int32_t)c->dst_offset_y < 0 ||
 		    c->dst_offset_x >= 0x80000000 || c->dst_offset_y >= 0x80000000 ||
 		    c->dst_offset_x > 4095 || c->dst_offset_y > 4095) {
@@ -354,42 +336,12 @@ static void filter_by_bounds(struct drm_device *dev,
 		}
 
 		/*
-		 * 2. Destination coordinates exceeding active display scanout bounds
+		 * 2. Window pop-up dengan 4-sided elevation shadow inset
+		 * (seperti ResolverActivity / AlertDialog di mana src_offset_x > 0 DAN src_offset_y > 0 bersamaan).
+		 * Menggunakan && (AND) agar scrolling vertikal (src_x == 0) dan
+		 * geser wallpaper horizontal (src_y == 0) TETAP di hardware OVL 120Hz!
 		 */
-		if (disp_w > 0 && disp_h > 0) {
-			if ((c->dst_offset_x + c->dst_width) > disp_w ||
-			    (c->dst_offset_y + c->dst_height) > disp_h) {
-				mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
-				continue;
-			}
-		}
-
-		/*
-		 * 3. Cropped source offsets (elevation shadows, window insets, panning)
-		 * Hardware OVL DMA engine cannot reliably scan out cropped non-AFBC window buffers
-		 * without corrupting scanout address / clipping registers
-		 */
-		if (c->src_offset_x > 0 || c->src_offset_y > 0) {
-			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
-			continue;
-		}
-
-		/*
-		 * 4. SOLID_COLOR / Dim layers
-		 * MTK OVL hardware constant color dimming corrupts or occludes overlay planes
-		 */
-		if (c->src_fmt == MTK_DRM_FORMAT_DIM || c->src_fmt == DRM_FORMAT_C8) {
-			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
-			has_dim = true;
-			continue;
-		}
-
-		/*
-		 * 5. If a DIM layer is present underneath this layer,
-		 * roll back subsequent layers to GPU so modal dialogs/popups
-		 * composite smoothly with the dim layer via GLES RenderEngine
-		 */
-		if (has_dim && i > 0) {
+		if (c->src_offset_x > 0 && c->src_offset_y > 0) {
 			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
 			continue;
 		}
@@ -405,8 +357,7 @@ static void filter_by_bounds(struct drm_device *dev,
 			if ((int32_t)c->dst_offset_x < 0 || (int32_t)c->dst_offset_y < 0 ||
 			    c->dst_offset_x >= 0x80000000 || c->dst_offset_y >= 0x80000000 ||
 			    c->dst_offset_x > 4095 || c->dst_offset_y > 4095 ||
-			    c->src_offset_x > 0 || c->src_offset_y > 0 ||
-			    c->src_fmt == MTK_DRM_FORMAT_DIM || c->src_fmt == DRM_FORMAT_C8) {
+			    (c->src_offset_x > 0 && c->src_offset_y > 0)) {
 				mtk_rollback_layer_to_GPU(disp_info, i, j);
 			}
 		}

@@ -647,6 +647,7 @@ enum mtk_mmsys_id {
 };
 
 struct mtk_drm_disp_caps_info {
+	unsigned int hw_ver;
 	unsigned int disp_feature_flag;
 	int lcm_degree; /* for rotate180 */
 	unsigned int rsz_in_max[2]; /* for RPO { width, height } */
@@ -656,6 +657,9 @@ struct mtk_drm_disp_caps_info {
 	unsigned int max_luminance;
 	unsigned int average_luminance;
 	unsigned int min_luminance;
+
+	/* Msync2.0 */
+	unsigned int msync_level_num;
 };
 
 struct drm_mtk_session_info {

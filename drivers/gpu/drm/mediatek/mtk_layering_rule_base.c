@@ -2675,6 +2675,28 @@ static int layering_rule_start(struct drm_mtk_layering_info *disp_info_user,
 		l_rule_ops->fbdc_restore_layout(&layering_info,
 						ADJUST_LAYOUT_EXT_GROUPING);
 
+	/* Ensure all layers inside [gles_head, gles_tail] have ext_sel_layer = -1 */
+	for (disp_idx = 0; disp_idx < HRT_TYPE_NUM; disp_idx++) {
+		if (layering_info.gles_head[disp_idx] >= 0 &&
+		    layering_info.gles_tail[disp_idx] >= layering_info.gles_head[disp_idx]) {
+			int k;
+
+			for (k = layering_info.gles_head[disp_idx];
+			     k <= layering_info.gles_tail[disp_idx] &&
+			     k < layering_info.layer_num[disp_idx]; k++) {
+				layering_info.input_config[disp_idx][k].ext_sel_layer = -1;
+			}
+			if (layering_info.gles_tail[disp_idx] + 1 <
+			    layering_info.layer_num[disp_idx]) {
+				struct drm_mtk_layer_config *next_l =
+					&layering_info.input_config[disp_idx]
+						[layering_info.gles_tail[disp_idx] + 1];
+				if (is_extended_layer(next_l))
+					next_l->ext_sel_layer = -1;
+			}
+		}
+	}
+
 	/* GLES adjustment and ext layer checking */
 	ret = filter_by_ovl_cnt(dev, &layering_info);
 

@@ -1526,6 +1526,45 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	unsigned int value = 0, mask = 0, fmt_ex = 0;
 	unsigned long long temp_bw;
 	unsigned int dim_color;
+	int dst_x = (int)pending->dst_x;
+	int dst_y = (int)pending->dst_y;
+
+	/* Safe clipping for negative surfaceInsets (drop-shadows, bottom sheets, keyboard) */
+	if (dst_x < 0 || pending->dst_x >= 0x80000000) {
+		int clip_x = (dst_x < 0) ? -dst_x : (int)(0x100000000ULL - pending->dst_x);
+
+		pending->src_x += clip_x;
+		if (pending->width > clip_x)
+			pending->width -= clip_x;
+		else
+			pending->width = 0;
+		dst_x = 0;
+		pending->dst_x = 0;
+	}
+	if (dst_y < 0 || pending->dst_y >= 0x80000000) {
+		int clip_y = (dst_y < 0) ? -dst_y : (int)(0x100000000ULL - pending->dst_y);
+
+		pending->src_y += clip_y;
+		if (pending->height > clip_y)
+			pending->height -= clip_y;
+		else
+			pending->height = 0;
+		dst_y = 0;
+		pending->dst_y = 0;
+	}
+
+	/* Hardware OVL offset safety clamp: prevent 12-bit unsigned register overflow */
+	if (dst_x > 4095) {
+		dst_x = 4095;
+		pending->dst_x = 4095;
+	}
+	if (dst_y > 4095) {
+		dst_y = 4095;
+		pending->dst_y = 4095;
+	}
+
+	if (pending->width == 0 || pending->height == 0)
+		pending->enable = false;
 
 	/* handle dim layer for compression flag & color dim*/
 	if (fmt == DRM_FORMAT_C8) {
@@ -1596,13 +1635,13 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 		unsigned int bg_w = 0, bg_h = 0;
 
 		_get_bg_roi(comp, &bg_h, &bg_w);
-		offset = ((bg_h - pending->height - pending->dst_y) << 16) +
-			 (bg_w - pending->width - pending->dst_x);
-		DDPINFO("bg(%d,%d) (%d,%d,%dx%d)\n", bg_w, bg_h, pending->dst_x,
-			pending->dst_y, pending->width, pending->height);
+		offset = ((bg_h - pending->height - dst_y) << 16) +
+			 (bg_w - pending->width - dst_x);
+		DDPINFO("bg(%d,%d) (%d,%d,%dx%d)\n", bg_w, bg_h, dst_x,
+			dst_y, pending->width, pending->height);
 		con |= (CON_HORI_FLIP + CON_VERTICAL_FLIP);
 	} else {
-		offset = (pending->dst_y << 16) | pending->dst_x;
+		offset = ((dst_y & 0x0FFF) << 16) | (dst_x & 0x0FFF);
 	}
 
 	if (fmt == DRM_FORMAT_ABGR2101010)
@@ -1755,8 +1794,9 @@ static bool compr_l_config_PVRIC_V3_1(struct mtk_ddp_comp *comp,
 	unsigned int domain_val = 0, domain_mask = 0;
 #endif
 
-	/* Auto-detect AFBC compression from framebuffer modifier */
-	if (!compress && pending->modifier && pending->modifier != DRM_FORMAT_MOD_LINEAR)
+	/* Auto-detect AFBC compression from framebuffer modifier (ignoring uncompressed MTK_FMT_PREMULTIPLIED flag) */
+	if (!compress && (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != 0 &&
+	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != DRM_FORMAT_MOD_LINEAR)
 		compress = 1;
 
 	/* Default vpitch if not populated by userspace */
@@ -2124,8 +2164,9 @@ static bool compr_l_config_AFBC_V1_2(struct mtk_ddp_comp *comp,
 		fmt, Bpp,
 		compress);
 
-	/* Auto-detect AFBC compression from framebuffer modifier */
-	if (!compress && pending->modifier && pending->modifier != DRM_FORMAT_MOD_LINEAR)
+	/* Auto-detect AFBC compression from framebuffer modifier (ignoring uncompressed MTK_FMT_PREMULTIPLIED flag) */
+	if (!compress && (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != 0 &&
+	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != DRM_FORMAT_MOD_LINEAR)
 		compress = 1;
 
 	/* Default vpitch if not populated by userspace */

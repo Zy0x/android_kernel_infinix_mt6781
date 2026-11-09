@@ -1040,6 +1040,10 @@ void Boot_Update_Firmware(struct kthread_work *work)
 				kfree(bin_map);
 				bin_map = NULL;
 			}
+			if (ts && ts->mmap)
+				nvt_set_page(ts->mmap->EVENT_BUF_ADDR);
+			nvt_irq_enable(true);
+			bTouchIsAwake = 1;
 			mutex_unlock(&ts->lock);
 			return;
 		}
@@ -1056,11 +1060,13 @@ void Boot_Update_Firmware(struct kthread_work *work)
 		NVT_LOG("Boot firmware update success, entering normal REK mode\n");
 		nvt_boot_ready();
 		nvt_check_fw_reset_state(RESET_STATE_REK);
-		nvt_irq_enable(true);
-		bTouchIsAwake = 1;
 	} else {
 		NVT_ERR("Boot firmware update failed, ret=%d\n", ret);
 	}
+	if (ts && ts->mmap)
+		nvt_set_page(ts->mmap->EVENT_BUF_ADDR);
+	nvt_irq_enable(true);
+	bTouchIsAwake = 1;
 	mutex_unlock(&ts->lock);
 }
 #endif				/* BOOT_UPDATE_FIRMWARE */

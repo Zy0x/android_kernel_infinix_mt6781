@@ -578,6 +578,9 @@ int32_t nvt_check_fw_reset_state(RST_COMPLETE_STATE check_reset_state)
 		usleep_range(10000, 10000);
 	}
 
+	if (ts && ts->mmap)
+		nvt_set_page(ts->mmap->EVENT_BUF_ADDR);
+
 	return ret;
 }
 
@@ -1843,9 +1846,12 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 		retval = mtk_panel_tch_handle_init();
 		*retval = (void *)nvt_tp_power_on_reinit;
 	}
-#endif
-
+	/* Ensure touch is awake, calibrated and armed at cold boot since continuous splash bypasses lcm_prepare */
+	nvt_tp_power_on_reinit();
+#else
+	bTouchIsAwake = 1;
 	nvt_irq_enable(true);
+#endif
 
 	return 0;
 

@@ -315,6 +315,71 @@ static void filter_by_fbdc(struct drm_mtk_layering_info *disp_info)
 		}
 }
 
+static void filter_by_bounds(struct drm_device *dev,
+			     struct drm_mtk_layering_info *disp_info)
+{
+	unsigned int i, j;
+	struct drm_mtk_layer_config *c;
+	struct drm_crtc *crtc = NULL;
+	unsigned int disp_w = 0, disp_h = 0;
+
+	if (dev) {
+		drm_for_each_crtc(crtc, dev) {
+			if (drm_crtc_index(crtc) == 0)
+				break;
+		}
+		if (crtc && crtc->mode.hdisplay > 0 && crtc->mode.vdisplay > 0) {
+			disp_w = crtc->mode.hdisplay;
+			disp_h = crtc->mode.vdisplay;
+		}
+	}
+
+	for (i = 0; i < disp_info->layer_num[HRT_PRIMARY]; i++) {
+		if (mtk_is_gles_layer(disp_info, HRT_PRIMARY, i))
+			continue;
+
+		c = &disp_info->input_config[HRT_PRIMARY][i];
+
+		/*
+		 * Rollback to GPU if layer has negative destination offsets
+		 * (e.g. Android 14 elevation shadow insets where displayFrame.left < 0,
+		 * stored as unsigned int with sign bit set or exceeding register capacity)
+		 */
+		if ((int32_t)c->dst_offset_x < 0 || (int32_t)c->dst_offset_y < 0 ||
+		    c->dst_offset_x >= 0x80000000 || c->dst_offset_y >= 0x80000000 ||
+		    c->dst_offset_x > 4095 || c->dst_offset_y > 4095) {
+			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
+			continue;
+		}
+
+		/*
+		 * Rollback to GPU if destination rectangle exceeds active display scanout bounds
+		 */
+		if (disp_w > 0 && disp_h > 0) {
+			if ((c->dst_offset_x + c->dst_width) > disp_w ||
+			    (c->dst_offset_y + c->dst_height) > disp_h) {
+				mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
+				continue;
+			}
+		}
+	}
+
+	for (i = HRT_SECONDARY; i < HRT_TYPE_NUM; i++) {
+		for (j = 0; j < disp_info->layer_num[i]; j++) {
+			if (mtk_is_gles_layer(disp_info, i, j))
+				continue;
+
+			c = &disp_info->input_config[i][j];
+
+			if ((int32_t)c->dst_offset_x < 0 || (int32_t)c->dst_offset_y < 0 ||
+			    c->dst_offset_x >= 0x80000000 || c->dst_offset_y >= 0x80000000 ||
+			    c->dst_offset_x > 4095 || c->dst_offset_y > 4095) {
+				mtk_rollback_layer_to_GPU(disp_info, i, j);
+			}
+		}
+	}
+}
+
 static bool filter_by_hw_limitation(struct drm_device *dev,
 				    struct drm_mtk_layering_info *disp_info)
 {
@@ -323,6 +388,8 @@ static bool filter_by_hw_limitation(struct drm_device *dev,
 	filter_by_wcg(dev, disp_info);
 
 	filter_by_yuv_layers(disp_info);
+
+	filter_by_bounds(dev, disp_info);
 
 	/* Is this nessasary? */
 	filter_2nd_display(disp_info);

@@ -1602,7 +1602,7 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 			pending->dst_y, pending->width, pending->height);
 		con |= (CON_HORI_FLIP + CON_VERTICAL_FLIP);
 	} else {
-		offset = (pending->dst_y << 16) | pending->dst_x;
+		offset = ((pending->dst_y & 0x0FFF) << 16) | (pending->dst_x & 0x0FFF);
 	}
 
 	if (fmt == DRM_FORMAT_ABGR2101010)

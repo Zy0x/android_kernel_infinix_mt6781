@@ -909,45 +909,29 @@ static unsigned int ovl_fmt_convert(struct mtk_disp_ovl *ovl, unsigned int fmt,
 		       OVL_CON_BYTE_SWAP;
 	case DRM_FORMAT_RGBX8888:
 	case DRM_FORMAT_RGBA8888:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN;
-		else
-			return OVL_CON_CLRFMT_ARGB8888;
+		/* Standard Android Pre-multiplied Alpha */
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN;
 	case DRM_FORMAT_BGRX8888:
 	case DRM_FORMAT_BGRA8888:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
-			       OVL_CON_CLRFMT_MAN;
-		else
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP;
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
+		       OVL_CON_CLRFMT_MAN;
 	case DRM_FORMAT_XRGB8888:
 	case DRM_FORMAT_ARGB8888:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
-			       OVL_CON_CLRFMT_MAN | OVL_CON_RGB_SWAP;
-		else
-			return OVL_CON_CLRFMT_RGBA8888;
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
+		       OVL_CON_CLRFMT_MAN | OVL_CON_RGB_SWAP;
 	case DRM_FORMAT_XBGR8888:
 	case DRM_FORMAT_ABGR8888:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
-			       OVL_CON_RGB_SWAP;
-		else
-			return OVL_CON_CLRFMT_RGBA8888 | OVL_CON_BYTE_SWAP;
+		/* Standard AOSP SurfaceFlinger Statusbar / Overlay format (ABGR8888) */
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
+		       OVL_CON_RGB_SWAP;
 	case DRM_FORMAT_UYVY:
 		return OVL_CON_CLRFMT_UYVY(ovl);
 	case DRM_FORMAT_YUYV:
 		return OVL_CON_CLRFMT_YUYV(ovl);
 	case DRM_FORMAT_ABGR2101010:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
-			       OVL_CON_RGB_SWAP;
-		return OVL_CON_CLRFMT_RGBA8888 | OVL_CON_BYTE_SWAP;
 	case DRM_FORMAT_ABGR16161616F:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
-			       OVL_CON_RGB_SWAP;
-		return OVL_CON_CLRFMT_RGBA8888 | OVL_CON_BYTE_SWAP;
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
+		       OVL_CON_RGB_SWAP;
 	case DRM_FORMAT_C8:
 		return OVL_CON_CLRFMT_DIM | OVL_CON_CLRFMT_RGB888(ovl);
 	}
@@ -1542,7 +1526,6 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	unsigned int value = 0, mask = 0, fmt_ex = 0;
 	unsigned long long temp_bw;
 	unsigned int dim_color;
-	unsigned int dst_x, dst_y;
 
 	/* handle dim layer for compression flag & color dim*/
 	if (fmt == DRM_FORMAT_C8) {
@@ -1609,26 +1592,17 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	DDPINFO("addr 0x%lx, compr %d, con 0x%x\n",
 		pending->addr, pending->prop_val[PLANE_PROP_COMPRESS], con);
 
-	dst_x = pending->dst_x;
-	dst_y = pending->dst_y;
-
-	/* Hardware OVL offset safety clamp: prevent 16-bit unsigned register overflow */
-	if (dst_x > 4095)
-		dst_x = 0;
-	if (dst_y > 4095)
-		dst_y = 0;
-
 	if (rotate) {
 		unsigned int bg_w = 0, bg_h = 0;
 
 		_get_bg_roi(comp, &bg_h, &bg_w);
-		offset = ((bg_h - pending->height - dst_y) << 16) +
-			 (bg_w - pending->width - dst_x);
-		DDPINFO("bg(%d,%d) (%d,%d,%dx%d)\n", bg_w, bg_h, dst_x,
-			dst_y, pending->width, pending->height);
+		offset = ((bg_h - pending->height - pending->dst_y) << 16) +
+			 (bg_w - pending->width - pending->dst_x);
+		DDPINFO("bg(%d,%d) (%d,%d,%dx%d)\n", bg_w, bg_h, pending->dst_x,
+			pending->dst_y, pending->width, pending->height);
 		con |= (CON_HORI_FLIP + CON_VERTICAL_FLIP);
 	} else {
-		offset = ((dst_y & 0x0FFF) << 16) | (dst_x & 0x0FFF);
+		offset = (pending->dst_y << 16) | pending->dst_x;
 	}
 
 	if (fmt == DRM_FORMAT_ABGR2101010)
@@ -1780,6 +1754,10 @@ static bool compr_l_config_PVRIC_V3_1(struct mtk_ddp_comp *comp,
 #ifdef CONFIG_MTK_SVP_ON_MTEE_SUPPORT
 	unsigned int domain_val = 0, domain_mask = 0;
 #endif
+
+	/* Auto-detect AFBC compression from framebuffer modifier */
+	if (!compress && pending->modifier && pending->modifier != DRM_FORMAT_MOD_LINEAR)
+		compress = 1;
 
 	/* Default vpitch if not populated by userspace */
 	if (vpitch == 0)
@@ -2145,6 +2123,10 @@ static bool compr_l_config_AFBC_V1_2(struct mtk_ddp_comp *comp,
 		src_w, src_h,
 		fmt, Bpp,
 		compress);
+
+	/* Auto-detect AFBC compression from framebuffer modifier */
+	if (!compress && pending->modifier && pending->modifier != DRM_FORMAT_MOD_LINEAR)
+		compress = 1;
 
 	/* Default vpitch if not populated by userspace */
 	if (vpitch == 0)

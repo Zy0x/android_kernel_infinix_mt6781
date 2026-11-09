@@ -1269,10 +1269,22 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 
 #if WAKEUP_GESTURE
 	if (bTouchIsAwake == 0) {
-		input_id = (uint8_t) (point_data[1] >> 3);
-		nvt_ts_wakeup_gesture_report(input_id, point_data);
-		mutex_unlock(&ts->lock);
-		return IRQ_HANDLED;
+		/*
+		 * Auto-healing watchdog: check if IC is actively reporting valid finger touches
+		 * (finger down = 0x01, finger moving = 0x02) rather than gesture packet.
+		 * If so, auto-heal bTouchIsAwake = 1 so the touch is never dropped.
+		 */
+		uint8_t finger_status = point_data[1] & 0x07;
+		uint8_t finger_id = point_data[1] >> 3;
+		if ((finger_status == 0x01 || finger_status == 0x02) && (finger_id >= 1 && finger_id <= ts->max_touch_num)) {
+			NVT_LOG("Auto-healing: normal touch received while bTouchIsAwake=0, auto-resuming\n");
+			bTouchIsAwake = 1;
+		} else {
+			input_id = (uint8_t) (point_data[1] >> 3);
+			nvt_ts_wakeup_gesture_report(input_id, point_data);
+			mutex_unlock(&ts->lock);
+			return IRQ_HANDLED;
+		}
 	}
 #endif
 
@@ -2152,6 +2164,10 @@ static int32_t nvt_ts_resume(struct device *dev)
 
 	NVT_LOG("start\n");
 
+#if WAKEUP_GESTURE
+	disable_irq_wake(ts->client->irq);
+#endif
+
 	// please make sure display reset(RESX) sequence and mipi dsi cmds sent before this
 #if NVT_TOUCH_SUPPORT_HW_RST
 	gpio_set_value(ts->reset_gpio, 1);
@@ -2160,9 +2176,8 @@ static int32_t nvt_ts_resume(struct device *dev)
 	nvt_boot_ready();
 	nvt_check_fw_reset_state(RESET_STATE_REK);
 
-#if !WAKEUP_GESTURE
+	/* Always ensure IRQ is re-armed on resume */
 	nvt_irq_enable(true);
-#endif
 
 #if NVT_TOUCH_ESD_PROTECT
 	nvt_esd_check_enable(false);

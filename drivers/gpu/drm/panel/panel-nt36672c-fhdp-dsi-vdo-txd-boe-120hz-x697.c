@@ -480,6 +480,10 @@ static int lcm_enable(struct drm_panel *panel)
 		backlight_update_status(ctx->backlight);
 	}
 
+#if defined(CONFIG_MTK_PANEL_EXT)
+	mtk_panel_tch_rst(panel);
+#endif
+
 	ctx->enabled = true;
 	return 0;
 }

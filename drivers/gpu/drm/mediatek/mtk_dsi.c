@@ -2891,7 +2891,7 @@ static void mtk_output_dsi_enable(struct mtk_dsi *dsi,
 	unsigned int fps_chg_index = 0;
 
 	//#ifdef OPLUS_BUG_STABILITY
-	int blank_mode = FB_BLANK_POWERDOWN;
+	int blank_mode = new_doze_state ? FB_BLANK_POWERDOWN : FB_BLANK_UNBLANK;
 	struct fb_event event;
 	//#endif
 	DDPINFO("%s +\n", __func__);
@@ -2910,13 +2910,14 @@ static void mtk_output_dsi_enable(struct mtk_dsi *dsi,
 			//#ifdef OPLUS_BUG_STABILITY
 			event.info  = NULL;
 			event.data = &blank_mode;
-			pr_info("%s for gesture\n", __func__);
-			fb_notifier_call_chain(FB_EARLY_EVENT_BLANK, &event);
-			fb_notifier_call_chain(FB_EVENT_BLANK, &event);
+			pr_info("%s for gesture: new_doze_state=%d, blank_mode=%d\n", __func__, new_doze_state, blank_mode);
+			fb_notifier_call_chain(new_doze_state ? FB_EARLY_EVENT_BLANK : FB_EVENT_BLANK, &event);
 			//#endif
 			mtk_dsi_pre_cmd(dsi, crtc);
 			mtk_output_en_doze_switch(dsi);
 			mtk_dsi_post_cmd(dsi, crtc);
+			if (!new_doze_state && dsi->panel)
+				mtk_panel_tch_rst(dsi->panel);
 		} else
 			DDPINFO("dsi is initialized\n");
 		//#ifdef OPLUS_FEATURE_AOD

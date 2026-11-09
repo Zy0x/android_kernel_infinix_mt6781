@@ -415,7 +415,7 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 	struct drm_crtc *crtc = plane->state->crtc;
 	struct mtk_crtc_state *crtc_state;
 	struct drm_framebuffer *fb = plane->state->fb;
-	int src_w, src_h, dst_x, dst_y, dst_w, dst_h, i;
+	int src_w, src_h, dst_x, dst_y, dst_w, dst_h, src_x, src_y, i;
 	struct mtk_drm_crtc *mtk_crtc;
 	unsigned int plane_index = to_crtc_plane_index(plane->index);
 	static int cnt;
@@ -448,18 +448,69 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 		dst_h = src_h;
 	}
 
-	state->pending.enable = plane->state->visible;
+	src_x = (int)(plane->state->src.x1 >> 16);
+	src_y = (int)(plane->state->src.y1 >> 16);
+
+	/* Safe clipping for negative surfaceInsets (drop-shadows, drawers, keyboard overlays) */
+	if (dst_x < 0) {
+		int clip_x = -dst_x;
+
+		src_x += clip_x;
+		if (dst_w > clip_x)
+			dst_w -= clip_x;
+		else
+			dst_w = 0;
+		dst_x = 0;
+	}
+	if (dst_y < 0) {
+		int clip_y = -dst_y;
+
+		src_y += clip_y;
+		if (dst_h > clip_y)
+			dst_h -= clip_y;
+		else
+			dst_h = 0;
+		dst_y = 0;
+	}
+
+	/* Clamp right and bottom edges to active CRTC resolution */
+	if (crtc_state && crtc_state->base.adjusted_mode.hdisplay > 0) {
+		int max_w = crtc_state->base.adjusted_mode.hdisplay;
+
+		if (dst_x + dst_w > max_w) {
+			if (max_w > dst_x)
+				dst_w = max_w - dst_x;
+			else
+				dst_w = 0;
+		}
+	}
+	if (crtc_state && crtc_state->base.adjusted_mode.vdisplay > 0) {
+		int max_h = crtc_state->base.adjusted_mode.vdisplay;
+
+		if (dst_y + dst_h > max_h) {
+			if (max_h > dst_y)
+				dst_h = max_h - dst_y;
+			else
+				dst_h = 0;
+		}
+	}
+
+	if (dst_w <= 0 || dst_h <= 0)
+		state->pending.enable = false;
+	else
+		state->pending.enable = plane->state->visible;
+
 	state->pending.pitch = fb->pitches[0];
 	state->pending.format = fb->format->format;
 	state->pending.modifier = fb->modifier[0];
 	state->pending.addr = mtk_fb_get_dma(fb);
 	state->pending.size = mtk_fb_get_size(fb);
-	state->pending.src_x = (plane->state->src.x1 >> 16);
-	state->pending.src_y = (plane->state->src.y1 >> 16);
-	state->pending.dst_x = dst_x;
-	state->pending.dst_y = dst_y;
-	state->pending.width = dst_w;
-	state->pending.height = dst_h;
+	state->pending.src_x = (unsigned int)max_t(int, 0, src_x);
+	state->pending.src_y = (unsigned int)max_t(int, 0, src_y);
+	state->pending.dst_x = (unsigned int)max_t(int, 0, dst_x);
+	state->pending.dst_y = (unsigned int)max_t(int, 0, dst_y);
+	state->pending.width = (unsigned int)max_t(int, 0, dst_w);
+	state->pending.height = (unsigned int)max_t(int, 0, dst_h);
 	if (mtk_drm_fb_is_secure(fb)) {
 		state->pending.is_sec = true;
 		state->pending.sec_id = mtk_fb_get_sec_id(fb);

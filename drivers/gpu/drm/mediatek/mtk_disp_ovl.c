@@ -1526,6 +1526,7 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	unsigned int value = 0, mask = 0, fmt_ex = 0;
 	unsigned long long temp_bw;
 	unsigned int dim_color;
+	unsigned int dst_x, dst_y;
 
 	/* handle dim layer for compression flag & color dim*/
 	if (fmt == DRM_FORMAT_C8) {
@@ -1592,17 +1593,26 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	DDPINFO("addr 0x%lx, compr %d, con 0x%x\n",
 		pending->addr, pending->prop_val[PLANE_PROP_COMPRESS], con);
 
+	dst_x = pending->dst_x;
+	dst_y = pending->dst_y;
+
+	/* Hardware OVL offset safety clamp: prevent 16-bit unsigned register overflow */
+	if (dst_x > 4095)
+		dst_x = 0;
+	if (dst_y > 4095)
+		dst_y = 0;
+
 	if (rotate) {
 		unsigned int bg_w = 0, bg_h = 0;
 
 		_get_bg_roi(comp, &bg_h, &bg_w);
-		offset = ((bg_h - pending->height - pending->dst_y) << 16) +
-			 (bg_w - pending->width - pending->dst_x);
-		DDPINFO("bg(%d,%d) (%d,%d,%dx%d)\n", bg_w, bg_h, pending->dst_x,
-			pending->dst_y, pending->width, pending->height);
+		offset = ((bg_h - pending->height - dst_y) << 16) +
+			 (bg_w - pending->width - dst_x);
+		DDPINFO("bg(%d,%d) (%d,%d,%dx%d)\n", bg_w, bg_h, dst_x,
+			dst_y, pending->width, pending->height);
 		con |= (CON_HORI_FLIP + CON_VERTICAL_FLIP);
 	} else {
-		offset = (pending->dst_y << 16) | pending->dst_x;
+		offset = ((dst_y & 0x0FFF) << 16) | (dst_x & 0x0FFF);
 	}
 
 	if (fmt == DRM_FORMAT_ABGR2101010)

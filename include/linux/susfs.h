@@ -8,7 +8,7 @@
 #include <linux/path.h>
 #include <linux/susfs_def.h>
 
-#define SUSFS_VERSION "v1.5.5"
+#define SUSFS_VERSION "v2.4.0"
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
 #define SUSFS_VARIANT "NON-GKI"
 #else
@@ -183,4 +183,8 @@ int susfs_sus_su(struct st_sus_su* __user user_info);
 /* susfs_init */
 void susfs_init(void);
 
+#endif
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+extern int susfs_add_sus_map(struct st_susfs_sus_map* __user user_info);
 #endif

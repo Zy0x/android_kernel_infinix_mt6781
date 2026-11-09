@@ -97,6 +97,14 @@ config KSU_SUSFS_SUS_PATH
       - tmpfs filesystem is not allowed to be added. 
       - Effective only on zygote spawned user app process.
 
+
+config KSU_SUSFS_SUS_MAP
+    bool "Enable to hide suspicious memory maps"
+    depends on KSU_SUSFS
+    default y
+    help
+      - Allow hiding user-defined file mappings from /proc/self/maps and smaps.
+
 config KSU_SUSFS_SUS_MOUNT
     bool "Enable to hide suspicious mounts"
     depends on KSU_SUSFS

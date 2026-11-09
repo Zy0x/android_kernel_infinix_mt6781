@@ -24,6 +24,7 @@
 #define CMD_SUSFS_SHOW_SUS_SU_WORKING_MODE 0x555e4
 #define CMD_SUSFS_IS_SUS_SU_READY 0x555f0
 #define CMD_SUSFS_SUS_SU 0x60000
+#define CMD_SUSFS_ADD_SUS_MAP 0x60020
 
 #define SUSFS_MAX_LEN_PATHNAME 256 // 256 should address many paths already unless you are doing some strange experimental stuff, then set your own desired length
 #define SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE 4096
@@ -50,6 +51,7 @@
 #define INODE_STATE_SUS_MOUNT BIT(25)
 #define INODE_STATE_SUS_KSTAT BIT(26)
 #define INODE_STATE_OPEN_REDIRECT BIT(27)
+#define INODE_STATE_SUS_MAP BIT(28)
 
 #define TASK_STRUCT_NON_ROOT_USER_APP_PROC BIT(24)
 
@@ -58,5 +60,20 @@
 #define DATA_ADB_NO_AUTO_ADD_SUS_BIND_MOUNT "/data/adb/susfs_no_auto_add_sus_bind_mount"
 #define DATA_ADB_NO_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT "/data/adb/susfs_no_auto_add_sus_ksu_default_mount"
 #define DATA_ADB_NO_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT "/data/adb/susfs_no_auto_add_try_umount_for_bind_mount"
+
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+#define SUSFS_IS_INODE_SUS_MAP(inode) \
+	(inode && unlikely(inode->i_state & INODE_STATE_SUS_MAP) && \
+	(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC) && \
+	current_uid().val >= 10000)
+
+struct st_susfs_sus_map {
+	char target_pathname[SUSFS_MAX_LEN_PATHNAME];
+	int err;
+};
+#else
+#define SUSFS_IS_INODE_SUS_MAP(inode) 0
+#endif
 
 #endif // #ifndef KSU_SUSFS_DEF_H

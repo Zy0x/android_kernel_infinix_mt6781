@@ -914,3 +914,45 @@ void susfs_init(void) {
 /* No module exit is needed becuase it should never be a loadable kernel module */
 //void __init susfs_exit(void)
 
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+int susfs_add_sus_map(struct st_susfs_sus_map* __user user_info) {
+	struct st_susfs_sus_map info;
+	struct path path;
+	struct inode *inode = NULL;
+	int error = 0;
+
+	if (copy_from_user(&info, user_info, sizeof(info))) {
+		SUSFS_LOGE("failed copying from userspace\n");
+		return -EFAULT;
+	}
+
+	error = kern_path(info.target_pathname, LOOKUP_FOLLOW, &path);
+	if (error) {
+		SUSFS_LOGE("failed opening file '%s'\n", info.target_pathname);
+		info.err = error;
+		goto out_copy_err;
+	}
+
+	inode = d_backing_inode(path.dentry);
+	if (!inode) {
+		SUSFS_LOGE("inode is NULL for '%s'\n", info.target_pathname);
+		info.err = -ENOENT;
+		path_put(&path);
+		goto out_copy_err;
+	}
+
+	spin_lock(&inode->i_lock);
+	inode->i_state |= INODE_STATE_SUS_MAP;
+	spin_unlock(&inode->i_lock);
+	path_put(&path);
+
+	SUSFS_LOGI("target_pathname: '%s' is flagged as INODE_STATE_SUS_MAP\n", info.target_pathname);
+	info.err = 0;
+
+out_copy_err:
+	if (copy_to_user(&user_info->err, &info.err, sizeof(info.err)))
+		return -EFAULT;
+	return info.err;
+}
+#endif

@@ -356,60 +356,52 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 		return 0;
 	}
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+	if (arg2 == CMD_SUSFS_ADD_SUS_MAP) {
+		int error = 0;
+		error = susfs_add_sus_map((struct st_susfs_sus_map __user *)arg3);
+		pr_info("susfs: CMD_SUSFS_ADD_SUS_MAP -> ret: %d\n", error);
+		if (copy_to_user((void __user *)arg5, &error, sizeof(error)))
+			pr_info("susfs: copy_to_user() failed\n");
+		return 0;
+	}
+#endif
 	if (arg2 == CMD_SUSFS_SHOW_ENABLED_FEATURES) {
 		int error = 0;
-		u64 enabled_features = 0;
-		if (!ksu_access_ok((void __user *)arg3, sizeof(u64))) {
-			pr_err("susfs: CMD_SUSFS_SHOW_ENABLED_FEATURES -> arg3 is not accessible\n");
-			return 0;
+		static const char *features_str =
+			"CONFIG_KSU_SUSFS_SUS_PATH\n"
+			"CONFIG_KSU_SUSFS_SUS_MAP\n"
+			"CONFIG_KSU_SUSFS_SUS_MOUNT\n"
+			"CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT\n"
+			"CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT\n"
+			"CONFIG_KSU_SUSFS_SUS_KSTAT\n"
+			"CONFIG_KSU_SUSFS_SUS_OVERLAYFS\n"
+			"CONFIG_KSU_SUSFS_TRY_UMOUNT\n"
+			"CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT\n"
+			"CONFIG_KSU_SUSFS_SPOOF_UNAME\n"
+			"CONFIG_KSU_SUSFS_ENABLE_LOG\n"
+			"CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS\n"
+			"CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG\n"
+			"CONFIG_KSU_SUSFS_OPEN_REDIRECT\n"
+			"CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT\n";
+		size_t str_len = strlen(features_str);
+
+		if (arg4 >= str_len) {
+			/* v1.5.9+ / v2.x string buffer mode */
+			if (!ksu_access_ok((void __user *)arg3, str_len + 1)) {
+				pr_err("susfs: CMD_SUSFS_SHOW_ENABLED_FEATURES -> arg3 is not accessible\n");
+				return 0;
+			}
+			error = copy_to_user((void __user *)arg3, features_str, str_len + 1);
+		} else {
+			/* Bitmask mode for legacy tools */
+			u64 enabled_features = 0x7FFF;
+			if (!ksu_access_ok((void __user *)arg3, sizeof(u64))) {
+				pr_err("susfs: CMD_SUSFS_SHOW_ENABLED_FEATURES -> arg3 is not accessible\n");
+				return 0;
+			}
+			error = copy_to_user((void __user *)arg3, (void *)&enabled_features, sizeof(enabled_features));
 		}
-		if (!ksu_access_ok((void __user *)arg5, sizeof(error))) {
-			pr_err("susfs: CMD_SUSFS_SHOW_ENABLED_FEATURES -> arg5 is not accessible\n");
-			return 0;
-		}
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-		enabled_features |= (1 << 0);
-#endif
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-		enabled_features |= (1 << 1);
-#endif
-#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
-		enabled_features |= (1 << 2);
-#endif
-#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
-		enabled_features |= (1 << 3);
-#endif
-#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-		enabled_features |= (1 << 4);
-#endif
-#ifdef CONFIG_KSU_SUSFS_SUS_OVERLAYFS
-		enabled_features |= (1 << 5);
-#endif
-#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
-		enabled_features |= (1 << 6);
-#endif
-#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
-		enabled_features |= (1 << 7);
-#endif
-#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-		enabled_features |= (1 << 8);
-#endif
-#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
-		enabled_features |= (1 << 9);
-#endif
-#ifdef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-		enabled_features |= (1 << 10);
-#endif
-#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-		enabled_features |= (1 << 11);
-#endif
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-		enabled_features |= (1 << 12);
-#endif
-#ifdef CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT
-		enabled_features |= (1 << 14);
-#endif
-		error = copy_to_user((void __user *)arg3, (void *)&enabled_features, sizeof(enabled_features));
 		pr_info("susfs: CMD_SUSFS_SHOW_ENABLED_FEATURES -> ret: %d\n", error);
 		if (copy_to_user((void __user *)arg5, &error, sizeof(error)))
 			pr_info("susfs: copy_to_user() failed\n");

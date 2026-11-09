@@ -448,15 +448,6 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 		dst_h = src_h;
 	}
 
-	/* Hardware safety clamp: prevent negative or register-overflowing offsets from reaching OVL registers */
-	if (dst_x < 0)
-		dst_x = 0;
-	if (dst_y < 0)
-		dst_y = 0;
-	if (dst_x > 4095)
-		dst_x = 4095;
-	if (dst_y > 4095)
-		dst_y = 4095;
 	state->pending.enable = plane->state->visible;
 	state->pending.pitch = fb->pitches[0];
 	state->pending.format = fb->format->format;

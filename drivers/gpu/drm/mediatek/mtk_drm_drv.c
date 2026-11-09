@@ -2678,11 +2678,7 @@ int mtk_drm_get_display_caps_ioctl(struct drm_device *dev, void *data,
 	if (mtk_drm_helper_get_opt(private->helper_opt, MTK_DRM_OPT_HRT))
 		caps_info->disp_feature_flag |= DRM_DISP_FEATURE_HRT;
 
-	if (mtk_drm_helper_get_opt(private->helper_opt, MTK_DRM_OPT_RPO)) {
-		caps_info->disp_feature_flag |= DRM_DISP_FEATURE_RPO;
-		caps_info->rsz_in_max[0] = private->rsz_in_max[0];
-		caps_info->rsz_in_max[1] = private->rsz_in_max[1];
-	}
+	/* Keep RPO disabled to prevent RSZ underflows */
 	caps_info->disp_feature_flag |= DRM_DISP_FEATURE_FBDC;
 
 #ifdef CONFIG_MTK_LCM_PHYSICAL_ROTATION_HW
@@ -2714,10 +2710,7 @@ int mtk_drm_get_display_caps_ioctl(struct drm_device *dev, void *data,
 		caps_info->disp_feature_flag |=
 				DRM_DISP_FEATURE_SF_PRESENT_FENCE;
 
-	if (mtk_drm_helper_get_opt(private->helper_opt, MTK_DRM_OPT_PQ_34_COLOR_MATRIX))
-		caps_info->disp_feature_flag |=
-				DRM_DISP_FEATURE_PQ_34_COLOR_MATRIX;
-
+	/* DRM_DISP_FEATURE_PQ_34_COLOR_MATRIX intentionally omitted on AOSP/GSI */
 	return ret;
 }
 

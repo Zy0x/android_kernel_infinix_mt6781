@@ -80,3 +80,4 @@ obj-$(CONFIG_CHARGER_BQ25890) += bq2589x_charger.o
 obj-$(CONFIG_CHARGER_SGM41511) += sgm4151x.o
 obj-$(CONFIG_CHARGER_MM8013) += mm8013.o
 obj-y += tran_usb_switch.o
+obj-y += lynx_power.o

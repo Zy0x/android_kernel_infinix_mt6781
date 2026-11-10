@@ -30,6 +30,8 @@
 #if (CONFIG_MTK_GAUGE_VERSION == 30)
 #include <mt-plat/charger_type.h>
 #include <mt-plat/mtk_charger.h>
+
+extern bool g_lynx_hyper_charge;
 #include <mt-plat/mtk_battery.h>
 #else
 #include <tmp_battery.h>
@@ -375,6 +377,12 @@ static void chrlmt_set_limit_handler(struct work_struct *work)
 				((chrlmt_chr_input_curr_limit != -1) ?
 				chrlmt_chr_input_curr_limit * 1000 : -1));
 
+		if (g_lynx_hyper_charge) {
+			if (chrlmt_bat_chr_curr_limit > 0 && chrlmt_bat_chr_curr_limit < 3000)
+				chrlmt_bat_chr_curr_limit = -1;
+			if (chrlmt_chr_input_curr_limit > 0 && chrlmt_chr_input_curr_limit < 3000)
+				chrlmt_chr_input_curr_limit = -1;
+		}
 		charger_manager_set_charging_current_limit(pthermal_consumer, 0,
 				((chrlmt_bat_chr_curr_limit != -1) ?
 				chrlmt_bat_chr_curr_limit * 1000 : -1));
@@ -542,7 +550,7 @@ static int mtk_cl_bcct_set_cur_state(
 struct thermal_cooling_device *cdev, unsigned long state)
 {
 	/*Only active while lcm not off */
-	if (chrlmt_is_lcmoff)
+	if (chrlmt_is_lcmoff || g_lynx_hyper_charge)
 		state = 0;
 
 	mtk_cooler_bcct_dprintk("%s %s %lu\n", __func__, cdev->type, state);

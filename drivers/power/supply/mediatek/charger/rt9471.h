@@ -19,6 +19,7 @@
 #define RT9470D_DEVID		0x0A
 #define RT9471_DEVID		0x0D
 #define RT9471D_DEVID		0x0E
+#define RT9471_HAS_BC12(chip) (((chip)->dev_id == RT9470D_DEVID) || ((chip)->dev_id == RT9471D_DEVID) || ((chip)->dev_id == RT9471_DEVID))
 
 enum rt9471_reg_addr {
 	RT9471_REG_OTGCFG = 0x00,

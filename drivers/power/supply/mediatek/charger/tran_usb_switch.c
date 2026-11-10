@@ -109,6 +109,12 @@ static int usb_switch_psy_notifier_cb(struct notifier_block *nb, unsigned long e
 		if (power_supply_get_property(psy, POWER_SUPPLY_PROP_CHARGE_TYPE, &val) == 0)
 			chr_type = val.intval;
 
+		if (chg_in && (chr_type == 4 || chr_type == 3 || chr_type == 5 || chr_type == 6 || chr_type == 2)) {
+			g_switch_dev->rfc_dcp_ta = 1;
+		} else if (!chg_in || chr_type == 1 || chr_type == 0) {
+			g_switch_dev->rfc_dcp_ta = 0;
+		}
+
 		pr_info("DV2_SWITCH:usb_switch_psy_notifier_cb:chrtype=%d chg_in=%d rfc_dcp_ta=%d\n",
 			chr_type, chg_in, g_switch_dev->rfc_dcp_ta);
 		tran_usb_switch_ctl_check(chr_type, chg_in, g_switch_dev->rfc_dcp_ta);

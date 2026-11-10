@@ -39,8 +39,11 @@ static struct ppm_policy_data thermal_policy = {
 	.status_change_cb	= ppm_thermal_status_change_cb,
 };
 
+extern bool g_lynx_thermal_silencer;
 void mt_ppm_cpu_thermal_protect(unsigned int limited_power)
 {
+	if (g_lynx_thermal_silencer)
+		limited_power = 0;
 	FUNC_ENTER(FUNC_LV_POLICY);
 
 	ppm_ver("Get budget from thermal => limited_power = %d\n",

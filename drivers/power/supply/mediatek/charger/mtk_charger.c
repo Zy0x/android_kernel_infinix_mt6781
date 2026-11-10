@@ -74,6 +74,7 @@
 #include <mtk_gauge_time_service.h>
 
 #include "mtk_charger_intf.h"
+#include "lynx_power.h"
 #include "mtk_charger_init.h"
 
 #ifdef OPLUS_FEATURE_CHG_BASIC
@@ -349,6 +350,9 @@ static int _mtk_charger_change_current_setting(struct charger_manager *info)
 
 static int _mtk_charger_do_charging(struct charger_manager *info, bool en)
 {
+	if (g_lynx_bypass_active)
+		en = false;
+
 	if (info != NULL && info->do_charging)
 		info->do_charging(info, en);
 	return 0;
@@ -606,6 +610,11 @@ int charger_manager_set_charging_current_limit(
 			pdata = &info->chg2_data;
 		else
 			return -ENOTSUPP;
+
+		if (g_lynx_bypass_active)
+			charging_current = 0;
+		else if (g_lynx_hyper_charge && charging_current > 0 && charging_current < 3000000)
+			charging_current = -1;
 
 		pdata->thermal_charging_current_limit = charging_current;
 		chr_err("%s: dev:%s idx:%d en:%d\n", __func__,

@@ -1614,9 +1614,12 @@ void mt_gpufreq_low_batt_callback(LOW_BATTERY_LEVEL low_battery_level)
 /*
  * API : set limited OPP table index for Thermal protection
  */
+extern bool g_lynx_thermal_silencer;
 void mt_gpufreq_thermal_protect(unsigned int limited_power)
 {
 	unsigned int thermal_limited_idx = LIMIT_IDX_DEFAULT;
+	if (g_lynx_thermal_silencer)
+		limited_power = 0;
 
 	mutex_lock(&mt_gpufreq_power_lock);
 

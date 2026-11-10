@@ -3066,9 +3066,24 @@ struct dv2_thermal_data {
 	int recovery_area;
 };
 
+extern bool g_lynx_hyper_charge;
 static bool __dv2_check_thermal_level(struct dv2_algo_info *info,
 				      struct dv2_thermal_data *tdata)
 {
+	if (g_lynx_hyper_charge) {
+		if (tdata->name) {
+			if (strcmp(tdata->name, "tbat") == 0 && tdata->temp < 45)
+				return true;
+			if (strcmp(tdata->name, "tpcb") == 0 && tdata->temp < 58)
+				return true;
+			if (strncmp(tdata->name, "tdvchg", 6) == 0 && tdata->temp < 68)
+				return true;
+			if (strcmp(tdata->name, "tswchg") == 0 && tdata->temp < 65)
+				return true;
+			if (strcmp(tdata->name, "tta") == 0 && tdata->temp < 65)
+				return true;
+		}
+	}
 	if (tdata->temp >= tdata->temp_level_def[DV2_THERMAL_VERY_HOT]) {
 		if (tdata->curlmt[DV2_THERMAL_VERY_HOT] == 0)
 			return true;

@@ -324,6 +324,8 @@ static int mt_charger_set_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
 		mtk_chg->chg_online = val->intval;
+		if (cti)
+			cti->plugin = val->intval ? true : false;
 		mt_charger_online(mtk_chg);
 		return 0;
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
@@ -1131,17 +1133,19 @@ bool mt_charger_plugin(void)
 {
 	struct mt_charger *mtk_chg = NULL;
 	struct power_supply *psy = power_supply_get_by_name("charger");
-	struct chg_type_info *cti = NULL;
 
 	if (!psy) {
 		pr_info("%s: get power supply failed\n", __func__);
-		return -EINVAL;
+		return false;
 	}
 	mtk_chg = power_supply_get_drvdata(psy);
-	cti = mtk_chg->cti;
-	pr_info("%s plugin:%d\n", __func__, cti->plugin);
-
-	return cti->plugin;
+	if (mtk_chg) {
+		if (mtk_chg->chg_online || (mtk_chg->chg_type != CHARGER_UNKNOWN))
+			return true;
+		if (mtk_chg->cti)
+			return mtk_chg->cti->plugin;
+	}
+	return false;
 }
 
 static s32 __init mt_charger_det_init(void)

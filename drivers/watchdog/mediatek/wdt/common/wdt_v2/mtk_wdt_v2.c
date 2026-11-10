@@ -142,8 +142,13 @@ static enum wdt_rst_modes mtk_wdt_get_rst_mode(struct device_node *node)
 	int err;
 
 	err = of_property_read_u32(node, "rstmode", &rst_mode);
-	if (err < 0)
+	if (err < 0) {
+#ifdef CONFIG_MTK_PMIC_NEW_ARCH
+		return WDT_RST_MODE_PMIC;
+#else
 		return WDT_RST_MODE_DEFAULT;
+#endif
+	}
 
 	if (rst_mode)
 		return WDT_RST_MODE_PMIC;
@@ -662,7 +667,7 @@ void wdt_arch_reset(char mode)
 		 * for common kernel projects and two stage timeout design
 		 */
 		wdt_mode_val = wdt_mode_val | (MTK_WDT_MODE_KEY |
-			MTK_WDT_MODE_EXTEN);
+			MTK_WDT_MODE_EXTEN | 0x0010);
 		non_rst2 |= MTK_WDT_NONRST2_BYPASS_PWR_KEY;
 	} else
 		wdt_mode_val = wdt_mode_val |
@@ -685,8 +690,9 @@ void wdt_arch_reset(char mode)
 	/* dump RGU registers */
 	wdt_dump_reg();
 
-	/* clear extra cnt to prevent from Q->R update cannot reboot automatically issue */
-	wdt_mode_val &= ~MTK_WDT_MODE_EXTRA_CNT;
+	/* clear extra cnt only if not bypassing power key */
+	if (!(mode & WD_SW_RESET_BYPASS_PWR_KEY))
+		wdt_mode_val &= ~MTK_WDT_MODE_EXTRA_CNT;
 	mt_reg_sync_writel(wdt_mode_val, MTK_WDT_MODE);
 
 	mt_reg_sync_writel(__raw_readl(MTK_WDT_STATUS), MTK_WDT_NONRST_REG);
@@ -732,10 +738,14 @@ void wdt_arch_reset(char mode)
 
 #ifdef CONFIG_MTK_PMIC_NEW_ARCH
 	if (rst_mode == WDT_RST_MODE_PMIC &&
-			mode == WD_SW_RESET_BYPASS_PWR_KEY) {
+			(mode & WD_SW_RESET_BYPASS_PWR_KEY)) {
+		pr_info("%s: triggering PMIC Cold Reset (CRST)...\n", __func__);
 		pmic_config_interface_nolock(PMIC_RG_CRST_ADDR, 1,
 						 PMIC_RG_CRST_MASK,
 						 PMIC_RG_CRST_SHIFT);
+		mdelay(10);
+		/* Trigger RGU SWRST as hardware backup without disabling pwrap */
+		mt_reg_sync_writel(MTK_WDT_SWRST_KEY, MTK_WDT_SWRST);
 	} else
 #endif
 	{

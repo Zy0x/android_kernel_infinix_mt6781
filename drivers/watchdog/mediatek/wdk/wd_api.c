@@ -682,8 +682,10 @@ void arch_reset(char mode, const char *cmd)
 		/* do nothing */
 	} else if (cmd && !strcmp(cmd, "recovery")) {
 		rtc_mark_recovery();
+		reboot = WD_SW_RESET_BYPASS_PWR_KEY;
 	} else if (cmd && !strcmp(cmd, "bootloader")) {
 		rtc_mark_fast();
+		reboot = WD_SW_RESET_BYPASS_PWR_KEY;
 	} else if (cmd && !strcmp(cmd, "dm-verity device corrupted")) {
 #ifdef CONFIG_MTK_SECURITY_SW_SUPPORT
 		res = masp_hal_set_dm_verity_error();

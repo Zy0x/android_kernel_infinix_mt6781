@@ -1560,6 +1560,7 @@
   toprgu@10007000 {
     compatible = "mediatek,toprgu";
     reg = <0x0 0x10007000 0x0 0x1000>;
+    rstmode = <0x1>;
     phandle = <0xa1>;
   };
   apxgpt@10008000 {

@@ -98,9 +98,13 @@ static int chrdet_inform_psy_changed(enum charger_type chg_type,
 }
 
 
+extern int rt9471_get_charger_type(void);
+
 int hw_charging_get_charger_type(void)
 {
-	return STANDARD_HOST;
+	int type = rt9471_get_charger_type();
+	pr_info("pmic_chrdet: hw_charging_get_charger_type -> %d\n", type);
+	return type;
 }
 
 /*****************************************************************************

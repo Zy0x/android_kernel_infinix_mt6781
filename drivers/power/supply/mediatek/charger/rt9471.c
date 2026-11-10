@@ -179,7 +179,6 @@ static const u8 rt9471_val_en_hidden_mode[] = {
 	0x69, 0x96,
 };
 
-#ifdef CONFIG_MTK_EXTERNAL_CHARGER_TYPE_DETECT
 static const char * const rt9471_port_names[RT9471_PORTSTAT_MAX] = {
 	"NOINFO",
 	"RESERVED", "RESERVED", "RESERVED", "RESERVED",
@@ -193,7 +192,6 @@ static const char * const rt9471_port_names[RT9471_PORTSTAT_MAX] = {
 	"CDP",
 	"DCP",
 };
-#endif /* CONFIG_MTK_EXTERNAL_CHARGER_TYPE_DETECT */
 
 struct rt9471_chip {
 	struct i2c_client *client;
@@ -2342,6 +2340,87 @@ int rt9471_set_bypass_mode(bool enable)
 	return 0;
 }
 EXPORT_SYMBOL(rt9471_set_bypass_mode);
+
+int rt9471_get_charger_type(void)
+{
+	struct rt9471_chip *chip = g_rt9471_chip;
+	int ret, i;
+	u8 stat0 = 0, status = 0, port = 0;
+	int detected_type = STANDARD_HOST;
+
+	if (!chip || !chip->client) {
+		pr_info("rt9471: chip not ready, fallback to STANDARD_HOST\n");
+		return STANDARD_HOST;
+	}
+
+	/* Check VBUS good */
+	ret = rt9471_i2c_read_byte(chip, RT9471_REG_STAT0, &stat0);
+	if (ret < 0 || !(stat0 & RT9471_ST_VBUSGD_MASK)) {
+		pr_info("rt9471: vbus not good (stat0=0x%02x)\n", stat0);
+		return CHARGER_UNKNOWN;
+	}
+
+	pr_info("rt9471: running BC1.2 detection...\n");
+	Charger_Detect_Init();
+	ret = __rt9471_enable_bc12(chip, true);
+	if (ret < 0) {
+		pr_warn("rt9471: enable_bc12 failed (%d)\n", ret);
+		Charger_Detect_Release();
+		return STANDARD_HOST;
+	}
+
+	/* Wait up to 60ms for BC1.2 to complete */
+	for (i = 0; i < 6; i++) {
+		msleep(10);
+		ret = rt9471_i2c_read_byte(chip, RT9471_REG_STAT0, &stat0);
+		if (ret >= 0 && (stat0 & RT9471_ST_BC12_DONE_MASK)) {
+			pr_info("rt9471: BC1.2 done in %d ms\n", (i + 1) * 10);
+			break;
+		}
+	}
+
+	/* Read detected port */
+	ret = rt9471_i2c_read_byte(chip, RT9471_REG_STATUS, &status);
+	/* Restore PHY to USB data mode and disable BC1.2 */
+	__rt9471_enable_bc12(chip, false);
+	Charger_Detect_Release();
+
+	if (ret >= 0) {
+		port = (status & RT9471_PORTSTAT_MASK) >> RT9471_PORTSTAT_SHIFT;
+		pr_info("rt9471: BC1.2 status=0x%02x port=%d (%s)\n",
+			status, port,
+			port < RT9471_PORTSTAT_MAX ? rt9471_port_names[port] : "UNKNOWN");
+
+		switch (port) {
+		case RT9471_PORTSTAT_SDP:
+			detected_type = STANDARD_HOST;
+			break;
+		case RT9471_PORTSTAT_CDP:
+			detected_type = CHARGING_HOST;
+			break;
+		case RT9471_PORTSTAT_DCP:
+		case RT9471_PORTSTAT_SAMSUNG_10W:
+		case RT9471_PORTSTAT_APPLE_12W:
+		case RT9471_PORTSTAT_APPLE_10W:
+		case RT9471_PORTSTAT_APPLE_5W:
+			detected_type = STANDARD_CHARGER;
+			break;
+		case RT9471_PORTSTAT_NSDP:
+			detected_type = NONSTANDARD_CHARGER;
+			break;
+		default:
+			detected_type = STANDARD_HOST;
+			break;
+		}
+	} else {
+		detected_type = STANDARD_HOST;
+	}
+
+	pr_info("rt9471: detected charger type = %d\n", detected_type);
+	return detected_type;
+}
+EXPORT_SYMBOL(rt9471_get_charger_type);
+
 
 static int rt9471_enable_charging(struct charger_device *chg_dev, bool en)
 {

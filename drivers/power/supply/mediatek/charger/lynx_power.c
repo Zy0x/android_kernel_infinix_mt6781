@@ -168,13 +168,28 @@ static const struct file_operations lynx_thermal_silencer_fops = {
 };
 
 /* 4. Status proc interface */
+static const char *lynx_chr_type_str(int type)
+{
+	switch (type) {
+	case 0: return "UNKNOWN (Disconnected)";
+	case 1: return "STANDARD_HOST (PC USB Port)";
+	case 2: return "CHARGING_HOST (PC CDP)";
+	case 3: return "NONSTANDARD_CHARGER";
+	case 4: return "STANDARD_CHARGER (Wall Fast Charger)";
+	case 5: return "APPLE_2_1A_CHARGER";
+	case 6: return "APPLE_1_0A_CHARGER";
+	default: return "OTHER";
+	}
+}
+
 static int lynx_status_show(struct seq_file *m, void *v)
 {
+	int type = (int)mt_get_charger_type();
 	seq_printf(m, "=== LYNX UNIVERSAL POWER SUBSYSTEM ===\n");
 	seq_printf(m, "Hardware Bypass Charging : %s\n", g_lynx_bypass_active ? "ACTIVE" : "INACTIVE");
 	seq_printf(m, "Hyper Charge (Unthrottle): %s\n", g_lynx_hyper_charge ? "ENABLED" : "DISABLED");
 	seq_printf(m, "Thermal Silencer (CPU/GPU): %s\n", g_lynx_thermal_silencer ? "ENABLED" : "DISABLED");
-	seq_printf(m, "Charger Type Detected    : %d\n", (int)mt_get_charger_type());
+	seq_printf(m, "Charger Type Detected    : %d [%s]\n", type, lynx_chr_type_str(type));
 	seq_printf(m, "Transsion RFC Fast TA    : %d\n", dcp_get_ta_status());
 	return 0;
 }

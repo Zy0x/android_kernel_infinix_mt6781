@@ -50,6 +50,9 @@ int tran_usb_switch_ctl(int en)
 	if (!g_switch_dev || !g_switch_dev->pinctrl)
 		return -ENODEV;
 
+	if (g_switch_dev->cur_ctl == en)
+		return 0;
+
 	pr_info("DV2_SWITCH:usb_switch_ctl=%d\n", en);
 	if (en) {
 		if (!IS_ERR_OR_NULL(g_switch_dev->pins_high1))
@@ -181,7 +184,6 @@ static int tran_usb_switch_probe(struct platform_device *pdev)
 {
 	struct tran_usb_switch_data *data;
 	struct power_supply_config psy_cfg = {};
-	int ret;
 
 	pr_info("DV2_SWITCH:tran_usb_switch_probe\n");
 	pr_info("DV2_SWITCH:****tran_dv2_adaptor_gpio_init:end Init Drive dv2 adaptor!!!!!\n");

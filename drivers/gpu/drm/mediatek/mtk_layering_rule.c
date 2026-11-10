@@ -372,24 +372,24 @@ static void filter_by_bounds(struct drm_device *dev,
 
 		/*
 		 * 2. Pop-up window / Dialog / ResolverActivity / BottomSheet inset shadow detection.
-		 *
-		 * Windows with 4-sided elevation shadows use src_offset_x > 0 AND src_offset_y > 0
-		 * simultaneously (the shadow inset crops the buffer from all four sides).
-		 * MT6781 OVL hardware cannot handle sub-pixel source cropping with arbitrary
-		 * surfaceInsets in the same pass as a full-screen destination mapping.
-		 * These layers must be composited by GLES.
-		 *
-		 * Exclusions to prevent unnecessary GLES rollback:
-		 * - YUV layers: handled by MDP, not OVL src-crop path.
-		 * - Dim layers (DISP_FORMAT_DIM): hardware constant-color layers, no framebuffer.
-		 * - StatusBar guard: full-width layer at dst_offset_y == 0 with height <= 200px
-		 *   uses src_offset_y for top inset only (src_offset_x is 0), so AND catches it.
-		 * - Wallpaper (i == 0) naturally has src_offset_x == 0, src_offset_y == 0.
 		 */
 		if (c->src_offset_x > 0 && c->src_offset_y > 0 &&
 		    c->src_fmt != DISP_FORMAT_DIM &&
 		    !mtk_bounds_is_yuv_fmt(c->src_fmt)) {
 			/* Roll back 4-sided inset popups (1248x2628) to GLES GPU to prevent OVL DMA bandwidth choke */
+			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
+			continue;
+		}
+
+		/*
+		 * 3. 2K / 4K and Large scale-down content protection.
+		 * Hardware OVL on MT6781 cannot scale down (src_width > dst_width).
+		 * If a layer has src_width > dst_width and is not handled by MDP hardware resizer,
+		 * it MUST be composited by GLES GPU to guarantee high-quality texture filtering,
+		 * full sharpness, and zero pixel distortion.
+		 */
+		if (c->src_width > c->dst_width &&
+		    !mtk_has_layer_cap(c, MTK_MDP_RSZ_LAYER)) {
 			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
 			continue;
 		}

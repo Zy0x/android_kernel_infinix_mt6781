@@ -909,46 +909,29 @@ static unsigned int ovl_fmt_convert(struct mtk_disp_ovl *ovl, unsigned int fmt,
 		       OVL_CON_BYTE_SWAP;
 	case DRM_FORMAT_RGBX8888:
 	case DRM_FORMAT_RGBA8888:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN;
-		else
-			return OVL_CON_CLRFMT_ARGB8888;
+		/* Standard Android Pre-multiplied Alpha */
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN;
 	case DRM_FORMAT_BGRX8888:
 	case DRM_FORMAT_BGRA8888:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
-			       OVL_CON_CLRFMT_MAN;
-		else
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP;
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
+		       OVL_CON_CLRFMT_MAN;
 	case DRM_FORMAT_XRGB8888:
 	case DRM_FORMAT_ARGB8888:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
-			       OVL_CON_CLRFMT_MAN | OVL_CON_RGB_SWAP;
-		else
-			return OVL_CON_CLRFMT_RGBA8888;
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_BYTE_SWAP |
+		       OVL_CON_CLRFMT_MAN | OVL_CON_RGB_SWAP;
 	case DRM_FORMAT_XBGR8888:
 	case DRM_FORMAT_ABGR8888:
 		/* Standard AOSP SurfaceFlinger Statusbar / Overlay format (ABGR8888) */
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
-			       OVL_CON_RGB_SWAP;
-		else
-			return OVL_CON_CLRFMT_RGBA8888 | OVL_CON_BYTE_SWAP;
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
+		       OVL_CON_RGB_SWAP;
 	case DRM_FORMAT_UYVY:
 		return OVL_CON_CLRFMT_UYVY(ovl);
 	case DRM_FORMAT_YUYV:
 		return OVL_CON_CLRFMT_YUYV(ovl);
 	case DRM_FORMAT_ABGR2101010:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
-			       OVL_CON_RGB_SWAP;
-		return OVL_CON_CLRFMT_RGBA8888 | OVL_CON_BYTE_SWAP;
 	case DRM_FORMAT_ABGR16161616F:
-		if (modifier & MTK_FMT_PREMULTIPLIED)
-			return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
-			       OVL_CON_RGB_SWAP;
-		return OVL_CON_CLRFMT_RGBA8888 | OVL_CON_BYTE_SWAP;
+		return OVL_CON_CLRFMT_ARGB8888 | OVL_CON_CLRFMT_MAN |
+		       OVL_CON_RGB_SWAP;
 	case DRM_FORMAT_C8:
 		return OVL_CON_CLRFMT_DIM | OVL_CON_CLRFMT_RGB888(ovl);
 	}
@@ -1546,29 +1529,10 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	int dst_x = (int)pending->dst_x;
 	int dst_y = (int)pending->dst_y;
 
-	/* Safe clipping for negative surfaceInsets (drop-shadows, bottom sheets, keyboard) */
-	if (dst_x < 0 || pending->dst_x >= 0x80000000U) {
-		unsigned int clip_x = (unsigned int)(0x100000000ULL - (u64)pending->dst_x);
-
-		pending->src_x += clip_x;
-		if (pending->width > clip_x)
-			pending->width -= clip_x;
-		else
-			pending->width = 0;
+	if (dst_x < 0)
 		dst_x = 0;
-		pending->dst_x = 0;
-	}
-	if (dst_y < 0 || pending->dst_y >= 0x80000000U) {
-		unsigned int clip_y = (unsigned int)(0x100000000ULL - (u64)pending->dst_y);
-
-		pending->src_y += clip_y;
-		if (pending->height > clip_y)
-			pending->height -= clip_y;
-		else
-			pending->height = 0;
+	if (dst_y < 0)
 		dst_y = 0;
-		pending->dst_y = 0;
-	}
 
 	/* Hardware OVL offset safety clamp: prevent 12-bit unsigned register overflow */
 	if (dst_x > 4095) {
@@ -1820,13 +1784,11 @@ static bool compr_l_config_PVRIC_V3_1(struct mtk_ddp_comp *comp,
 	unsigned int domain_val = 0, domain_mask = 0;
 #endif
 
-	/* Never enable compressed HDR DMA when no backing buffer address is bound */
-	if (!pending->addr && !state->pending.is_sec) {
-		compress = 0;
-		pending->prop_val[PLANE_PROP_COMPRESS] = 0;
-	}
-
-/* Explicit compression only via PLANE_PROP_COMPRESS */
+	/* Auto-detect AFBC compression from framebuffer modifier when buffer address is bound */
+	if (!compress && (pending->addr || state->pending.is_sec) &&
+	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != 0 &&
+	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != DRM_FORMAT_MOD_LINEAR)
+		compress = 1;
 
 	/* Default vpitch if not populated by userspace */
 	if (vpitch == 0)
@@ -2193,13 +2155,11 @@ static bool compr_l_config_AFBC_V1_2(struct mtk_ddp_comp *comp,
 		fmt, Bpp,
 		compress);
 
-	/* Never enable compressed HDR DMA when no backing buffer address is bound */
-	if (!pending->addr && !state->pending.is_sec) {
-		compress = 0;
-		pending->prop_val[PLANE_PROP_COMPRESS] = 0;
-	}
-
-/* Explicit compression only via PLANE_PROP_COMPRESS */
+	/* Auto-detect AFBC compression from framebuffer modifier when buffer address is bound */
+	if (!compress && (pending->addr || state->pending.is_sec) &&
+	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != 0 &&
+	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != DRM_FORMAT_MOD_LINEAR)
+		compress = 1;
 
 	/* Default vpitch if not populated by userspace */
 	if (vpitch == 0)

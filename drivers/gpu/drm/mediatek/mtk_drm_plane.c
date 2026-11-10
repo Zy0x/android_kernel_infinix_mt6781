@@ -613,6 +613,12 @@ static void mtk_plane_atomic_disable(struct drm_plane *plane,
 			}
 		}
 
+		/* A secondary plane (index > 0) must never inherit lye_id == 0 from an old state,
+		 * as layer 0 belongs exclusively to the primary base plane (wallpaper/app).
+		 */
+		if (to_crtc_plane_index(plane->index) > 0 && old_mtk_state->comp_state.lye_id == 0)
+			slot_reused = true;
+
 		if (slot_reused)
 			memset(&state->comp_state, 0, sizeof(state->comp_state));
 		else

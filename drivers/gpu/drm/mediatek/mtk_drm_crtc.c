@@ -2771,12 +2771,16 @@ static void mtk_crtc_get_plane_comp_state(struct drm_crtc *crtc,
 
 		plane_state = to_mtk_plane_state(plane->state);
 		comp_state = &(plane_state->comp_state);
-		/* Turn off both currently visible and previously enabled planes before updating lyeblob */
-		if (plane_state->base.visible || plane_state->pending.enable) {
+		/* Turn off ONLY currently visible planes before updating lyeblob (Base A behavior) */
+		if (plane_state->base.visible) {
 			for_each_comp_in_cur_crtc_path(
 				comp, mtk_crtc, j,
 				k) {
 				if (comp->id != comp_state->comp_id)
+					continue;
+
+				/* Never allow a secondary plane (i > 0) to turn off primary layer 0 */
+				if (i > 0 && comp_state->lye_id == 0)
 					continue;
 
 				mtk_ddp_comp_layer_off(
@@ -4223,10 +4227,11 @@ static void mtk_crtc_ddp_config(struct drm_crtc *crtc)
 
 			plane_state->pending.config = false;
 		} else {
-			/* Explicitly shut down hardware DMA when plane is disabled (prevents stale frame ghosting) */
-			mtk_ddp_comp_layer_off(p_comp, layer_idx,
-					       plane_state->comp_state.ext_lye_id,
-					       cmdq_handle);
+			/* Explicitly shut down hardware DMA when plane is disabled, but never allow secondary plane to kill layer 0 */
+			if (i == 0 || layer_idx > 0)
+				mtk_ddp_comp_layer_off(p_comp, layer_idx,
+						       plane_state->comp_state.ext_lye_id,
+						       cmdq_handle);
 			sub = 0;
 			cmdq_pkt_write(cmdq_handle, mtk_crtc->gce_obj.base,
 				       cmdq_buf->pa_base +
@@ -6613,9 +6618,10 @@ void mtk_drm_crtc_plane_update(struct drm_crtc *crtc, struct drm_plane *plane,
 			if (comp) {
 				unsigned int layer_idx = plane_state->comp_state.lye_id;
 
-				mtk_ddp_comp_layer_off(comp, layer_idx,
-						       plane_state->comp_state.ext_lye_id,
-						       cmdq_handle);
+				if (plane_index == 0 || layer_idx > 0)
+					mtk_ddp_comp_layer_off(comp, layer_idx,
+							       plane_state->comp_state.ext_lye_id,
+							       cmdq_handle);
 			}
 		}
 	}

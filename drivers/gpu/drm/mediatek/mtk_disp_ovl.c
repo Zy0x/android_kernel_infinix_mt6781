@@ -1592,7 +1592,9 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	DDPINFO("%s+ idx:%d, enable:%d, fmt:0x%x\n", __func__, idx,
 		pending->enable, pending->format);
 	if (!pending->enable) {
-		mtk_ovl_layer_off(comp, lye_idx, ext_lye_idx, handle);
+		/* Never allow a secondary plane to turn off layer 0 */
+		if (idx == 0 || lye_idx > 0)
+			mtk_ovl_layer_off(comp, lye_idx, ext_lye_idx, handle);
 		return;
 	}
 

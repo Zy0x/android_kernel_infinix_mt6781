@@ -78,6 +78,7 @@ static int chrdet_inform_psy_changed(enum charger_type chg_type,
 			pr_debug("%s: psy type failed, ret = %d\n",
 				__func__, ret);
 
+		power_supply_changed(chrdet_psy);
 		return ret;
 	}
 
@@ -94,17 +95,45 @@ static int chrdet_inform_psy_changed(enum charger_type chg_type,
 	if (ret < 0)
 		pr_debug("%s: psy online failed, ret(%d)\n",
 			__func__, ret);
+
+	power_supply_changed(chrdet_psy);
 	return ret;
 }
 
 
-extern int rt9471_get_charger_type(void);
+extern bool mtk_musb_is_pc_host_connected(void);
+extern void dcp_reset_rfc(void);
+
+static struct delayed_work chg_verify_work;
+
+static void do_charger_verify_work(struct work_struct *data)
+{
+	mutex_lock(&chrdet_lock);
+	if (pmic_get_register_value(PMIC_RGS_CHRDET)) {
+		bool is_pc = mtk_musb_is_pc_host_connected();
+		pr_info("pmic_chrdet: verify: is_pc_host = %d, current_type = %d\n",
+			is_pc, g_chr_type);
+		if (is_pc) {
+			/* PC USB Host confirmed active, keep STANDARD_HOST for ADB/MTP */
+			if (g_chr_type != STANDARD_HOST) {
+				g_chr_type = STANDARD_HOST;
+				chrdet_inform_psy_changed(g_chr_type, 1);
+			}
+		} else {
+			/* No PC USB host traffic -> Dedicated Wall / Fast Charger! */
+			if (g_chr_type != STANDARD_CHARGER) {
+				pr_info("pmic_chrdet: promoting to STANDARD_CHARGER (Fast Charge)\n");
+				g_chr_type = STANDARD_CHARGER;
+				chrdet_inform_psy_changed(g_chr_type, 1);
+			}
+		}
+	}
+	mutex_unlock(&chrdet_lock);
+}
 
 int hw_charging_get_charger_type(void)
 {
-	int type = rt9471_get_charger_type();
-	pr_info("pmic_chrdet: hw_charging_get_charger_type -> %d\n", type);
-	return type;
+	return g_chr_type;
 }
 
 /*****************************************************************************
@@ -126,12 +155,18 @@ void do_charger_detect(void)
 
 	if (pmic_get_register_value(PMIC_RGS_CHRDET)) {
 		pr_info("charger type: charger IN\n");
-		g_chr_type = hw_charging_get_charger_type();
+		/* Initially start as STANDARD_HOST so USB stack immediately responds to PC */
+		g_chr_type = STANDARD_HOST;
 		chrdet_inform_psy_changed(g_chr_type, 1);
+		/* Schedule delayed verification to see if a PC host actually enumerates */
+		cancel_delayed_work(&chg_verify_work);
+		schedule_delayed_work(&chg_verify_work, msecs_to_jiffies(1500));
 	} else {
 		pr_info("charger type: charger OUT\n");
+		cancel_delayed_work(&chg_verify_work);
 		g_chr_type = CHARGER_UNKNOWN;
 		chrdet_inform_psy_changed(g_chr_type, 0);
+		dcp_reset_rfc();
 	}
 
 	mutex_unlock(&chrdet_lock);
@@ -183,6 +218,7 @@ static void do_charger_detection_work(struct work_struct *data)
 static int __init pmic_chrdet_init(void)
 {
 	mutex_init(&chrdet_lock);
+	INIT_DELAYED_WORK(&chg_verify_work, do_charger_verify_work);
 	chrdet_psy = power_supply_get_by_name("charger");
 	if (!chrdet_psy) {
 		pr_debug("%s: get power supply failed\n", __func__);

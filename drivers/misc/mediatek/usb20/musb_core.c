@@ -191,6 +191,17 @@ unsigned int musb_debug;
 unsigned int musb_debug_limit = 1;
 unsigned int musb_uart_debug = 1;
 struct musb *mtk_musb;
+EXPORT_SYMBOL(mtk_musb);
+
+bool mtk_musb_is_pc_host_connected(void)
+{
+	if (mtk_musb && !mtk_musb->is_host && mtk_musb->is_active &&
+	    mtk_musb->g.speed != USB_SPEED_UNKNOWN)
+		return true;
+	return false;
+}
+EXPORT_SYMBOL(mtk_musb_is_pc_host_connected);
+
 unsigned int musb_speed = 1;
 bool mtk_usb_power;
 #ifdef CONFIG_MTK_MUSB_PORT0_LOWPOWER_MODE

@@ -47,5 +47,7 @@ obj-$(CONFIG_MTK_PMIC_CHIP_MT6358)	+= pmic.o pmic_common.o \
 		#TODO
 		#pmic_bif.o \
 
+ifndef CONFIG_MTK_EXTERNAL_CHARGER_TYPE_DETECT
 obj-$(CONFIG_MTK_PMIC_CHIP_MT6358) += pmic_dummy_chr_type_det.o
+endif
 

@@ -103,7 +103,11 @@ static int usb_switch_psy_notifier_cb(struct notifier_block *nb, unsigned long e
 	if (event != PSY_EVENT_PROP_CHANGED || !psy || !g_switch_dev)
 		return NOTIFY_OK;
 
-	if (strcmp(psy->desc->name, "charger") == 0 || strcmp(psy->desc->name, "battery") == 0) {
+	/* ONLY handle "charger" power supply to prevent battery fuel-gauge events from resetting rfc_dcp_ta */
+	if (strcmp(psy->desc->name, "charger") != 0)
+		return NOTIFY_OK;
+
+	{
 		int chr_type = 1;
 		int chg_in = 1;
 

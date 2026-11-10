@@ -739,13 +739,18 @@ static int pd_tcp_notifier_call(struct notifier_block *pnb,
 static int chgdet_task_threadfn(void *data)
 {
 	struct chg_type_info *cti = data;
-	bool attach = false, ignore_usb = false;
+	bool attach = false;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	bool ignore_usb = false;
+#endif
 	int ret = 0;
 #ifdef OPLUS_FEATURE_CHG_BASIC
 	unsigned int ms = 0;
 #endif
 	struct power_supply *psy = power_supply_get_by_name("charger");
+	#ifdef OPLUS_FEATURE_CHG_BASIC
 	union power_supply_propval val = {.intval = 0};
+#endif
 
 	if (!psy) {
 		pr_notice("%s: power supply get fail\n", __func__);

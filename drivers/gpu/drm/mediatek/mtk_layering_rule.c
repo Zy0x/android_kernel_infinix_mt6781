@@ -315,19 +315,54 @@ static void filter_by_fbdc(struct drm_mtk_layering_info *disp_info)
 		}
 }
 
+static inline bool mtk_bounds_is_yuv_fmt(uint32_t format)
+{
+	if (mtk_is_yuv(format))
+		return true;
+
+	switch (format) {
+	case DRM_FORMAT_YUYV:
+	case DRM_FORMAT_YVYU:
+	case DRM_FORMAT_UYVY:
+	case DRM_FORMAT_VYUY:
+	case DRM_FORMAT_AYUV:
+	case DRM_FORMAT_NV12:
+	case DRM_FORMAT_NV21:
+	case DRM_FORMAT_NV16:
+	case DRM_FORMAT_NV61:
+	case DRM_FORMAT_NV24:
+	case DRM_FORMAT_NV42:
+	case DRM_FORMAT_YUV410:
+	case DRM_FORMAT_YVU410:
+	case DRM_FORMAT_YUV411:
+	case DRM_FORMAT_YVU411:
+	case DRM_FORMAT_YUV420:
+	case DRM_FORMAT_YVU420:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static void filter_by_bounds(struct drm_device *dev,
 			     struct drm_mtk_layering_info *disp_info)
 {
 	unsigned int i, j;
 	struct drm_mtk_layer_config *c;
 
-	for (i = 0; i < disp_info->layer_num[HRT_PRIMARY]; i++) {
+	for (i = 0; (int)i < disp_info->layer_num[HRT_PRIMARY]; i++) {
 		if (mtk_is_gles_layer(disp_info, HRT_PRIMARY, i))
 			continue;
 
 		c = &disp_info->input_config[HRT_PRIMARY][i];
 
-		/* 1. Koordinat tujuan negatif atau melebihi kapasitas register 12-bit */
+		/*
+		 * 1. 12-bit register bounds (0..4095) and negative coordinate checks.
+		 * MT6781 OVL DISP_REG_OVL_OFFSET packs 12-bit coordinates [11:0] and [27:16].
+		 * Any offset < 0 or > 4095 cannot be handled by hardware OVL.
+		 * Validates all layers without bypassing layer 0, ensuring hardware register safety.
+		 * Wallpaper (i == 0) is naturally protected by its valid 0,0 coordinates.
+		 */
 		if ((int32_t)c->dst_offset_x < 0 || (int32_t)c->dst_offset_y < 0 ||
 		    c->dst_offset_x >= 0x80000000 || c->dst_offset_y >= 0x80000000 ||
 		    c->dst_offset_x > 4095 || c->dst_offset_y > 4095) {
@@ -336,19 +371,32 @@ static void filter_by_bounds(struct drm_device *dev,
 		}
 
 		/*
-		 * 2. Window pop-up dengan 4-sided elevation shadow inset
-		 * (seperti ResolverActivity / AlertDialog di mana src_offset_x > 0 DAN src_offset_y > 0 bersamaan).
-		 * Menggunakan && (AND) agar scrolling vertikal (src_x == 0) dan
-		 * geser wallpaper horizontal (src_y == 0) TETAP di hardware OVL 120Hz!
+		 * 2. Pop-up window / Dialog / ResolverActivity / BottomSheet inset shadow detection.
+		 *
+		 * Windows with 4-sided elevation shadows use src_offset_x > 0 AND src_offset_y > 0
+		 * simultaneously (the shadow inset crops the buffer from all four sides).
+		 * MT6781 OVL hardware cannot handle sub-pixel source cropping with arbitrary
+		 * surfaceInsets in the same pass as a full-screen destination mapping.
+		 * These layers must be composited by GLES.
+		 *
+		 * Exclusions to prevent unnecessary GLES rollback:
+		 * - YUV layers: handled by MDP, not OVL src-crop path.
+		 * - Dim layers (DISP_FORMAT_DIM): hardware constant-color layers, no framebuffer.
+		 * - StatusBar guard: full-width layer at dst_offset_y == 0 with height <= 200px
+		 *   uses src_offset_y for top inset only (src_offset_x is 0), so AND catches it.
+		 * - Wallpaper (i == 0) naturally has src_offset_x == 0, src_offset_y == 0.
 		 */
-		if (c->src_offset_x > 0 && c->src_offset_y > 0) {
+		if (c->src_offset_x > 0 && c->src_offset_y > 0 &&
+		    c->src_fmt != DISP_FORMAT_DIM &&
+		    !mtk_bounds_is_yuv_fmt(c->src_fmt)) {
+			/* Roll back 4-sided inset popups (1248x2628) to GLES GPU to prevent OVL DMA bandwidth choke */
 			mtk_rollback_layer_to_GPU(disp_info, HRT_PRIMARY, i);
 			continue;
 		}
 	}
 
 	for (i = HRT_SECONDARY; i < HRT_TYPE_NUM; i++) {
-		for (j = 0; j < disp_info->layer_num[i]; j++) {
+		for (j = 0; (int)j < disp_info->layer_num[i]; j++) {
 			if (mtk_is_gles_layer(disp_info, i, j))
 				continue;
 
@@ -356,13 +404,13 @@ static void filter_by_bounds(struct drm_device *dev,
 
 			if ((int32_t)c->dst_offset_x < 0 || (int32_t)c->dst_offset_y < 0 ||
 			    c->dst_offset_x >= 0x80000000 || c->dst_offset_y >= 0x80000000 ||
-			    c->dst_offset_x > 4095 || c->dst_offset_y > 4095 ||
-			    (c->src_offset_x > 0 && c->src_offset_y > 0)) {
+			    c->dst_offset_x > 4095 || c->dst_offset_y > 4095) {
 				mtk_rollback_layer_to_GPU(disp_info, i, j);
 			}
 		}
 	}
 }
+
 
 static bool filter_by_hw_limitation(struct drm_device *dev,
 				    struct drm_mtk_layering_info *disp_info)

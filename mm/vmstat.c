@@ -1314,10 +1314,9 @@ static void frag_show_print(struct seq_file *m, pg_data_t *pgdat,
 
 	seq_printf(m, "Node %d, zone %8s ", pgdat->node_id, zone->name);
 #if defined(OPLUS_FEATURE_MULTI_FREEAREA) && defined(CONFIG_PHYSICAL_ANTI_FRAGMENTATION)
-    for (flc = 0; flc < FREE_AREA_COUNTS; flc++) {
-	    for (order = 0; order < MAX_ORDER; ++order)
-		    seq_printf(m, "%6lu ", zone->free_area[flc][order].nr_free);
-    }
+    /* Fix random reboot: Output standard MAX_ORDER (11) columns for AOSP ProcessStats compatibility */
+    for (order = 0; order < MAX_ORDER; ++order)
+	    seq_printf(m, "%6lu ", zone->free_area[0][order].nr_free);
 #else
 	for (order = 0; order < MAX_ORDER; ++order)
 		seq_printf(m, "%6lu ", zone->free_area[order].nr_free);

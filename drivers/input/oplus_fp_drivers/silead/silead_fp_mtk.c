@@ -242,16 +242,19 @@ static int silfp_set_spi_cs_low(struct silfp_data *fp_dev)
 {
     int ret = 0;
 #ifdef BSP_SIL_CTRL_SPI
-    struct pinctrl_state *spi_cs = pinctrl_lookup_state(fp_dev->pin.pinctrl,"cs-low");
+    struct pinctrl_state *spi_cs = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_spi_default");
+    if (IS_ERR(spi_cs)) {
+        spi_cs = pinctrl_lookup_state(fp_dev->pin.pinctrl, "cs-low");
+    }
 
     if (IS_ERR(spi_cs)) {
         ret = PTR_ERR(spi_cs);
-        pr_info("%s can't find silfp cs-low\n", __func__);
-        return ret;
+        pr_info("%s can't find silfp cs-low or tran_fp_spi_default\n", __func__);
+        return 0; /* non-fatal on Transsion hardware */
     }
 
     pinctrl_select_state(fp_dev->pin.pinctrl, spi_cs);
-    LOG_MSG_DEBUG(ERR_LOG, "%s set spi cs low", __func__);
+    LOG_MSG_DEBUG(DBG_LOG, "%s set spi cs low\n", __func__);
 #endif /* BSP_SIL_CTRL_SPI */
     return ret;
 }
@@ -582,7 +585,10 @@ err_input:
 
 err_rst:
     free_irq(fp_dev->irq, fp_dev);
-    gpio_direction_input(fp_dev->int_port);
+    if (gpio_is_valid(fp_dev->irq_gpio))
+        gpio_direction_input(fp_dev->irq_gpio);
+    else if (fp_dev->int_port)
+        gpio_direction_input(fp_dev->int_port);
 
 err_irq:
     //gpio_free(fp_dev->int_port);

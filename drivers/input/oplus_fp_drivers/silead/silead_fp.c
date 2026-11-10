@@ -610,7 +610,9 @@ static int silfp_wait_irq(struct silfp_data *fp_dev)
 static int silfp_irq_status(struct silfp_data *fp_dev)
 {
     // this function is obsolete, for test purpose only.
-    if (fp_dev->int_port) {
+    if (gpio_is_valid(fp_dev->irq_gpio)) {
+        return gpio_get_value(fp_dev->irq_gpio);
+    } else if (fp_dev->int_port) {
         return gpio_get_value(fp_dev->int_port);
     }
     return -1;
@@ -940,7 +942,10 @@ static int silfp_resource_deinit(struct silfp_data *fp_dev)
             silfp_irq_disable(fp_dev);
             free_irq(fp_dev->irq, fp_dev);
 
-            gpio_direction_input(fp_dev->int_port);
+            if (gpio_is_valid(fp_dev->irq_gpio))
+                gpio_direction_input(fp_dev->irq_gpio);
+            else if (fp_dev->int_port)
+                gpio_direction_input(fp_dev->int_port);
 #if !defined(BSP_SIL_PLAT_MTK)
             gpio_free(fp_dev->int_port);
             if (fp_dev->rst_port > 0 ) {
@@ -1520,8 +1525,18 @@ static ssize_t tran_fp_vendor_name_show(struct kobject *kobj,
 static struct kobj_attribute tran_fp_vendor_name_attr =
 	__ATTR(vendor_name, 0444, tran_fp_vendor_name_show, NULL);
 
+static ssize_t tran_fp_chip_id_show(struct kobject *kobj,
+				    struct kobj_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "0x511e\n");
+}
+
+static struct kobj_attribute tran_fp_chip_id_attr =
+	__ATTR(chip_id, 0444, tran_fp_chip_id_show, NULL);
+
 static struct attribute *tran_fp_attrs[] = {
 	&tran_fp_vendor_name_attr.attr,
+	&tran_fp_chip_id_attr.attr,
 	NULL,
 };
 

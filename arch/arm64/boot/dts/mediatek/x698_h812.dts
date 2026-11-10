@@ -2369,6 +2369,7 @@
   fingerprint {
     compatible = "mediatek,goodix-fp";
     phandle = <0xce>;
+    status = "disabled";
   };
   accdet {
     compatible = "mediatek,pmic-accdet";
@@ -3173,7 +3174,7 @@
     clock-names = "parent-clk", "sel-clk", "spi-clk";
     phandle = <0xe8>;
     fingerprint@0 {
-      compatible = "tran_fp";
+      compatible = "silead,silead_fp", "tran_fp";
       reg = <0x0>;
       spi-max-frequency = <0x19bfcc0>;
       interrupt-parent = <0x22>;
@@ -5104,7 +5105,7 @@
       pinctrl-2 = <0x15f>;
       pinctrl-3 = <0x160>;
       pinctrl-4 = <0x161>;
-      status = "okay";
+      status = "disabled";
       phandle = <0x1b4>;
     };
     otg_iddig {

@@ -26,20 +26,19 @@ struct wake_lock {
 static inline void wake_lock_init(struct wake_lock *lock, int type,
 				  const char *name)
 {
-	if (lock) {
-		memset(&lock->ws, 0, sizeof(lock->ws));
-		lock->ws.name = name;
-	}
+	if (!lock)
+		return;
+	memset(&lock->ws, 0, sizeof(lock->ws));
+	lock->ws.name = name;
 	wakeup_source_add(&lock->ws);
 }
 
 static inline void wake_lock_destroy(struct wake_lock *lock)
 {
-	wakeup_source_remove(&lock->ws);
-	if (!lock) {
+	if (!lock)
 		return;
-	}
-    __pm_relax(&lock->ws);
+	wakeup_source_remove(&lock->ws);
+	__pm_relax(&lock->ws);
 }
 
 static inline void wake_lock(struct wake_lock *lock)

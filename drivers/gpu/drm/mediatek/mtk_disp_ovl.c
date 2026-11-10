@@ -1529,10 +1529,29 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	int dst_x = (int)pending->dst_x;
 	int dst_y = (int)pending->dst_y;
 
-	if (dst_x < 0)
+	/* Safe clipping for negative surfaceInsets (drop-shadows, bottom sheets, keyboard) */
+	if (dst_x < 0 || pending->dst_x >= 0x80000000) {
+		int clip_x = (dst_x < 0) ? -dst_x : (int)(0x100000000ULL - pending->dst_x);
+
+		pending->src_x += clip_x;
+		if (pending->width > clip_x)
+			pending->width -= clip_x;
+		else
+			pending->width = 0;
 		dst_x = 0;
-	if (dst_y < 0)
+		pending->dst_x = 0;
+	}
+	if (dst_y < 0 || pending->dst_y >= 0x80000000) {
+		int clip_y = (dst_y < 0) ? -dst_y : (int)(0x100000000ULL - pending->dst_y);
+
+		pending->src_y += clip_y;
+		if (pending->height > clip_y)
+			pending->height -= clip_y;
+		else
+			pending->height = 0;
 		dst_y = 0;
+		pending->dst_y = 0;
+	}
 
 	/* Hardware OVL offset safety clamp: prevent 12-bit unsigned register overflow */
 	if (dst_x > 4095) {
@@ -1546,21 +1565,6 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 
 	if (pending->width == 0 || pending->height == 0)
 		pending->enable = false;
-
-	if (state->comp_state.comp_id) {
-		lye_idx = state->comp_state.lye_id;
-		ext_lye_idx = state->comp_state.ext_lye_id;
-	} else
-		lye_idx = idx;
-
-	DDPINFO("%s+ idx:%d, enable:%d, fmt:0x%x\n", __func__, idx,
-		pending->enable, pending->format);
-	if (!pending->enable) {
-		/* Never allow a secondary plane to turn off layer 0 */
-		if (idx == 0 || lye_idx > 0)
-			mtk_ovl_layer_off(comp, lye_idx, ext_lye_idx, handle);
-		return;
-	}
 
 	/* handle dim layer for compression flag & color dim*/
 	if (fmt == DRM_FORMAT_C8) {
@@ -1589,6 +1593,16 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	if (drm_crtc_index(&comp->mtk_crtc->base) == 0)
 		rotate = 1;
 #endif
+
+	if (state->comp_state.comp_id) {
+		lye_idx = state->comp_state.lye_id;
+		ext_lye_idx = state->comp_state.ext_lye_id;
+	} else
+		lye_idx = idx;
+	DDPINFO("%s+ idx:%d, enable:%d, fmt:0x%x\n", __func__, idx,
+		pending->enable, pending->format);
+	if (!pending->enable)
+		mtk_ovl_layer_off(comp, lye_idx, ext_lye_idx, handle);
 
 	mtk_ovl_color_manage(comp, idx, state, handle);
 
@@ -1619,14 +1633,10 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 
 	if (rotate) {
 		unsigned int bg_w = 0, bg_h = 0;
-		unsigned int off_x, off_y;
 
 		_get_bg_roi(comp, &bg_h, &bg_w);
-		off_x = (bg_w > pending->width + (unsigned int)dst_x) ?
-			(bg_w - pending->width - (unsigned int)dst_x) : 0;
-		off_y = (bg_h > pending->height + (unsigned int)dst_y) ?
-			(bg_h - pending->height - (unsigned int)dst_y) : 0;
-		offset = ((off_y & 0x0FFF) << 16) | (off_x & 0x0FFF);
+		offset = ((bg_h - pending->height - dst_y) << 16) +
+			 (bg_w - pending->width - dst_x);
 		DDPINFO("bg(%d,%d) (%d,%d,%dx%d)\n", bg_w, bg_h, dst_x,
 			dst_y, pending->width, pending->height);
 		con |= (CON_HORI_FLIP + CON_VERTICAL_FLIP);
@@ -1784,9 +1794,8 @@ static bool compr_l_config_PVRIC_V3_1(struct mtk_ddp_comp *comp,
 	unsigned int domain_val = 0, domain_mask = 0;
 #endif
 
-	/* Auto-detect AFBC compression from framebuffer modifier when buffer address is bound */
-	if (!compress && (pending->addr || state->pending.is_sec) &&
-	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != 0 &&
+	/* Auto-detect AFBC compression from framebuffer modifier (ignoring uncompressed MTK_FMT_PREMULTIPLIED flag) */
+	if (!compress && (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != 0 &&
 	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != DRM_FORMAT_MOD_LINEAR)
 		compress = 1;
 
@@ -2155,9 +2164,8 @@ static bool compr_l_config_AFBC_V1_2(struct mtk_ddp_comp *comp,
 		fmt, Bpp,
 		compress);
 
-	/* Auto-detect AFBC compression from framebuffer modifier when buffer address is bound */
-	if (!compress && (pending->addr || state->pending.is_sec) &&
-	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != 0 &&
+	/* Auto-detect AFBC compression from framebuffer modifier (ignoring uncompressed MTK_FMT_PREMULTIPLIED flag) */
+	if (!compress && (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != 0 &&
 	    (pending->modifier & ~((u64)MTK_FMT_PREMULTIPLIED)) != DRM_FORMAT_MOD_LINEAR)
 		compress = 1;
 

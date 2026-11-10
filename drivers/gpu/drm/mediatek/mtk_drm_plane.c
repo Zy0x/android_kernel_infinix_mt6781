@@ -17,7 +17,6 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_plane_helper.h>
 #include <linux/mailbox_controller.h>
-#include <linux/math64.h>
 
 #include "mtk_drm_crtc.h"
 #include "mtk_drm_ddp_comp.h"
@@ -528,50 +527,11 @@ static void mtk_plane_atomic_disable(struct drm_plane *plane,
 	state->pending.config = true;
 	state->pending.dirty = true;
 
-	/* Wariskan pemetaan hardware OVL lama agar layer hardware yang tepat dimatikan,
-	 * kecuali jika slot OVL tersebut sudah diambil alih oleh plane aktif lain di frame ini.
-	 */
+	/* Wariskan pemetaan hardware OVL lama agar layer hardware yang tepat dimatikan */
 	if (old_state) {
 		struct mtk_plane_state *old_mtk_state = to_mtk_plane_state(old_state);
-		bool slot_reused = false;
 
-		if (crtc && old_mtk_state->comp_state.comp_id != 0) {
-			struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
-			unsigned int j;
-
-			if (mtk_crtc->planes) {
-				for (j = 0; j < mtk_crtc->layer_nr; j++) {
-					struct drm_plane *other = &mtk_crtc->planes[j].base;
-					struct mtk_plane_state *other_state;
-
-					if (other == plane || !other->state)
-						continue;
-					other_state = to_mtk_plane_state(other->state);
-					if (other_state->base.crtc == crtc &&
-					    other_state->base.visible &&
-					    other_state->comp_state.comp_id ==
-						    old_mtk_state->comp_state.comp_id &&
-					    other_state->comp_state.lye_id ==
-						    old_mtk_state->comp_state.lye_id &&
-					    other_state->comp_state.ext_lye_id ==
-						    old_mtk_state->comp_state.ext_lye_id) {
-						slot_reused = true;
-						break;
-					}
-				}
-			}
-		}
-
-		/* A secondary plane (index > 0) must never inherit lye_id == 0 from an old state,
-		 * as layer 0 belongs exclusively to the primary base plane (wallpaper/app).
-		 */
-		if (to_crtc_plane_index(plane->index) > 0 && old_mtk_state->comp_state.lye_id == 0)
-			slot_reused = true;
-
-		if (slot_reused)
-			memset(&state->comp_state, 0, sizeof(state->comp_state));
-		else
-			state->comp_state = old_mtk_state->comp_state;
+		state->comp_state = old_mtk_state->comp_state;
 	}
 
 	wmb(); /* Make sure the above parameters are set before update */

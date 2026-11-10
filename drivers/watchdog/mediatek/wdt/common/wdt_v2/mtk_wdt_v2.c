@@ -738,14 +738,10 @@ void wdt_arch_reset(char mode)
 
 #ifdef CONFIG_MTK_PMIC_NEW_ARCH
 	if (rst_mode == WDT_RST_MODE_PMIC &&
-			(mode & WD_SW_RESET_BYPASS_PWR_KEY)) {
-		pr_info("%s: triggering PMIC Cold Reset (CRST)...\n", __func__);
+			mode == WD_SW_RESET_BYPASS_PWR_KEY) {
 		pmic_config_interface_nolock(PMIC_RG_CRST_ADDR, 1,
 						 PMIC_RG_CRST_MASK,
 						 PMIC_RG_CRST_SHIFT);
-		mdelay(10);
-		/* Trigger RGU SWRST as hardware backup without disabling pwrap */
-		mt_reg_sync_writel(MTK_WDT_SWRST_KEY, MTK_WDT_SWRST);
 	} else
 #endif
 	{

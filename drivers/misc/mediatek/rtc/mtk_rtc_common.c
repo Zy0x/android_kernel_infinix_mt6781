@@ -637,10 +637,6 @@ void rtc_bbpu_power_down(void)
 
 void mt_power_off(void)
 {
-	if (ktime_get_seconds() < 300) {
-		pr_emerg("[BOOT_GUARD] mt_power_off blocked during early boot (uptime=%llds)!\n", (long long)ktime_get_seconds());
-		return;
-	}
 	int count = 0;
 #if !defined(CONFIG_POWER_EXT)
 #ifdef CONFIG_MTK_CHARGER

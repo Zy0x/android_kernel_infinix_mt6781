@@ -382,6 +382,8 @@ static void chrlmt_set_limit_handler(struct work_struct *work)
 				chrlmt_bat_chr_curr_limit = -1;
 			if (chrlmt_chr_input_curr_limit > 0 && chrlmt_chr_input_curr_limit < 3000)
 				chrlmt_chr_input_curr_limit = -1;
+			charger_manager_enable_high_voltage_charging(
+						pthermal_consumer, true);
 		}
 		charger_manager_set_charging_current_limit(pthermal_consumer, 0,
 				((chrlmt_bat_chr_curr_limit != -1) ?

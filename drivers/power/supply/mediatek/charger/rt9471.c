@@ -2995,12 +2995,6 @@ static int mtk_ext_chgdet(struct charger_device *chg_dev)
 	}
 
 	switch (port_stat) {
-	case RT9471_PORTSTAT_APPLE_10W:
-		chg_type = APPLE_2_1A_CHARGER;
-		break;
-	case RT9471_PORTSTAT_APPLE_5W:
-		chg_type = APPLE_1_0A_CHARGER;
-		break;
 	case RT9471_PORTSTAT_SAMSUNG_10W:
 	case RT9471_PORTSTAT_APPLE_12W:
 	case RT9471_PORTSTAT_DCP:
@@ -3010,7 +3004,14 @@ static int mtk_ext_chgdet(struct charger_device *chg_dev)
 		chg_type = STANDARD_HOST;
 		break;
 	case RT9471_PORTSTAT_CDP:
-		chg_type = CHARGING_HOST;
+	case RT9471_PORTSTAT_APPLE_10W:
+	case RT9471_PORTSTAT_APPLE_5W:
+		if (rt9471_is_vbus_gd(chip)) {
+			dev_info(chip->dev, "%s CDP/Apple with good vbus, treated as STANDARD_CHARGER\n", __func__);
+			chg_type = STANDARD_CHARGER;
+		} else {
+			chg_type = CHARGING_HOST;
+		}
 		break;
 	case RT9471_PORTSTAT_NSDP:
 	default:

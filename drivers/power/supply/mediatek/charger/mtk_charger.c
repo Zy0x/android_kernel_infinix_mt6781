@@ -420,6 +420,8 @@ int charger_manager_enable_high_voltage_charging(
 		if (list_is_last(pos, phead))
 			info->enable_hv_charging = true;
 	}
+	if (g_lynx_hyper_charge)
+		info->enable_hv_charging = true;
 	mutex_unlock(&consumer_mutex);
 
 	pr_info("%s: user: %s, en = %d\n", __func__, dev_name(consumer->dev),
@@ -2218,6 +2220,8 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 		chr_err("use default V_CHARGER_MAX:%d\n", V_CHARGER_MAX);
 		info->data.max_charger_voltage = V_CHARGER_MAX;
 	}
+	if (info->data.max_charger_voltage < 10500000)
+		info->data.max_charger_voltage = 10500000;
 	info->data.max_charger_voltage_setting = info->data.max_charger_voltage;
 
 	if (of_property_read_u32(np, "min_charger_voltage", &val) >= 0)
@@ -2369,6 +2373,16 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 		info->data.usb_unlimited_current =
 					USB_UNLIMITED_CURRENT;
 	}
+
+	/* Lynx Universal: Uncap ALL charger current limits to 3000mA (15W-27W) */
+	info->data.ac_charger_input_current = 3000000;
+	info->data.ac_charger_current = 3000000;
+	info->data.charging_host_charger_current = 3000000;
+	info->data.non_std_ac_charger_current = 3000000;
+	info->data.apple_1_0a_charger_current = 3000000;
+	info->data.apple_2_1a_charger_current = 3000000;
+	info->data.ta_ac_charger_current = 3000000;
+	info->data.usb_unlimited_current = 3000000;
 
 	/* sw jeita */
 	if (of_property_read_u32(np, "jeita_temp_above_t4_cv", &val) >= 0)

@@ -314,6 +314,18 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 				info->data.charging_host_charger_current;
 		pdata->charging_current_limit =
 				info->data.charging_host_charger_current;
+		mtk_pe20_set_charging_current(info,
+					&pdata->charging_current_limit,
+					&pdata->input_current_limit);
+		mtk_pe_set_charging_current(info,
+					&pdata->charging_current_limit,
+					&pdata->input_current_limit);
+		mtk_hvdcp20_set_charging_current(info,
+					&pdata->charging_current_limit,
+					&pdata->input_current_limit);
+		mtk_tc30_set_charging_current(info,
+					&pdata->charging_current_limit,
+					&pdata->input_current_limit);
 	} else if (info->chr_type == APPLE_1_0A_CHARGER) {
 		pdata->input_current_limit =
 				info->data.apple_1_0a_charger_current;

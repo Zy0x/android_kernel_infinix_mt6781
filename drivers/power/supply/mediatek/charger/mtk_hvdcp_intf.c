@@ -319,7 +319,9 @@ int mtk_hvdcp20_check_charger(struct charger_manager *pinfo)
 
 	if (hvdcp20->to_check_chr_type) {
 		soc = battery_get_soc();
-		if (mt_get_charger_type() == STANDARD_CHARGER &&
+		if ((mt_get_charger_type() == STANDARD_CHARGER ||
+		     mt_get_charger_type() == CHARGING_HOST ||
+		     mt_get_charger_type() == NONSTANDARD_CHARGER) &&
 		    soc >= pinfo->data.ta_start_battery_soc &&
 		    soc < pinfo->data.ta_stop_battery_soc) {
 			hvdcp20->is_cable_out_occur = false;

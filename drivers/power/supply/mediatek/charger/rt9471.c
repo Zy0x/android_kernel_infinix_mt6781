@@ -2942,7 +2942,7 @@ static int rt9471_ext_enable_bc12(struct rt9471_chip *chip, bool en)
 static int mtk_ext_chgdet(struct charger_device *chg_dev)
 {
 	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
-	int ret = 0, cnt = 100;
+	int ret = 0, cnt = 35;
 	u8 regval = 0, port_stat = 0, devid = 0;
 	int chg_type = CHARGER_UNKNOWN;
 
@@ -2984,8 +2984,13 @@ static int mtk_ext_chgdet(struct charger_device *chg_dev)
 	}
 
 	if (cnt == 0) {
-		dev_info(chip->dev, "%s bc12 failed\n", __func__);
-		chg_type = CHARGER_UNKNOWN;
+		dev_info(chip->dev, "%s bc12 failed, checking vbus_gd\n", __func__);
+		if (rt9471_is_vbus_gd(chip)) {
+			dev_info(chip->dev, "%s vbus is good, recognized as STANDARD_CHARGER for Type-C/USB-PD\n", __func__);
+			chg_type = STANDARD_CHARGER;
+		} else {
+			chg_type = CHARGER_UNKNOWN;
+		}
 		goto out_rel;
 	}
 
@@ -3009,7 +3014,12 @@ static int mtk_ext_chgdet(struct charger_device *chg_dev)
 		break;
 	case RT9471_PORTSTAT_NSDP:
 	default:
-		chg_type = NONSTANDARD_CHARGER;
+		if (rt9471_is_vbus_gd(chip)) {
+			dev_info(chip->dev, "%s NSDP with good vbus, treated as STANDARD_CHARGER\n", __func__);
+			chg_type = STANDARD_CHARGER;
+		} else {
+			chg_type = NONSTANDARD_CHARGER;
+		}
 		break;
 	}
 

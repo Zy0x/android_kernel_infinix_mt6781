@@ -160,6 +160,10 @@ static void _set_vbus(int is_on)
 
 	DBG(0, "op<%d>, status<%d>\n", is_on, vbus_on);
 	if (is_on && !vbus_on) {
+		if (battery_get_vbus() > 4000) {
+			DBG(0, "usb20_host: external VBUS present (%dmV), blocking OTG VBUS boost\n", battery_get_vbus());
+			return;
+		}
 #ifdef CONFIG_TRAN_CHARGER_FUNCS_ADD
 		if (tran_usb_5per_close_otg() || tran_sw_close_otg()) {
 			DBG(0, "tran: OTG blocked (battery <= 5%% or sw close)\n");

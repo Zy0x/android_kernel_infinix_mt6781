@@ -165,7 +165,7 @@ int hw_charging_get_charger_type(void)
  ******************************************************************************/
 void mtk_pmic_enable_chr_type_det(bool en)
 {
-	if (!mt_usb_is_device()) {
+	if (!mt_usb_is_device() && !pmic_get_register_value(PMIC_RGS_CHRDET)) {
 		g_chr_type = CHARGER_UNKNOWN;
 		pr_info("charger type: UNKNOWN, Now is usb host mode. Skip detection\n");
 		return;
@@ -207,7 +207,7 @@ static void chrdet_handle_unplug_hw(void)
 
 void do_charger_detect(void)
 {
-	if (!mt_usb_is_device()) {
+	if (!mt_usb_is_device() && !pmic_get_register_value(PMIC_RGS_CHRDET)) {
 		g_chr_type = CHARGER_UNKNOWN;
 		pr_debug("charger type: UNKNOWN, Now is usb host mode. Skip detection!!!\n");
 		return;

@@ -2307,6 +2307,14 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 		info->data.ac_charger_input_current = AC_CHARGER_INPUT_CURRENT;
 	}
 
+	/* Lynx Universal: Uncap AC/PD charging current to 3000mA (15W-27W) */
+	if (info->data.ac_charger_input_current < 3000000)
+		info->data.ac_charger_input_current = 3000000;
+	if (info->data.ac_charger_current < 3000000)
+		info->data.ac_charger_current = 3000000;
+	if (info->data.non_std_ac_charger_current < 2000000)
+		info->data.non_std_ac_charger_current = 2000000;
+
 	if (of_property_read_u32(np, "non_std_ac_charger_current", &val) >= 0)
 		info->data.non_std_ac_charger_current = val;
 	else {

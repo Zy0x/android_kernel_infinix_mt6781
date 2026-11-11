@@ -23,6 +23,7 @@
 #include <linux/wait.h>
 #include <mt-plat/prop_chgalgo_class.h>
 #include <mt-plat/mtk_battery.h>
+#include "tran_chg_fun.h"
 
 #define PCA_DV2_ALGO_VERSION	"2.0.2_G"
 #define MS_TO_NS(msec)		((msec) * 1000 * 1000)
@@ -144,10 +145,13 @@ struct dv2_algo_desc {
 	int tdvchg_curlmt[DV2_THERMAL_MAX];	/* DVCHG temp current limit */
 	int tswchg_level_def[DV2_THERMAL_MAX];	/* SWCHG temp level */
 	int tswchg_curlmt[DV2_THERMAL_MAX];	/* SWCHG temp current limit */
+	int tusb_level_def[DV2_THERMAL_MAX];	/* USB temp level */
+	int tusb_curlmt[DV2_THERMAL_MAX];	/* USB temp current limit */
 	u32 tta_recovery_area;
 	u32 tbat_recovery_area;
 	u32 tdvchg_recovery_area;
 	u32 tswchg_recovery_area;
+	u32 tusb_recovery_area;
 	u32 ifod_threshold;		/* FOD current threshold */
 	u32 rsw_min;			/* min rsw */
 	u32 ircmp_rbat;			/* IR compensation's rbat */
@@ -155,6 +159,13 @@ struct dv2_algo_desc {
 	u32 vta_cap_min;		/* min ta voltage capability */
 	u32 vta_cap_max;		/* max ta voltage capability */
 	u32 ita_cap_min;		/* min ta current capability */
+	u32 idvchg_pps_term;		/* terminated current for PPS TA */
+	u32 dv2_ffc_vbat_low;
+	u32 dv2_ffc_vbat_mid;
+	u32 dv2_ffc_vbat_high;
+	u32 dv2_ffc_ibat_low;
+	u32 dv2_ffc_ibat_mid;
+	u32 dv2_ffc_ibat_high;
 	const char **support_ta;	/* supported ta name */
 	u32 support_ta_cnt;		/* supported ta count */
 	bool allow_not_check_ta_status;	/* allow not to check ta status */
@@ -230,6 +241,7 @@ struct dv2_algo_data {
 	enum dv2_thermal_level tta_level;
 	enum dv2_thermal_level tdvchg_level;
 	enum dv2_thermal_level tswchg_level;
+	enum dv2_thermal_level tusb_level;
 	int thermal_throttling;
 	int jeita_vbat_cv;
 };
@@ -291,7 +303,10 @@ static struct dv2_algo_desc algo_desc_defval = {
 	.tdvchg_recovery_area = 3,
 	.tswchg_level_def = {0, 0, 0, 5, 25, 55, 60, 65, 70},
 	.tswchg_curlmt = {-1, -1, -1, 200, 0, 200, 300, 400, -1},
+	.tusb_level_def = {0, 0, 0, 0, 25, 65, 70, 80, 90},
+	.tusb_curlmt = {0, 0, 0, 0, 0, 250, 750, 1250, -1},
 	.tswchg_recovery_area = 3,
+	.tusb_recovery_area = 3,
 	.ifod_threshold = 200,
 	.rsw_min = 20,
 	.ircmp_rbat = 40,
@@ -299,6 +314,13 @@ static struct dv2_algo_desc algo_desc_defval = {
 	.vta_cap_min = 6800,
 	.vta_cap_max = 11000,
 	.ita_cap_min = 1000,
+	.idvchg_pps_term = 1200,
+	.dv2_ffc_vbat_low = 4200,
+	.dv2_ffc_vbat_mid = 4400,
+	.dv2_ffc_vbat_high = 4450,
+	.dv2_ffc_ibat_low = 3250,
+	.dv2_ffc_ibat_mid = 2650,
+	.dv2_ffc_ibat_high = 1750,
 	.allow_not_check_ta_status = true,
 };
 
@@ -915,6 +937,10 @@ static inline int __dv2_get_ita_lmt(struct dv2_algo_info *info)
 		ita = min(ita, data->ita_lmt - desc->tbat_curlmt[data->tbat_level]);
 		ita = min(ita, data->ita_lmt - desc->tdvchg_curlmt[data->tdvchg_level]);
 	}
+	if (tran_game_mode == 2 && ita > 1200)
+		ita = 1200;
+	if (lcd_bl_level > 0 && ita > 2000)
+		ita = 2000;
 	PCA_INFO("ita(org,tta,tbat,tdvchg,prlmt,throt)=%d(%d,%d,%d,%d,%d,%d)\n",
 		 ita, data->ita_lmt, desc->tta_curlmt[data->tta_level],
 		 desc->tbat_curlmt[data->tbat_level],
@@ -1392,6 +1418,7 @@ static inline void __dv2_init_algo_data(struct dv2_algo_info *info)
 	data->tta_level = DV2_THERMAL_NORMAL;
 	data->tdvchg_level = DV2_THERMAL_NORMAL;
 	data->tswchg_level = DV2_THERMAL_NORMAL;
+	data->tusb_level = DV2_THERMAL_NORMAL;
 	data->run_once = true;
 	data->state = DV2_ALGO_INIT;
 	mutex_lock(&data->notify_lock);
@@ -1540,6 +1567,10 @@ start:
 	mutex_unlock(&data->ext_lock);
 	data->tried_dual_dvchg = false;
 	__dv2_init_algo_data(info);
+	if (data->pca_ta && data->pca_ta->desc &&
+	    data->pca_ta->desc->name &&
+	    strcmp(data->pca_ta->desc->name, "pca_ta_pps") == 0)
+		data->idvchg_term = desc->idvchg_pps_term;
 	alarm_start_relative(&data->timer, ktime);
 	return 0;
 }
@@ -1747,6 +1778,22 @@ static int __dv2_algo_init_with_ta_cv(struct dv2_algo_info *info)
 		if (!err)
 			break;
 		vta = data->vta_setting + auth_data->vta_step;
+		ret = __dv2_set_ta_cap_cv(info, vta, data->idvchg_ss_init);
+		if (ret < 0) {
+			PCA_ERR("set ta cap fail(%d)\n", ret);
+			goto err;
+		}
+	}
+	while (true) {
+		ret = prop_chgalgo_is_vbushigerr(
+			data->pca_dvchg[DV2_DVCHG_MASTER], &err);
+		if (ret < 0) {
+			PCA_ERR("get vbushigerr fail(%d)\n", ret);
+			goto err;
+		}
+		if (!err)
+			break;
+		vta = data->vta_setting - auth_data->vta_step;
 		ret = __dv2_set_ta_cap_cv(info, vta, data->idvchg_ss_init);
 		if (ret < 0) {
 			PCA_ERR("set ta cap fail(%d)\n", ret);
@@ -3300,6 +3347,31 @@ static bool __dv2_check_tswchg_level(struct dv2_algo_info *info,
 	return true;
 }
 
+static bool __dv2_check_tusb_level(struct dv2_algo_info *info,
+				   struct dv2_stop_info *sinfo)
+{
+	int ret, tusb;
+	struct dv2_algo_data *data = info->data;
+	struct dv2_algo_desc *desc = info->desc;
+	struct dv2_thermal_data tdata = {
+		.name = "tusb",
+		.temp_level_def = desc->tusb_level_def,
+		.curlmt = desc->tusb_curlmt,
+		.temp_level = &data->tusb_level,
+		.recovery_area = desc->tusb_recovery_area,
+	};
+
+	ret = prop_chgalgo_get_adc(data->pca_dvchg[DV2_DVCHG_MASTER],
+				   PCA_ADCCHAN_TUSB, &tusb, &tusb);
+	if (ret < 0) {
+		PCA_ERR("get tusb fail(%d)\n", ret);
+		tusb = 25;
+	}
+	PCA_INFO("tusb = %d\n", tusb);
+	tdata.temp = tusb;
+	return __dv2_check_thermal_level(info, &tdata);
+}
+
 static bool
 (*__dv2_safety_check_fn[])(struct dv2_algo_info *info,
 			   struct dv2_stop_info *sinfo) = {
@@ -3313,6 +3385,7 @@ static bool
 	__dv2_check_tta_level,
 	__dv2_check_tdvchg_level,
 	__dv2_check_tswchg_level,
+	__dv2_check_tusb_level,
 };
 
 static bool __dv2_algo_safety_check(struct dv2_algo_info *info)
@@ -3358,6 +3431,9 @@ static bool __dv2_is_ta_rdy(struct dv2_algo_info *info)
 		if (ret < 0) {
 			PCA_DBG("%s authenticate fail(%d)\n",
 				desc->support_ta[i], ret);
+			if (ret == -ENETUNREACH)
+				prop_chgalgo_set_dev_notify(data->pca_swchg,
+							    14);
 			continue;
 		}
 
@@ -3837,7 +3913,7 @@ static bool dv2_is_algo_ready(struct prop_chgalgo_device *pca)
 		rdy = false;
 		goto out;
 	}
-	if (soc < desc->start_soc_min || soc > desc->start_soc_max) {
+	if (monkey_flag != 6 && (soc < desc->start_soc_min || soc > desc->start_soc_max)) {
 		PCA_INFO("soc(%d) not in range(%d~%d)\n", soc,
 			 desc->start_soc_min, desc->start_soc_max);
 		rdy = false;
@@ -4106,6 +4182,7 @@ static const struct dv2_dtprop dv2_dtprops_u32[] = {
 	DV2_DT_VALPROP(tbat_recovery_area),
 	DV2_DT_VALPROP(tdvchg_recovery_area),
 	DV2_DT_VALPROP(tswchg_recovery_area),
+	DV2_DT_VALPROP(tusb_recovery_area),
 	DV2_DT_VALPROP(ifod_threshold),
 	DV2_DT_VALPROP(rsw_min),
 	DV2_DT_VALPROP(ircmp_rbat),
@@ -4113,6 +4190,13 @@ static const struct dv2_dtprop dv2_dtprops_u32[] = {
 	DV2_DT_VALPROP(vta_cap_min),
 	DV2_DT_VALPROP(vta_cap_max),
 	DV2_DT_VALPROP(ita_cap_min),
+	DV2_DT_VALPROP(idvchg_pps_term),
+	DV2_DT_VALPROP(dv2_ffc_vbat_low),
+	DV2_DT_VALPROP(dv2_ffc_vbat_mid),
+	DV2_DT_VALPROP(dv2_ffc_vbat_high),
+	DV2_DT_VALPROP(dv2_ffc_ibat_low),
+	DV2_DT_VALPROP(dv2_ffc_ibat_mid),
+	DV2_DT_VALPROP(dv2_ffc_ibat_high),
 };
 
 static const struct dv2_dtprop dv2_dtprops_u32_array[] = {
@@ -4131,6 +4215,8 @@ static const struct dv2_dtprop dv2_dtprops_s32_array[] = {
 	DV2_DT_VALPROP_ARR(tdvchg_curlmt, DV2_THERMAL_MAX),
 	DV2_DT_VALPROP_ARR(tswchg_level_def, DV2_THERMAL_MAX),
 	DV2_DT_VALPROP_ARR(tswchg_curlmt, DV2_THERMAL_MAX),
+	DV2_DT_VALPROP_ARR(tusb_level_def, DV2_THERMAL_MAX),
+	DV2_DT_VALPROP_ARR(tusb_curlmt, DV2_THERMAL_MAX),
 };
 
 static const char * const __dv2_dev_node_name[] = {

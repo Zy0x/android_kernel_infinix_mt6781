@@ -39,9 +39,8 @@ struct charger_data;
 #include "mtk_pe40_intf.h"
 #include "mtk_pe50_intf.h"
 #include "mtk_pdc_intf.h"
-#ifdef OPLUS_FEATURE_CHG_BASIC
 #include "mtk_hvdcp_intf.h"
-#endif /*OPLUS_FEATURE_CHG_BASIC*/
+#include "mtk_tc30_intf.h"
 #include "adapter_class.h"
 #include "mtk_smartcharging.h"
 
@@ -224,6 +223,8 @@ struct charger_custom_data {
 
 	/* pe2.0 */
 	int pe20_ichg_level_threshold;	/* ma */
+	int hvdcp20_ichg_level_threshold;	/* uA */
+	int tc30_ichg_level_threshold;		/* uA */
 	int ta_start_battery_soc;
 	int ta_stop_battery_soc;
 
@@ -288,6 +289,23 @@ struct charger_custom_data {
 	int step3_current_ma;
 	int pd_not_support;
 	int qc_not_support;
+	/* transsion charger customizations */
+	u32 multi_battery_cv[4];
+	bool enable_ir_comp;
+	u32 r_bat_comp;
+	u32 v_comp_max;
+	u32 dv2_chg_cv;
+	u32 dv2_chg_eoc;
+	bool enable_hvdcp20;
+	bool enable_tc30;
+	bool enable_18w_flash;
+	u32 comp_ir;
+	u32 comp_iv;
+	u32 termination_current;
+	int jeita_temp_pos0_to_pos1_current;
+	int jeita_temp_pos1_to_pos2_current;
+	int jeita_temp_pos2_to_pos3_current;
+	int jeita_temp_pos3_to_pos4_current;
 /*end*/
     bool vbus_exist;
 };
@@ -450,6 +468,14 @@ struct charger_manager {
 	bool enable_pe_2;
 	struct mtk_pe20 pe2;
 
+	/* hvdcp 2.0 */
+	bool enable_hvdcp20;
+	struct mtk_hvdcp20 hvdcp20;
+
+	/* tc 3.0 */
+	bool enable_tc30;
+	struct mtk_tc30 tc30;
+
 	/* pe 4.0 */
 	bool enable_pe_4;
 	bool leave_pe4;
@@ -524,6 +550,7 @@ struct charger_manager {
 	bool force_disable_pp[TOTAL_CHARGER];
 	bool enable_pp[TOTAL_CHARGER];
 	struct mutex pp_lock[TOTAL_CHARGER];
+	bool rfc_dcp_ta;
 };
 
 /* charger related module interface */
@@ -533,9 +560,14 @@ extern int mtk_switch_charging_init2(struct charger_manager *info);
 extern int mtk_dual_switch_charging_init(struct charger_manager *info);
 extern int mtk_linear_charging_init(struct charger_manager *info);
 extern void _wake_up_charger(struct charger_manager *info);
+extern struct charger_manager *tran_get_pinfo(void);
 extern int mtk_get_dynamic_cv(struct charger_manager *info, unsigned int *cv);
 extern bool is_dual_charger_supported(struct charger_manager *info);
-extern int charger_enable_vbus_ovp(struct charger_manager *pinfo, bool enable);
+extern int dcp_get_ta_status(void);
+extern void dcp_reset_rfc(void);
+extern int charger_enable_vbus_ovp(struct charger_manager *pinfo, bool enable,
+				   int who);
+extern int mtk_chgstat_notify(struct charger_manager *info);
 extern bool is_typec_adapter(struct charger_manager *info);
 
 /* pmic API */
@@ -547,6 +579,7 @@ extern int pmic_get_bif_battery_voltage(int *vbat);
 extern int pmic_is_bif_exist(void);
 extern int pmic_enable_hw_vbus_ovp(bool enable);
 extern bool pmic_is_battery_exist(void);
+extern bool mtk_is_pep_series_connect(struct charger_manager *info);
 
 
 extern void notify_adapter_event(enum adapter_type type, enum adapter_event evt,

@@ -234,7 +234,7 @@ int set_charger_manager(struct charger_manager *info)
 
 int enable_vbus_ovp(bool en)
 {
-	charger_enable_vbus_ovp(pinfo, en);
+	charger_enable_vbus_ovp(pinfo, en, 4);
 
 	return 0;
 }

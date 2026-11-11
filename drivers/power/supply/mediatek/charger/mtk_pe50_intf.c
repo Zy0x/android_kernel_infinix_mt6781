@@ -87,10 +87,10 @@ int mtk_pe50_start(struct charger_manager *chgmgr)
 	int ret;
 	struct mtk_pe50 *pe50 = &chgmgr->pe5;
 
-	charger_enable_vbus_ovp(chgmgr, false);
+	charger_enable_vbus_ovp(chgmgr, false, 6);
 	ret = prop_chgalgo_start_algo(pe50->pca_algo);
 	if (ret < 0)
-		charger_enable_vbus_ovp(chgmgr, true);
+		charger_enable_vbus_ovp(chgmgr, true, 6);
 	return ret;
 }
 
@@ -100,8 +100,8 @@ bool mtk_pe50_is_running(struct charger_manager *chgmgr)
 	struct mtk_pe50 *pe50 = &chgmgr->pe5;
 
 	running = prop_chgalgo_is_algo_running(pe50->pca_algo);
-	if (!running)
-		charger_enable_vbus_ovp(chgmgr, true);
+	if (!running && !dcp_get_ta_status())
+		charger_enable_vbus_ovp(chgmgr, true, 6);
 	return running;
 }
 
@@ -114,7 +114,7 @@ int mtk_pe50_plugout_reset(struct charger_manager *chgmgr)
 	ret = prop_chgalgo_plugout_reset(pe50->pca_algo);
 	pe50->online = false;
 	swchgalg->state = CHR_CC;
-	charger_enable_vbus_ovp(chgmgr, true);
+	charger_enable_vbus_ovp(chgmgr, true, 6);
 	return ret;
 }
 

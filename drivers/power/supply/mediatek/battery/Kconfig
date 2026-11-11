@@ -35,3 +35,9 @@ config MTK_ADDITIONAL_BATTERY_TABLE
 	  Table number is five.
 	  Set No to disable the fifth battery table
 	  Table number is four.
+
+config MTK_GET_BATTERY_ID_BY_AUXADC
+	bool "MediaTek Get Battery ID by AUXADC"
+	default n
+	help
+	  Say Y to detect battery profile ID via PMIC/AP AUXADC channel.

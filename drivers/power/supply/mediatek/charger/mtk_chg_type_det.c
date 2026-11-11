@@ -29,6 +29,7 @@
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
+#include <linux/alarmtimer.h>
 #include <linux/proc_fs.h>
 #include <linux/syscalls.h>
 #include <linux/sched.h>
@@ -136,6 +137,7 @@ struct chg_type_info {
 	struct work_struct chg_in_work;
 	bool ignore_usb;
 	bool plugin;
+	struct alarm tran_chg_alarm;
 #ifdef OPLUS_FEATURE_CHG_BASIC
 	bool bypass_chgdet;
 	unsigned int chgdet_mdelay;
@@ -211,7 +213,6 @@ struct mt_charger {
 static int mt_charger_online(struct mt_charger *mtk_chg)
 {
 	int ret = 0;
-#if defined(OPLUS_FEATURE_CHG_BASIC) && !defined(CONFIG_OPLUS_CHARGER_MT6370_TYPEC)
 	int boot_mode = 0;
 
 	if (!mtk_chg->chg_online) {
@@ -225,7 +226,6 @@ static int mt_charger_online(struct mt_charger *mtk_chg)
 				kernel_power_off();
 		}
 	}
-#endif /* OPLUS_FEATURE_CHG_BASIC && !CONFIG_OPLUS_CHARGER_MT6370_TYPEC */
 
 	return ret;
 }
@@ -387,6 +387,21 @@ static int mt_charger_set_property(struct power_supply *psy,
 	power_supply_changed(mtk_chg->ac_psy);
 	power_supply_changed(mtk_chg->usb_psy);
 #endif /* OPLUS_FEATURE_CHG_BASIC */
+	if (psp == POWER_SUPPLY_PROP_CHARGE_TYPE) {
+		static int retry_cnt;
+
+		if (mtk_chg->chg_type == NONSTANDARD_CHARGER &&
+		    retry_cnt <= 9) {
+			cti->chgdet_en = true;
+			alarm_start_relative(&cti->tran_chg_alarm,
+				ns_to_ktime(5000000000ULL));
+			retry_cnt++;
+		} else if (mtk_chg->chg_type == CHARGER_UNKNOWN) {
+			alarm_cancel(&cti->tran_chg_alarm);
+			cti->chgdet_en = false;
+			retry_cnt = 0;
+		}
+	}
 	return 0;
 }
 
@@ -824,6 +839,18 @@ pm_relax:
 	return 0;
 }
 
+static enum alarmtimer_restart tran_chg_alarm_timer_func(struct alarm *alarm,
+	ktime_t now)
+{
+	struct chg_type_info *cti =
+		container_of(alarm, struct chg_type_info, tran_chg_alarm);
+
+	atomic_inc(&cti->chgdet_cnt);
+	wake_up_interruptible(&cti->waitq);
+	pr_info("%s: re-trigger chgdet\n", __func__);
+	return ALARMTIMER_NORESTART;
+}
+
 #ifdef CONFIG_EXTCON_USB_CHG
 static void init_extcon_work(struct work_struct *work)
 {
@@ -962,6 +989,9 @@ static int mt_charger_probe(struct platform_device *pdev)
 
 	cti->chg_in_wq = create_singlethread_workqueue("charger_in");
 	INIT_WORK(&cti->chg_in_work, charger_in_work_handler);
+
+	alarm_init(&cti->tran_chg_alarm, ALARM_BOOTTIME,
+		tran_chg_alarm_timer_func);
 
 	mt_chg->cti = cti;
 	platform_set_drvdata(pdev, mt_chg);
@@ -1152,6 +1182,28 @@ bool mt_charger_plugin(void)
 	}
 	return false;
 }
+
+int tran_get_charger_type(void)
+{
+	struct mt_charger *mtk_chg = NULL;
+	struct power_supply *psy = power_supply_get_by_name("charger");
+	int is_dcp = 0;
+
+	if (!psy) {
+		pr_info("%s: get power supply failed\n", __func__);
+		return 0;
+	}
+	mtk_chg = power_supply_get_drvdata(psy);
+	if (mtk_chg && mtk_chg->chg_online) {
+		is_dcp = (mtk_chg->chg_type != CHARGER_UNKNOWN &&
+			  mtk_chg->chg_type != STANDARD_HOST &&
+			  mtk_chg->chg_type != CHARGING_HOST) ? 1 : 0;
+		pr_info("%s: is_dcp = %d\n", __func__, is_dcp);
+	}
+	power_supply_put(psy);
+	return is_dcp;
+}
+EXPORT_SYMBOL(tran_get_charger_type);
 
 static s32 __init mt_charger_det_init(void)
 {

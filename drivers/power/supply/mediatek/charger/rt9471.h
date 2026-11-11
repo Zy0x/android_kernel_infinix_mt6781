@@ -55,6 +55,8 @@ enum rt9471_reg_addr {
 	RT9471_REG_TOP_HDEN,
 	RT9471_REG_BUCK_HDEN1 = 0x45,
 	RT9471_REG_BUCK_HDEN2 = 0x46,
+	RT9471_REG_DM_0_6_V = 0x4E,
+	RT9471_REG_MANUAL_MODE = 0x4F,
 	RT9471_REG_BUCK_HDEN3 = 0x54,
 	RT9471_REG_BUCK_HDEN4,
 	RT9471_REG_OTG_HDEN2 = 0x58,
@@ -159,6 +161,7 @@ enum rt9471_reg_addr {
 
 /* ========== DPDMDET 0x0E ============ */
 #define RT9471_BC12_EN_MASK	BIT(7)
+#define RT9471_DP_0_6V_MASK	BIT(0)
 
 /* ========== STATUS 0x0F ============ */
 #define RT9471_PORTSTAT_SHIFT	4

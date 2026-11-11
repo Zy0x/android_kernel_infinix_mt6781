@@ -25,6 +25,12 @@
 #include "usb20.h"
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <mt-plat/mtk_battery.h>
+
+#ifdef CONFIG_TRAN_CHARGER_FUNCS_ADD
+extern bool tran_usb_5per_close_otg(void);
+extern bool tran_sw_close_otg(void);
+#endif
 #ifdef CONFIG_MTK_USB_TYPEC
 #ifdef CONFIG_TCPC_CLASS
 #include "tcpm.h"
@@ -79,7 +85,8 @@ static struct charger_device *primary_charger;
 #include <mt-plat/mtk_boot_common.h>
 
 struct device_node		*usb_node;
-static int iddig_eint_num;
+int iddig_eint_num;
+bool usb_to_otg;
 static ktime_t ktime_start, ktime_end;
 
 static struct musb_fifo_cfg fifo_cfg_host[] = {
@@ -153,6 +160,12 @@ static void _set_vbus(int is_on)
 
 	DBG(0, "op<%d>, status<%d>\n", is_on, vbus_on);
 	if (is_on && !vbus_on) {
+#ifdef CONFIG_TRAN_CHARGER_FUNCS_ADD
+		if (tran_usb_5per_close_otg() || tran_sw_close_otg()) {
+			DBG(0, "tran: OTG blocked (battery <= 5%% or sw close)\n");
+			return;
+		}
+#endif
 		/* update flag 1st then enable VBUS to make
 		 * host mode correct used by PMIC
 		 */
@@ -530,6 +543,15 @@ static void do_host_work(struct work_struct *data)
 	int usb_clk_state = NO_CHANGE;
 	struct mt_usb_work *work =
 		container_of(data, struct mt_usb_work, dwork.work);
+
+	if (battery_get_vbus() > 3000 && work->ops == CONNECTION_OPS_CONN) {
+		iddig_req_host = !iddig_req_host;
+		usb_to_otg = true;
+		DBG(0, "%s:vbus = %d,usb_to_otg = %d\n", __func__,
+			battery_get_vbus(), usb_to_otg);
+		kfree(work);
+		return;
+	}
 
 	/* kernel_init_done should be set in
 	 * early-init stage through init.$platform.usb.rc

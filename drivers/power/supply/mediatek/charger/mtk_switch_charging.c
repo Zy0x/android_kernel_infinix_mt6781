@@ -65,6 +65,9 @@
 /* #include <musb_core.h> */ /* FIXME */
 #include "mtk_charger_intf.h"
 #include "mtk_switch_charging.h"
+#include "tran_chg_fun.h"
+#include "mtk_hvdcp_intf.h"
+#include "mtk_tc30_intf.h"
 
 static int _uA_to_mA(int uA)
 {
@@ -72,6 +75,34 @@ static int _uA_to_mA(int uA)
 		return -1;
 	else
 		return uA / 1000;
+}
+
+int pe50_set_chg_para(struct charger_manager *info)
+{
+	struct switch_charging_alg_data *swchgalg;
+	u32 cv, eoc;
+
+	if (!info || !info->data.enable_18w_flash)
+		return 0;
+
+	swchgalg = info->algorithm_data;
+	if (!swchgalg)
+		return 0;
+
+	if (tran_pe50_running && swchgalg->state != CHR_BATFULL && !tran_pe50_full) {
+		cv = info->data.dv2_chg_cv;
+		eoc = info->data.dv2_chg_eoc;
+	} else {
+		cv = info->data.battery_cv;
+		eoc = info->data.termination_current;
+	}
+
+	charger_dev_set_comp_ir(info->chg1_dev, info->data.comp_ir);
+	charger_dev_set_comp_iv(info->chg1_dev, info->data.comp_iv);
+	charger_dev_set_eoc_current(info->chg1_dev, eoc);
+	charger_dev_set_constant_voltage(info->chg1_dev, cv);
+
+	return 1;
 }
 
 static void _disable_all_charging(struct charger_manager *info)
@@ -88,6 +119,18 @@ static void _disable_all_charging(struct charger_manager *info)
 		mtk_pe_set_is_enable(info, false);
 		if (mtk_pe_get_is_connect(info))
 			mtk_pe_reset_ta_vchr(info);
+	}
+
+	if (mtk_hvdcp20_get_is_enable(info)) {
+		mtk_hvdcp20_set_is_enable(info, false);
+		if (mtk_hvdcp20_get_is_connect(info))
+			mtk_hvdcp20_reset_ta_vchr(info);
+	}
+
+	if (mtk_tc30_get_is_enable(info)) {
+		mtk_tc30_set_is_enable(info, false);
+		if (mtk_tc30_get_is_connect(info))
+			mtk_tc30_reset_ta_vchr(info);
 	}
 
 	if (mtk_pe50_get_is_enable(info)) {
@@ -260,6 +303,12 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 		mtk_pe_set_charging_current(info,
 					&pdata->charging_current_limit,
 					&pdata->input_current_limit);
+		mtk_hvdcp20_set_charging_current(info,
+					&pdata->charging_current_limit,
+					&pdata->input_current_limit);
+		mtk_tc30_set_charging_current(info,
+					&pdata->charging_current_limit,
+					&pdata->input_current_limit);
 	} else if (info->chr_type == CHARGING_HOST) {
 		pdata->input_current_limit =
 				info->data.charging_host_charger_current;
@@ -278,15 +327,11 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 	}
 
 	if (info->enable_sw_jeita) {
-		if (IS_ENABLED(CONFIG_USBIF_COMPLIANCE)
-		    && info->chr_type == STANDARD_HOST)
-			pr_debug("USBIF & STAND_HOST skip current check\n");
-		else {
-			if (info->sw_jeita.sm == TEMP_T0_TO_T1) {
-				pdata->input_current_limit = 500000;
-				pdata->charging_current_limit = 350000;
-			}
-		}
+		g_tran_jeita_ichg_before = pdata->charging_current_limit;
+		g_tran_jeita_iinput_before = pdata->input_current_limit;
+		set_jeita_charging_current(info, pdata);
+		g_tran_jeita_ichg_later = pdata->charging_current_limit;
+		g_tran_jeita_iiput_later = pdata->input_current_limit;
 	}
 
 	if (pdata->thermal_charging_current_limit > 0) {
@@ -393,8 +438,10 @@ static void swchg_select_cv(struct charger_manager *info)
 	/* dynamic cv*/
 	constant_voltage = info->data.battery_cv;
 	mtk_get_dynamic_cv(info, &constant_voltage);
+	constant_voltage = tran_get_cv_comp(info, constant_voltage);
 
 	charger_dev_set_constant_voltage(info->chg1_dev, constant_voltage);
+	pe50_set_chg_para(info);
 }
 
 static void swchg_turn_on_charging(struct charger_manager *info)
@@ -413,9 +460,12 @@ static void swchg_turn_on_charging(struct charger_manager *info)
 					info->chg1_data.input_current_limit);
 		chr_err("In meta mode, disable charging and set input current limit to 200mA\n");
 	} else {
+		mtk_tc30_start_algotithm(info);
 		mtk_pe20_start_algorithm(info);
-		if (mtk_pe20_get_is_connect(info) == false)
+		if (mtk_pe20_get_is_connect(info) == false &&
+		    mtk_tc30_get_is_connect(info) == false)
 			mtk_pe_start_algorithm(info);
+		mtk_hvdcp20_start_algotithm(info);
 
 		swchg_select_charging_current_limit(info);
 		if (info->chg1_data.input_current_limit == 0
@@ -427,6 +477,7 @@ static void swchg_turn_on_charging(struct charger_manager *info)
 		}
 	}
 
+	tran_ctl_aging_capacity(info->chg1_dev, charging_enable);
 	charger_dev_enable(info->chg1_dev, charging_enable);
 }
 
@@ -448,8 +499,12 @@ static int mtk_switch_charging_plug_out(struct charger_manager *info)
 
 	swchgalg->total_charging_time = 0;
 
+	tran_pe50_running = 0;
+	tran_pe50_full = 0;
 	mtk_pe20_set_is_cable_out_occur(info, true);
 	mtk_pe_set_is_cable_out_occur(info, true);
+	mtk_hvdcp20_set_is_cable_out_occur(info, true);
+	mtk_tc30_set_is_cable_out_occur(info, true);
 	mtk_pdc_plugout(info);
 	mtk_pe40_plugout_reset(info);
 	mtk_pe50_plugout_reset(info);
@@ -685,8 +740,11 @@ int mtk_switch_chr_full(struct charger_manager *info)
 	if (!chg_done) {
 		swchgalg->state = CHR_CC;
 		charger_dev_do_event(info->chg1_dev, EVENT_RECHARGE, 0);
+		tran_pe50_full = 1;
 		mtk_pe20_set_to_check_chr_type(info, true);
 		mtk_pe_set_to_check_chr_type(info, true);
+		mtk_hvdcp20_set_to_check_chr_type(info, 1);
+		mtk_tc30_set_to_check_chr_type(info, 1);
 		mtk_pe40_set_is_enable(info, true);
 		mtk_pe50_set_is_enable(info, true);
 		info->enable_dynamic_cv = true;
@@ -717,8 +775,11 @@ static int mtk_switch_charging_run(struct charger_manager *info)
 	    mtk_is_TA_support_pd_pps(info) == false &&
 	    !info->pe5.online) {
 		mtk_pe20_check_charger(info);
-		if (mtk_pe20_get_is_connect(info) == false)
+		if (mtk_pe20_get_is_connect(info) == false) {
+			mtk_hvdcp20_check_charger(info);
+			mtk_tc30_check_charger(info);
 			mtk_pe_check_charger(info);
+		}
 	}
 
 	if (mtk_pe40_get_is_connect(info)) {
@@ -747,6 +808,7 @@ static int mtk_switch_charging_run(struct charger_manager *info)
 			break;
 
 		case CHR_PE50_RUNNING:
+			tran_pe50_running = 1;
 			ret = mtk_switch_chr_pe50_running(info);
 			break;
 
@@ -775,6 +837,8 @@ int charger_dev_event(struct notifier_block *nb, unsigned long event, void *v)
 
 	switch (event) {
 	case CHARGER_DEV_NOTIFY_EOC:
+		tran_pe50_running = 0;
+		tran_pe50_full = 1;
 		charger_manager_notifier(info, CHARGER_NOTIFY_EOC);
 		pr_info("%s: end of charge\n", __func__);
 		break;

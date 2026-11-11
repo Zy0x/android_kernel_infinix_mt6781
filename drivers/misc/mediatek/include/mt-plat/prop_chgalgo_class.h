@@ -75,6 +75,7 @@ struct prop_chgalgo_ta_status {
 	bool ocp;
 	bool otp;
 	bool ovp;
+	bool cc_mode;
 };
 
 struct prop_chgalgo_ta_auth_data {
@@ -132,6 +133,7 @@ enum prop_chgalgo_adc_channel {
 	PCA_ADCCHAN_TCHG,
 	PCA_ADCCHAN_VOUT,
 	PCA_ADCCHAN_VSYS,
+	PCA_ADCCHAN_TUSB,
 	PCA_ADCCHAN_MAX,
 };
 
@@ -153,6 +155,8 @@ struct prop_chgalgo_ta_ops {
 	int (*enable_wdt)(struct prop_chgalgo_device *pca, bool en);
 	int (*set_wdt)(struct prop_chgalgo_device *pca, u32 ms);
 	int (*sync_vta)(struct prop_chgalgo_device *pca, u32 vta);
+	int (*get_ta_fw)(struct prop_chgalgo_device *pca, u8 *buf, int len);
+	int (*get_ta_mfinfo)(struct prop_chgalgo_device *pca, u8 *buf, int len);
 };
 
 struct prop_chgalgo_chg_ops {
@@ -174,6 +178,8 @@ struct prop_chgalgo_chg_ops {
 		       enum prop_chgalgo_adc_channel chan, int *min, int *max);
 	int (*get_soc)(struct prop_chgalgo_device *pca, u32 *soc);
 	int (*is_vbuslowerr)(struct prop_chgalgo_device *pca, bool *err);
+	int (*is_vbushigerr)(struct prop_chgalgo_device *pca, bool *err);
+	int (*set_dev_notify)(struct prop_chgalgo_device *pca, int event);
 	int (*is_charging_enabled)(struct prop_chgalgo_device *pca, bool *en);
 	int (*get_adc_accuracy)(struct prop_chgalgo_device *pca,
 				enum prop_chgalgo_adc_channel chan, int *min,
@@ -273,6 +279,10 @@ extern int prop_chgalgo_authenticate_ta(struct prop_chgalgo_device *pca,
 extern int prop_chgalgo_enable_ta_wdt(struct prop_chgalgo_device *pca, bool en);
 extern int prop_chgalgo_set_ta_wdt(struct prop_chgalgo_device *pca, u32 ms);
 extern int prop_chgalgo_sync_ta_volt(struct prop_chgalgo_device *pca, u32 vta);
+extern int prop_chgalgo_get_ta_fw(struct prop_chgalgo_device *pca, u8 *buf,
+				  int len);
+extern int prop_chgalgo_get_ta_mfinfo(struct prop_chgalgo_device *pca, u8 *buf,
+				      int len);
 
 /* Richtek pca charger interface */
 extern int prop_chgalgo_enable_power_path(struct prop_chgalgo_device *pca,
@@ -299,6 +309,10 @@ extern int prop_chgalgo_set_ichg(struct prop_chgalgo_device *pca, u32 mA);
 extern int prop_chgalgo_set_aicr(struct prop_chgalgo_device *pca, u32 mA);
 extern int prop_chgalgo_is_vbuslowerr(struct prop_chgalgo_device *pca,
 				      bool *err);
+extern int prop_chgalgo_is_vbushigerr(struct prop_chgalgo_device *pca,
+				      bool *err);
+extern int prop_chgalgo_set_dev_notify(struct prop_chgalgo_device *pca,
+				       int event);
 extern int prop_chgalgo_is_charging_enabled(struct prop_chgalgo_device *pca,
 					    bool *en);
 extern int prop_chgalgo_get_adc_accuracy(struct prop_chgalgo_device *pca,

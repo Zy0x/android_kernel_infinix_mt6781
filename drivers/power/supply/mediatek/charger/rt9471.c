@@ -39,6 +39,16 @@
 #include "lynx_power.h"
 #define RT9471_DRV_VERSION	"1.0.16_MTK"
 
+static int led_ctl_gpio = -1;
+static int hvdcp20_dp_gpio = -1;
+static int tc30_dm_gpio = -1;
+static bool dm_0_6_v_set;
+static int rt9471_hvdcp20_set_dp_dm_recover(struct charger_device *chg_dev);
+static int rt9471_tc30_gpio_enable(struct charger_device *chg_dev, bool en);
+
+extern unsigned int mt6358_upmu_set_rg_vusb_vocal(unsigned int val);
+extern unsigned int mt6358_upmu_set_rg_vusb_vosel(unsigned int val);
+
 enum rt9471_stat_idx {
 	RT9471_STATIDX_STAT0 = 0,
 	RT9471_STATIDX_STAT1,
@@ -1926,8 +1936,12 @@ static int rt9471_parse_dt(struct rt9471_chip *chip)
 	chip->desc = desc;
 
 	ret = of_property_read_string(np, "chg_name", &desc->chg_name);
-	if (ret < 0)
-		dev_info(chip->dev, "%s no chg_name(%d)\n", __func__, ret);
+	if (ret < 0) {
+		ret = of_property_read_string(np, "charger_name", &desc->chg_name);
+		if (ret < 0)
+			dev_info(chip->dev, "%s no chg_name(%d)\n",
+				 __func__, ret);
+	}
 
 	ret = of_property_read_string(np, "chg_alias_name",
 				      &chip->chg_props.alias_name);
@@ -1958,6 +1972,40 @@ static int rt9471_parse_dt(struct rt9471_chip *chip)
 		chip->ceb_gpio = U32_MAX;
 	} else
 		chip->ceb_gpio = ret;
+
+	if (chip->is_primary) {
+		ret = of_get_named_gpio(parent_np, "led_ctl_gpio", 0);
+		if (ret < 0) {
+			dev_info(chip->dev, "%s led_ctl_gpio=%d get fail\n",
+				 __func__, ret);
+		} else {
+			led_ctl_gpio = ret;
+			if (gpio_request(led_ctl_gpio, "led_ctl_gpio") < 0)
+				dev_info(chip->dev, "led_ctl_gpio request failed!\n");
+			else
+				gpio_direction_output(led_ctl_gpio, 1);
+		}
+
+		ret = of_get_named_gpio(parent_np, "hvdcp20_dp_gpio", 0);
+		if (ret < 0) {
+			dev_info(chip->dev, "%s hvdcp20_dp_gpio=%d get fail\n",
+				 __func__, ret);
+		} else {
+			hvdcp20_dp_gpio = ret;
+			if (gpio_request(hvdcp20_dp_gpio, "hvdcp20_dp_gpio") < 0)
+				dev_info(chip->dev, "hvdcp20_dp_gpio request failed!\n");
+		}
+
+		ret = of_get_named_gpio(parent_np, "tc30_dm_gpio", 0);
+		if (ret < 0) {
+			dev_info(chip->dev, "%s tc30_dm_gpio=%d get fail\n",
+				 __func__, ret);
+		} else {
+			tc30_dm_gpio = ret;
+			if (gpio_request(tc30_dm_gpio, "tc30_dm_gpio") < 0)
+				dev_info(chip->dev, "tc30_dm_gpio request failed!\n");
+		}
+	}
 #else
 	ret = of_property_read_u32(parent_np, "rt,intr_gpio_num",
 				   &chip->intr_gpio);
@@ -2319,6 +2367,9 @@ static int rt9471_plug_out(struct charger_device *chg_dev)
 	ret = __rt9471_set_wdt(chip, 0);
 	if (ret < 0)
 		dev_notice(chip->dev, "%s set wdt fail(%d)\n", __func__, ret);
+
+	rt9471_hvdcp20_set_dp_dm_recover(chg_dev);
+	rt9471_tc30_gpio_enable(chg_dev, false);
 
 	return ret;
 }
@@ -2880,6 +2931,222 @@ static int rt9471_enable_cable_drop_comp(struct charger_device *chg_dev,
 	return rt9471_enable_pump_express(chip, true);
 }
 
+static int rt9471_ext_enable_bc12(struct rt9471_chip *chip, bool en)
+{
+	dev_info(chip->dev, "%s en = %d\n", __func__, en);
+	return rt9471_i2c_update_bits(chip, RT9471_REG_DPDMDET,
+				      en ? RT9471_BC12_EN_MASK : 0,
+				      RT9471_BC12_EN_MASK);
+}
+
+static int mtk_ext_chgdet(struct charger_device *chg_dev)
+{
+	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
+	int ret = 0, cnt = 100;
+	u8 regval = 0, port_stat = 0, devid = 0;
+	int chg_type = CHARGER_UNKNOWN;
+
+	ret = rt9471_i2c_read_byte(chip, RT9471_REG_INFO, &regval);
+	if (ret < 0)
+		return CHARGER_UNKNOWN;
+
+	devid = (regval & RT9471_DEVID_MASK) >> RT9471_DEVID_SHIFT;
+	if (((devid | 0x04) & 0x0F) != 0x0E) {
+		dev_info(chip->dev, "%s incorrect devid 0x%X\n",
+			 __func__, devid);
+		return CHARGER_UNKNOWN;
+	}
+
+	Charger_Detect_Init();
+
+	ret = rt9471_ext_enable_bc12(chip, false);
+	if (ret < 0)
+		goto out;
+
+	ret = rt9471_ext_enable_bc12(chip, true);
+	if (ret < 0)
+		goto out;
+
+	while (cnt > 0) {
+		msleep(20);
+		ret = rt9471_i2c_read_byte(chip, RT9471_REG_STATUS, &regval);
+		if (ret < 0) {
+			cnt--;
+			continue;
+		}
+		port_stat = (regval & RT9471_PORTSTAT_MASK) >>
+			    RT9471_PORTSTAT_SHIFT;
+		dev_info(chip->dev, "%s port_stat = 0x%X\n",
+			 __func__, port_stat);
+		if (port_stat != RT9471_PORTSTAT_NOINFO)
+			break;
+		cnt--;
+	}
+
+	if (cnt == 0) {
+		dev_info(chip->dev, "%s bc12 failed\n", __func__);
+		chg_type = CHARGER_UNKNOWN;
+		goto out_rel;
+	}
+
+	switch (port_stat) {
+	case RT9471_PORTSTAT_APPLE_10W:
+		chg_type = APPLE_2_1A_CHARGER;
+		break;
+	case RT9471_PORTSTAT_APPLE_5W:
+		chg_type = APPLE_1_0A_CHARGER;
+		break;
+	case RT9471_PORTSTAT_SAMSUNG_10W:
+	case RT9471_PORTSTAT_APPLE_12W:
+	case RT9471_PORTSTAT_DCP:
+		chg_type = STANDARD_CHARGER;
+		break;
+	case RT9471_PORTSTAT_SDP:
+		chg_type = STANDARD_HOST;
+		break;
+	case RT9471_PORTSTAT_CDP:
+		chg_type = CHARGING_HOST;
+		break;
+	case RT9471_PORTSTAT_NSDP:
+	default:
+		chg_type = NONSTANDARD_CHARGER;
+		break;
+	}
+
+out_rel:
+	dev_info(chip->dev, "%s chg type = %d\n", __func__, chg_type);
+	if (chg_type != STANDARD_CHARGER)
+		Charger_Detect_Release();
+out:
+	return chg_type;
+}
+
+static int rt9471_get_boost_status(struct charger_device *chg_dev)
+{
+	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
+	u8 regval = 0;
+	int ret;
+
+	ret = rt9471_i2c_read_byte(chip, RT9471_REG_STATUS, &regval);
+	if (ret < 0)
+		return ret;
+
+	ret = ((regval & RT9471_ICSTAT_MASK) == RT9471_ICSTAT_MASK) ? 1 : 0;
+	dev_info(chip->dev, "%s ic_stat=%d\n", __func__, ret);
+	return ret;
+}
+
+static int rt9471_set_stat_pin_val(struct charger_device *chg_dev, bool en)
+{
+	if (gpio_is_valid(led_ctl_gpio))
+		gpio_direction_output(led_ctl_gpio, !en);
+	return 0;
+}
+
+static int rt9471_hvdcp20_set_dp_0_6_v(struct charger_device *chg_dev)
+{
+	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
+	int ret;
+
+	ret = rt9471_i2c_update_bits(chip, RT9471_REG_DPDMDET,
+				     0, RT9471_BC12_EN_MASK);
+	if (ret < 0)
+		return ret;
+	msleep(500);
+
+	ret = rt9471_i2c_update_bits(chip, RT9471_REG_DPDMDET,
+				     RT9471_BC12_EN_MASK, RT9471_BC12_EN_MASK);
+	if (ret < 0)
+		return ret;
+
+	ret = rt9471_i2c_update_bits(chip, RT9471_REG_DPDMDET,
+				     RT9471_DP_0_6V_MASK, RT9471_DP_0_6V_MASK);
+	if (ret < 0)
+		return ret;
+	msleep(1800);
+	return 0;
+}
+
+static int rt9471_hvdcp20_set_dp_3_0_v(struct charger_device *chg_dev, bool en)
+{
+	if (!gpio_is_valid(hvdcp20_dp_gpio))
+		return -EFAULT;
+	if (gpio_direction_output(hvdcp20_dp_gpio, en ? 1 : 0) < 0)
+		return -EFAULT;
+	return 0;
+}
+
+static int rt9471_hvdcp20_set_dm_0_6_v(struct charger_device *chg_dev)
+{
+	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
+	int ret;
+
+	ret = rt9471_enable_hidden_mode(chip, true);
+	if (ret < 0)
+		return ret;
+
+	ret = rt9471_i2c_write_byte(chip, RT9471_REG_MANUAL_MODE, 0x01);
+	if (ret < 0)
+		goto out;
+
+	ret = rt9471_i2c_write_byte(chip, RT9471_REG_DM_0_6_V, 0x60);
+out:
+	rt9471_enable_hidden_mode(chip, false);
+	if (ret >= 0)
+		dm_0_6_v_set = true;
+	return ret;
+}
+
+static int rt9471_hvdcp20_set_dp_dm_recover(struct charger_device *chg_dev)
+{
+	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
+	int ret;
+
+	ret = rt9471_i2c_update_bits(chip, RT9471_REG_DPDMDET,
+				     0, RT9471_DP_0_6V_MASK);
+	if (ret < 0)
+		return ret;
+
+	if (!dm_0_6_v_set)
+		return 0;
+
+	ret = rt9471_enable_hidden_mode(chip, true);
+	if (ret < 0)
+		return ret;
+
+	ret = rt9471_i2c_write_byte(chip, RT9471_REG_MANUAL_MODE, 0x01);
+	if (ret < 0)
+		goto out_hidden;
+	ret = rt9471_i2c_write_byte(chip, RT9471_REG_DM_0_6_V, 0x00);
+	if (ret < 0)
+		goto out_hidden;
+	ret = rt9471_i2c_write_byte(chip, RT9471_REG_MANUAL_MODE, 0x00);
+out_hidden:
+	rt9471_enable_hidden_mode(chip, false);
+	if (ret < 0)
+		return ret;
+
+	ret = rt9471_hvdcp20_set_dp_3_0_v(chg_dev, false);
+	if (ret < 0)
+		return ret;
+
+	mt6358_upmu_set_rg_vusb_vocal(3);
+	mt6358_upmu_set_rg_vusb_vosel(7);
+	dm_0_6_v_set = false;
+	return 0;
+}
+
+static int rt9471_tc30_gpio_enable(struct charger_device *chg_dev, bool en)
+{
+	if (!gpio_is_valid(hvdcp20_dp_gpio) ||
+	    gpio_direction_output(hvdcp20_dp_gpio, en ? 1 : 0) < 0)
+		return -EFAULT;
+	if (!gpio_is_valid(tc30_dm_gpio) ||
+	    gpio_direction_output(tc30_dm_gpio, en ? 1 : 0) < 0)
+		return -EFAULT;
+	return 0;
+}
+
 static struct charger_ops rt9471_chg_ops = {
 	/* cable plug in/out for primary charger */
 	.plug_in = rt9471_plug_in,
@@ -2952,6 +3219,14 @@ static struct charger_ops rt9471_chg_ops = {
 	.reset_ta = rt9471_reset_ta,
 	.set_pe20_efficiency_table = rt9471_set_pe20_efficiency_table,
 	.enable_cable_drop_comp = rt9471_enable_cable_drop_comp,
+	.get_ext_chgtyp = mtk_ext_chgdet,
+	.set_dp_3_0_v = rt9471_hvdcp20_set_dp_3_0_v,
+	.set_dp_0_6_v = rt9471_hvdcp20_set_dp_0_6_v,
+	.set_dm_0_6_v = rt9471_hvdcp20_set_dm_0_6_v,
+	.set_dp_dm_recover = rt9471_hvdcp20_set_dp_dm_recover,
+	.set_tc30_gpio_enable = rt9471_tc30_gpio_enable,
+	.get_boost_status = rt9471_get_boost_status,
+	.set_stat_pin_val = rt9471_set_stat_pin_val,
 };
 
 static ssize_t shipping_mode_store(struct device *dev,

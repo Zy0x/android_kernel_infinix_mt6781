@@ -35,6 +35,8 @@
 #include <linux/time.h>
 #include <linux/uaccess.h>
 #include <linux/reboot.h>
+#include <linux/irq.h>
+#include <linux/notifier.h>
 
 #include <mt-plat/mtk_battery.h>
 #include <mt-plat/upmu_common.h>
@@ -42,15 +44,37 @@
 #include <mach/upmu_hw.h>
 #include <mt-plat/mtk_boot.h>
 #include <mt-plat/charger_type.h>
+#include <mt-plat/charger_class.h>
+#include <mt6358/mtk_pmic_api.h>
 
 #define __SW_CHRDET_IN_PROBE_PHASE__
 
 static enum charger_type g_chr_type;
+static struct charger_device *primary_chg;
+static bool first_flag;
 #ifdef __SW_CHRDET_IN_PROBE_PHASE__
 static struct work_struct chr_work;
 #endif
 
 static DEFINE_MUTEX(chrdet_lock);
+static RAW_NOTIFIER_HEAD(chrdet_notifier_head);
+
+#ifdef CONFIG_USB_MTK_OTG
+extern int iddig_eint_num;
+extern bool usb_to_otg;
+#endif
+
+int register_charger_notifier(struct notifier_block *nb)
+{
+	return raw_notifier_chain_register(&chrdet_notifier_head, nb);
+}
+EXPORT_SYMBOL(register_charger_notifier);
+
+int charger_notifier_call_chain(unsigned long val, void *v)
+{
+	return raw_notifier_call_chain(&chrdet_notifier_head, val, v);
+}
+EXPORT_SYMBOL(charger_notifier_call_chain);
 
 static struct power_supply *chrdet_psy;
 static int chrdet_inform_psy_changed(enum charger_type chg_type,
@@ -101,46 +125,84 @@ static int chrdet_inform_psy_changed(enum charger_type chg_type,
 }
 
 
-extern bool mtk_musb_is_pc_host_connected(void);
-extern void dcp_reset_rfc(void);
-
-static struct delayed_work chg_verify_work;
-
-static void do_charger_verify_work(struct work_struct *data)
-{
-	mutex_lock(&chrdet_lock);
-	if (pmic_get_register_value(PMIC_RGS_CHRDET)) {
-		bool is_pc = mtk_musb_is_pc_host_connected();
-		pr_info("pmic_chrdet: verify: is_pc_host = %d, current_type = %d\n",
-			is_pc, g_chr_type);
-		if (is_pc) {
-			/* PC USB Host confirmed active, keep STANDARD_HOST for ADB/MTP */
-			if (g_chr_type != STANDARD_HOST) {
-				g_chr_type = STANDARD_HOST;
-				chrdet_inform_psy_changed(g_chr_type, 1);
-			}
-		} else {
-			/* No PC USB host traffic -> Dedicated Wall / Fast Charger! */
-			if (g_chr_type != STANDARD_CHARGER) {
-				pr_info("pmic_chrdet: promoting to STANDARD_CHARGER (Fast Charge)\n");
-				g_chr_type = STANDARD_CHARGER;
-				chrdet_inform_psy_changed(g_chr_type, 1);
-			}
-		}
-	}
-	mutex_unlock(&chrdet_lock);
-}
-
 int hw_charging_get_charger_type(void)
 {
-	return g_chr_type;
+	int boot_mode = 0;
+	int chg_type = CHARGER_UNKNOWN;
+	int wait_cnt = 0;
+
+	boot_mode = get_boot_mode();
+	pr_info("hw_bc11_init boot_mode=%d\n", boot_mode);
+	msleep(200);
+
+	if (boot_mode != RECOVERY_BOOT && !first_flag) {
+		while (!is_usb_rdy() && wait_cnt < 200) {
+			pr_info("CDP, block\n");
+			msleep(100);
+			wait_cnt++;
+		}
+		if (wait_cnt >= 200)
+			pr_info("CDP, timeout\n");
+		else
+			pr_info("CDP, free\n");
+		first_flag = true;
+	} else {
+		pr_info("CDP, PASS\n");
+	}
+
+	if (primary_chg) {
+		chg_type = charger_dev_get_ext_chgtyp(primary_chg);
+		if (chg_type < 0)
+			chg_type = CHARGER_UNKNOWN;
+	}
+
+	pr_info("hw_charging_get_charger_type: chg_type = %d\n", chg_type);
+	return chg_type;
 }
 
 /*****************************************************************************
  * Charger Detection
  ******************************************************************************/
-void __attribute__((weak)) mtk_pmic_enable_chr_type_det(bool en)
+void mtk_pmic_enable_chr_type_det(bool en)
 {
+	if (!mt_usb_is_device()) {
+		g_chr_type = CHARGER_UNKNOWN;
+		pr_info("charger type: UNKNOWN, Now is usb host mode. Skip detection\n");
+		return;
+	}
+
+	mutex_lock(&chrdet_lock);
+
+	if (en) {
+		if (is_meta_mode()) {
+			pr_notice("force Standard USB Host in meta\n");
+			g_chr_type = STANDARD_HOST;
+			chrdet_inform_psy_changed(g_chr_type, 1);
+		} else {
+			pr_info("charger type: charger IN\n");
+			g_chr_type = hw_charging_get_charger_type();
+			chrdet_inform_psy_changed(g_chr_type, 1);
+		}
+	} else {
+		pr_info("charger type: charger OUT\n");
+		g_chr_type = CHARGER_UNKNOWN;
+		chrdet_inform_psy_changed(g_chr_type, 0);
+	}
+
+	mutex_unlock(&chrdet_lock);
+	charger_notifier_call_chain(en ? 1 : 0, NULL);
+}
+
+static void chrdet_handle_unplug_hw(void)
+{
+	if (primary_chg)
+		charger_dev_set_dp_dm_recover(primary_chg);
+#ifdef CONFIG_USB_MTK_OTG
+	if (usb_to_otg) {
+		enable_irq(iddig_eint_num);
+		usb_to_otg = false;
+	}
+#endif
 }
 
 void do_charger_detect(void)
@@ -151,25 +213,12 @@ void do_charger_detect(void)
 		return;
 	}
 
-	mutex_lock(&chrdet_lock);
-
 	if (pmic_get_register_value(PMIC_RGS_CHRDET)) {
-		pr_info("charger type: charger IN\n");
-		/* Initially start as STANDARD_HOST so USB stack immediately responds to PC */
-		g_chr_type = STANDARD_HOST;
-		chrdet_inform_psy_changed(g_chr_type, 1);
-		/* Schedule delayed verification to see if a PC host actually enumerates */
-		cancel_delayed_work(&chg_verify_work);
-		schedule_delayed_work(&chg_verify_work, msecs_to_jiffies(1500));
+		mtk_pmic_enable_chr_type_det(true);
 	} else {
-		pr_info("charger type: charger OUT\n");
-		cancel_delayed_work(&chg_verify_work);
-		g_chr_type = CHARGER_UNKNOWN;
-		chrdet_inform_psy_changed(g_chr_type, 0);
-		dcp_reset_rfc();
+		chrdet_handle_unplug_hw();
+		mtk_pmic_enable_chr_type_det(false);
 	}
-
-	mutex_unlock(&chrdet_lock);
 }
 
 
@@ -210,18 +259,22 @@ void chrdet_int_handler(void)
 #ifdef __SW_CHRDET_IN_PROBE_PHASE__
 static void do_charger_detection_work(struct work_struct *data)
 {
-	if (pmic_get_register_value(PMIC_RGS_CHRDET))
-		do_charger_detect();
+	do_charger_detect();
 }
 #endif
 
 static int __init pmic_chrdet_init(void)
 {
 	mutex_init(&chrdet_lock);
-	INIT_DELAYED_WORK(&chg_verify_work, do_charger_verify_work);
 	chrdet_psy = power_supply_get_by_name("charger");
 	if (!chrdet_psy) {
-		pr_debug("%s: get power supply failed\n", __func__);
+		pr_info("%s: get power supply failed\n", __func__);
+		return -EINVAL;
+	}
+
+	primary_chg = get_charger_by_name("primary_chg");
+	if (!primary_chg) {
+		pr_info("%s: get primary_chg failed\n", __func__);
 		return -EINVAL;
 	}
 
@@ -231,6 +284,7 @@ static int __init pmic_chrdet_init(void)
 	schedule_work(&chr_work);
 #endif
 
+	mt6358_upmu_set_rg_vcdt_hv_vth(0xd);
 	pmic_register_interrupt_callback(INT_CHRDET_EDGE, chrdet_int_handler);
 	pmic_enable_interrupt(INT_CHRDET_EDGE, 1, "PMIC");
 

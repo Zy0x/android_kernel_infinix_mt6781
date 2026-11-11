@@ -76,6 +76,7 @@
 #include "mtk_charger_intf.h"
 #include "lynx_power.h"
 #include "mtk_charger_init.h"
+#include "tran_chg_fun.h"
 
 #ifdef OPLUS_FEATURE_CHG_BASIC
 //====================================================================//
@@ -334,10 +335,13 @@ void _wake_up_charger(struct charger_manager *info)
 
 	wake_up_interruptible(&info->wait_que);
 #endif
-
-
-
 }
+
+struct charger_manager *tran_get_pinfo(void)
+{
+	return pinfo;
+}
+EXPORT_SYMBOL(tran_get_pinfo);
 
 /* charger_manager ops  */
 static int _mtk_charger_change_current_setting(struct charger_manager *info)
@@ -998,21 +1002,28 @@ bool is_dual_charger_supported(struct charger_manager *info)
 	return true;
 }
 
-int charger_enable_vbus_ovp(struct charger_manager *pinfo, bool enable)
+int charger_enable_vbus_ovp(struct charger_manager *pinfo, bool enable, int who)
 {
 	int ret = 0;
 	u32 sw_ovp = 0;
 
+	if (dcp_get_ta_status()) {
+		pinfo->data.max_charger_voltage = 11000000;
+		chr_err("[%s] dcp ta active, ovp:11000000 who:%d\n",
+			__func__, who);
+		return ret;
+	}
+
 	if (enable)
 		sw_ovp = pinfo->data.max_charger_voltage_setting;
 	else
-		sw_ovp = 15000000;
+		sw_ovp = 10500000;
 
 	/* Enable/Disable SW OVP status */
 	pinfo->data.max_charger_voltage = sw_ovp;
 
-	chr_err("[%s] en:%d ovp:%d\n",
-			    __func__, enable, sw_ovp);
+	chr_err("[%s] en:%d ovp:%d who:%d\n",
+			    __func__, enable, sw_ovp, who);
 	return ret;
 }
 
@@ -1618,7 +1629,7 @@ static void charger_update_data(struct charger_manager *info)
 	info->battery_temp = battery_get_bat_temperature();
 }
 
-static int mtk_chgstat_notify(struct charger_manager *info)
+int mtk_chgstat_notify(struct charger_manager *info)
 {
 	int ret = 0;
 	char *env[2] = { "CHGSTAT=1", NULL };
@@ -2099,6 +2110,10 @@ static int charger_routine_thread(void *arg)
 		spin_unlock_irqrestore(&info->slock, flags);
 
 		info->charger_thread_timeout = false;
+		tran_charge_type = mt_get_charger_type();
+		if (info->chg1_dev)
+			charger_dev_set_tc30_gpio_enable(info->chg1_dev, false);
+
 		bat_current = battery_get_bat_current();
 		chg_current = pmic_get_charging_current();
 		chr_err("Vbat=%d,Ibat=%d,I=%d,VChr=%d,T=%d,Soc=%d:%d,CT:%d:%d hv:%d pd:%d:%d\n",
@@ -2129,6 +2144,8 @@ static int charger_routine_thread(void *arg)
 				wakeup_sc_algo_cmd(&pinfo->sc.data, SC_EVENT_STOP_CHARGING, 0);
 		} else
 			chr_debug("disable charging\n");
+
+		saletool_fault_analysis(info, battery_get_vbus());
 
 		spin_lock_irqsave(&info->slock, flags);
 		__pm_relax(&info->charger_wakelock);
@@ -2895,6 +2912,67 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 			SC_CURRENT_LIMIT);
 		info->sc.current_limit = SC_CURRENT_LIMIT;
 	}
+
+	/* Transsion DT parsing */
+	of_property_read_u32_array(np, "multi_battery_cv",
+				   info->data.multi_battery_cv, 4);
+	if (g_tran_bat_id >= 0 && g_tran_bat_id < 4 &&
+	    info->data.multi_battery_cv[g_tran_bat_id] > 0) {
+		info->data.battery_cv = info->data.multi_battery_cv[g_tran_bat_id];
+		chr_err("Transsion: selected battery_cv[%d] = %d uV\n",
+			g_tran_bat_id, info->data.battery_cv);
+	}
+
+	info->data.enable_ir_comp = of_property_read_bool(np, "enable_ir_comp");
+	if (of_property_read_u32(np, "r_bat_comp", &val) >= 0)
+		info->data.r_bat_comp = val;
+	if (of_property_read_u32(np, "v_comp_max", &val) >= 0)
+		info->data.v_comp_max = val;
+	if (of_property_read_u32(np, "dv2_chg_cv", &val) >= 0)
+		info->data.dv2_chg_cv = val;
+	if (of_property_read_u32(np, "dv2_chg_eoc", &val) >= 0)
+		info->data.dv2_chg_eoc = val;
+	if (of_property_read_u32(np, "termination_current", &val) >= 0)
+		info->data.termination_current = val;
+
+	info->data.enable_hvdcp20 = of_property_read_bool(np, "enable_hvdcp20");
+	info->enable_hvdcp20 = info->data.enable_hvdcp20;
+	info->data.enable_tc30 = of_property_read_bool(np, "enable_tc30");
+	info->enable_tc30 = info->data.enable_tc30;
+	info->data.enable_18w_flash = of_property_read_bool(np, "enable_18w_flash");
+
+	if (of_property_read_u32(np, "comp_ir", &val) >= 0)
+		info->data.comp_ir = val;
+	if (of_property_read_u32(np, "comp_iv", &val) >= 0)
+		info->data.comp_iv = val;
+
+	if (of_property_read_u32(np, "jeita_temp_pos0_to_pos1_current", &val) >= 0)
+		info->data.jeita_temp_pos0_to_pos1_current = val;
+	else if (of_property_read_u32(np, "jeita_t0_to_t1_chg_cur", &val) >= 0)
+		info->data.jeita_temp_pos0_to_pos1_current = val;
+	else
+		info->data.jeita_temp_pos0_to_pos1_current = 1000000;
+
+	if (of_property_read_u32(np, "jeita_temp_pos1_to_pos2_current", &val) >= 0)
+		info->data.jeita_temp_pos1_to_pos2_current = val;
+	else if (of_property_read_u32(np, "jeita_t1_to_t2_chg_cur", &val) >= 0)
+		info->data.jeita_temp_pos1_to_pos2_current = val;
+	else
+		info->data.jeita_temp_pos1_to_pos2_current = 2000000;
+
+	if (of_property_read_u32(np, "jeita_temp_pos2_to_pos3_current", &val) >= 0)
+		info->data.jeita_temp_pos2_to_pos3_current = val;
+	else if (of_property_read_u32(np, "jeita_t2_to_t3_chg_cur", &val) >= 0)
+		info->data.jeita_temp_pos2_to_pos3_current = val;
+	else
+		info->data.jeita_temp_pos2_to_pos3_current = 2000000;
+
+	if (of_property_read_u32(np, "jeita_temp_pos3_to_pos4_current", &val) >= 0)
+		info->data.jeita_temp_pos3_to_pos4_current = val;
+	else if (of_property_read_u32(np, "jeita_t3_to_t4_chg_cur", &val) >= 0)
+		info->data.jeita_temp_pos3_to_pos4_current = val;
+	else
+		info->data.jeita_temp_pos3_to_pos4_current = 2000000;
 
 	chr_err("algorithm name:%s\n", info->algorithm_name);
 

@@ -218,6 +218,8 @@ static inline int to_chgclass_adc(enum prop_chgalgo_adc_channel chan)
 		return ADC_CHANNEL_VOUT;
 	case PCA_ADCCHAN_VSYS:
 		return ADC_CHANNEL_VSYS;
+	case PCA_ADCCHAN_TUSB:
+		return ADC_CHANNEL_TUSB;
 	default:
 		break;
 	}
@@ -313,6 +315,28 @@ static int pca_mtk_chg_is_vbuslowerr(struct prop_chgalgo_device *pca, bool *err)
 	if (chgtyp < 0)
 		return -EINVAL;
 	return charger_dev_is_vbuslowerr(info->chgdev[chgtyp], err);
+}
+
+static int pca_mtk_chg_is_vbushigerr(struct prop_chgalgo_device *pca, bool *err)
+{
+	struct pca_mtk_chg_info *info = prop_chgalgo_get_drvdata(pca);
+	int chgtyp = get_mtk_chgtyp(pca);
+
+	if (chgtyp < 0)
+		return -EINVAL;
+	return charger_dev_is_direct_charging_vbushigerr(info->chgdev[chgtyp],
+							 err);
+}
+
+static int pca_mtk_charger_dev_notify(struct prop_chgalgo_device *pca,
+				      int event)
+{
+	struct pca_mtk_chg_info *info = prop_chgalgo_get_drvdata(pca);
+	int chgtyp = get_mtk_chgtyp(pca);
+
+	if (chgtyp < 0)
+		return -EINVAL;
+	return charger_dev_notify(info->chgdev[chgtyp], event);
 }
 
 static int pca_mtk_chg_is_charging_enabled(struct prop_chgalgo_device *pca,
@@ -416,6 +440,8 @@ static struct prop_chgalgo_chg_ops pca_chg_ops = {
 	.set_aicr = pca_mtk_chg_set_aicr,
 	.set_ichg = pca_mtk_chg_set_ichg,
 	.is_vbuslowerr = pca_mtk_chg_is_vbuslowerr,
+	.is_vbushigerr = pca_mtk_chg_is_vbushigerr,
+	.set_dev_notify = pca_mtk_charger_dev_notify,
 	.is_charging_enabled = pca_mtk_chg_is_charging_enabled,
 	.get_adc_accuracy = pca_mtk_chg_get_adc_accuracy,
 	.init_chip = pca_mtk_chg_init_chip,

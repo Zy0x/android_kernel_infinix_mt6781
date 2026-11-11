@@ -106,6 +106,7 @@
 #define RT9759_VBUSOVP_ALMDIS_MASK	BIT(7)
 #define RT9759_VBUSLOWERR_FLAG_SHFT	2
 #define RT9759_VBUSLOWERR_STAT_SHFT	5
+#define RT9759_VBUSHIGERR_STAT_SHFT	4
 
 enum rt9759_irqidx {
 	RT9759_IRQIDX_VACOVP = 0,
@@ -803,8 +804,58 @@ static int __rt9759_get_adc(struct rt9759_chip *chip,
 	case RT9759_ADC_TDIE:
 		*val = (data[0] << 7) + (data[1] >> 1);
 		break;
+	case RT9759_ADC_TSBUS: {
+		static const struct {
+			int temp;
+			int r_ohm;
+		} tsbus_tbl[] = {
+			{ -30, 2197860 }, { -25, 1583660 }, { -20, 1153370 },
+			{ -15,  848600 }, { -10,  630470 }, {  -5,  472780 },
+			{   0,  357700 }, {   5,  272930 }, {  10,  209950 },
+			{  15,  162770 }, {  20,  127130 }, {  25,  100000 },
+			{  30,   79200 }, {  35,   63140 }, {  40,   50650 },
+			{  45,   40880 }, {  50,   33190 }, {  55,   27090 },
+			{  60,   22230 }, {  65,   18340 }, {  70,   15210 },
+			{  75,   12670 }, {  80,   10600 }, {  85,    8910 },
+			{  90,    7520 }, {  95,    6370 }, { 100,    5420 },
+			{ 105,    4630 }, { 110,    3970 }, { 115,    3420 },
+			{ 120,    2951 }, { 125,    2560 },
+		};
+		u32 raw = ((data[0] & 0x03) << 8) | data[1];
+		u64 v_ntc = (((u64)raw & ~1ULL) * 1953125ULL) / 2ULL +
+			    ((raw & 1U) ? 976562ULL : 0ULL);
+		int r_ntc, i, temp = 25;
+
+		if (v_ntc >= 1000000000ULL) {
+			temp = -30;
+		} else {
+			r_ntc = (int)((v_ntc * 39000ULL) /
+				      (1000000000ULL - v_ntc));
+			if (r_ntc >= tsbus_tbl[0].r_ohm) {
+				temp = tsbus_tbl[0].temp;
+			} else if (r_ntc <= tsbus_tbl[ARRAY_SIZE(tsbus_tbl) - 1].r_ohm) {
+				temp = tsbus_tbl[ARRAY_SIZE(tsbus_tbl) - 1].temp;
+			} else {
+				for (i = 0; i < ARRAY_SIZE(tsbus_tbl) - 1; i++) {
+					int r1 = tsbus_tbl[i].r_ohm;
+					int r2 = tsbus_tbl[i + 1].r_ohm;
+					int t1 = tsbus_tbl[i].temp;
+					int t2 = tsbus_tbl[i + 1].temp;
+
+					if (r_ntc <= r1 && r_ntc >= r2) {
+						temp = t1 + (r1 - r_ntc) *
+							(t2 - t1) / (r1 - r2);
+						break;
+					}
+				}
+			}
+		}
+		*val = temp;
+		dev_info(chip->dev, "%s val = %d, TSBUS_TMP = %d\n",
+			 "adc_to_tmp", (data[0] << 8) | data[1], *val);
+		break;
+	}
 	case RT9759_ADC_TSBAT:
-	case RT9759_ADC_TSBUS:
 	default:
 		ret = -ENOTSUPP;
 		break;
@@ -914,6 +965,8 @@ static inline enum rt9759_adc_channel to_rt9759_adc(enum adc_channel chan)
 		return RT9759_ADC_TDIE;
 	case ADC_CHANNEL_VOUT:
 		return RT9759_ADC_VOUT;
+	case ADC_CHANNEL_TUSB:
+		return RT9759_ADC_TSBUS;
 	default:
 		break;
 	}
@@ -1042,6 +1095,23 @@ static int rt9759_is_vbuslowerr(struct charger_device *chg_dev, bool *err)
 out_dis:
 	if (!chip->force_adc_en)
 		rt9759_clr_bits(chip, RT9759_REG_ADCCTRL, RT9759_ADCEN_MASK);
+out:
+	mutex_unlock(&chip->adc_lock);
+	return ret;
+}
+
+static int rt9759_is_vbushigerr(struct charger_device *chg_dev, bool *err)
+{
+	int ret;
+	struct rt9759_chip *chip = charger_get_data(chg_dev);
+
+	mutex_lock(&chip->adc_lock);
+	ret = rt9759_set_bits(chip, RT9759_REG_ADCCTRL, RT9759_ADCEN_MASK);
+	if (ret < 0)
+		goto out;
+	usleep_range(12000, 15000);
+	ret = rt9759_i2c_test_bit(chip, RT9759_REG_CONVSTAT,
+				  RT9759_VBUSHIGERR_STAT_SHFT, err);
 out:
 	mutex_unlock(&chip->adc_lock);
 	return ret;
@@ -1508,6 +1578,7 @@ static const struct charger_ops rt9759_chg_ops = {
 	.set_vbusovp_alarm = rt9759_set_vbusovp_alarm,
 	.reset_vbusovp_alarm = rt9759_reset_vbusovp_alarm,
 	.is_vbuslowerr = rt9759_is_vbuslowerr,
+	.is_direct_charging_vbushigerr = rt9759_is_vbushigerr,
 	.get_adc_accuracy = rt9759_get_adc_accuracy,
 };
 

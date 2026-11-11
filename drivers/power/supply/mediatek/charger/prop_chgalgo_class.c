@@ -182,6 +182,26 @@ int prop_chgalgo_sync_ta_volt(struct prop_chgalgo_device *pca, u32 vta)
 }
 EXPORT_SYMBOL(prop_chgalgo_sync_ta_volt);
 
+int prop_chgalgo_get_ta_fw(struct prop_chgalgo_device *pca, u8 *buf, int len)
+{
+	if (pca_check_devtype(pca, PCA_DEVTYPE_TA) < 0)
+		return -EINVAL;
+	if (!pca->desc->ta_ops->get_ta_fw)
+		return -ENOTSUPP;
+	return pca->desc->ta_ops->get_ta_fw(pca, buf, len);
+}
+EXPORT_SYMBOL(prop_chgalgo_get_ta_fw);
+
+int prop_chgalgo_get_ta_mfinfo(struct prop_chgalgo_device *pca, u8 *buf, int len)
+{
+	if (pca_check_devtype(pca, PCA_DEVTYPE_TA) < 0)
+		return -EINVAL;
+	if (!pca->desc->ta_ops->get_ta_mfinfo)
+		return -ENOTSUPP;
+	return pca->desc->ta_ops->get_ta_mfinfo(pca, buf, len);
+}
+EXPORT_SYMBOL(prop_chgalgo_get_ta_mfinfo);
+
 /*
  * Charger interfaces
  */
@@ -366,6 +386,26 @@ int prop_chgalgo_is_vbuslowerr(struct prop_chgalgo_device *pca, bool *err)
 	return pca->desc->chg_ops->is_vbuslowerr(pca, err);
 }
 EXPORT_SYMBOL(prop_chgalgo_is_vbuslowerr);
+
+int prop_chgalgo_is_vbushigerr(struct prop_chgalgo_device *pca, bool *err)
+{
+	if (pca_check_devtype(pca, PCA_DEVTYPE_CHARGER) < 0)
+		return -EINVAL;
+	if (!pca->desc->chg_ops->is_vbushigerr)
+		return -ENOTSUPP;
+	return pca->desc->chg_ops->is_vbushigerr(pca, err);
+}
+EXPORT_SYMBOL(prop_chgalgo_is_vbushigerr);
+
+int prop_chgalgo_set_dev_notify(struct prop_chgalgo_device *pca, int event)
+{
+	if (pca_check_devtype(pca, PCA_DEVTYPE_CHARGER) < 0)
+		return -EINVAL;
+	if (!pca->desc->chg_ops->set_dev_notify)
+		return -ENOTSUPP;
+	return pca->desc->chg_ops->set_dev_notify(pca, event);
+}
+EXPORT_SYMBOL(prop_chgalgo_set_dev_notify);
 
 int prop_chgalgo_is_charging_enabled(struct prop_chgalgo_device *pca, bool *en)
 {

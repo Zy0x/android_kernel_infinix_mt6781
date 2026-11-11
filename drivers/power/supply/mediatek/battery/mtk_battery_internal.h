@@ -42,7 +42,7 @@
 #define UNIT_TRANS_60 60
 
 #define MAX_TABLE 10
-#define MAX_CHARGE_RDC 5
+#define MAX_CHARGE_RDC 0
 
 /* ============================================================ */
 /* power misc related */
@@ -621,6 +621,7 @@ enum CHARGE_SEL {
 	CHARGE_R4,
 };
 
+#if MAX_CHARGE_RDC > 0
 struct FUELGAUGE_CHARGER_STRUCT {
 	int rdc[MAX_CHARGE_RDC];
 };
@@ -628,13 +629,16 @@ struct FUELGAUGE_CHARGER_STRUCT {
 struct FUELGAUGE_CHARGE_PSEUDO100_S {
 	int pseudo[MAX_CHARGE_RDC];
 };
+#endif
 
 struct FUELGAUGE_PROFILE_STRUCT {
 	unsigned int mah;
 	unsigned short voltage;
 	unsigned short resistance; /* Ohm*/
 	signed int percentage;
+#if MAX_CHARGE_RDC > 0
 	struct FUELGAUGE_CHARGER_STRUCT charge_r;
+#endif
 };
 
 struct fuel_gauge_table {
@@ -649,7 +653,9 @@ struct fuel_gauge_table {
 	int shutdown_hl_zcv;
 
 	int size;
+#if MAX_CHARGE_RDC > 0
 	struct FUELGAUGE_CHARGE_PSEUDO100_S r_pseudo100;
+#endif
 	struct FUELGAUGE_PROFILE_STRUCT fg_profile[100];
 };
 

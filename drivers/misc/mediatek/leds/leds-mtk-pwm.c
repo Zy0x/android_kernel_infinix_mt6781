@@ -30,6 +30,8 @@
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " %s(%d) :" fmt, __func__, __LINE__
 
+extern int lcd_bl_level;
+
 struct mtk_leds_info;
 
 static int led_level_set(struct led_classdev *led_cdev,
@@ -206,6 +208,9 @@ int mtk_led_pwm_set_hardware(struct mtk_led_data *led_dat, int brightness)
 		int off_duty = led_dat->info.config.active_low ?
 			led_dat->info.config.pwm_period_ns : 0;
 
+		if (led_dat->conf.cdev.name && !strcmp(led_dat->conf.cdev.name, "lcd-backlight"))
+			lcd_bl_level = 0;
+
 		led_dat->conf.level = 0;
 		led_dat->info.duty = off_duty;
 		mutex_lock(&leds_mutex);
@@ -217,6 +222,9 @@ int mtk_led_pwm_set_hardware(struct mtk_led_data *led_dat, int brightness)
 	}
 
 	brightness = min(brightness, led_dat->conf.max_level);
+	if (led_dat->conf.cdev.name && !strcmp(led_dat->conf.cdev.name, "lcd-backlight"))
+		lcd_bl_level = brightness;
+
 	led_dat->conf.level = brightness;
 	max = (1 << led_dat->conf.trans_bits) - 1;
 	if (max <= 0)

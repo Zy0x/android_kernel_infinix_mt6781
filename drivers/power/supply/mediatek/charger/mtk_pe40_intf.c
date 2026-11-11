@@ -239,7 +239,7 @@ void mtk_pe40_reset(struct charger_manager *pinfo, bool enable)
 
 		mtk_pe40_set_mivr(pinfo, pinfo->data.min_charger_voltage);
 		pmic_enable_hw_vbus_ovp(true);
-		charger_enable_vbus_ovp(pinfo, true);
+		charger_enable_vbus_ovp(pinfo, true, 2);
 		pinfo->polling_interval = 10;
 		swchgalg->state = CHR_CC;
 		chr_err("set TD true\n");
@@ -639,7 +639,7 @@ int mtk_pe40_init_state(struct charger_manager *pinfo)
 	charger_dev_enable_termination(pinfo->chg1_dev, false);
 
 	pmic_enable_hw_vbus_ovp(false);
-	charger_enable_vbus_ovp(pinfo, false);
+	charger_enable_vbus_ovp(pinfo, false, 2);
 
 	pdata2 = &pinfo->chg2_data;
 

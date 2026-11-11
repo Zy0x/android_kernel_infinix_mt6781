@@ -29,6 +29,8 @@ enum adc_channel {
 	ADC_CHANNEL_TS,
 	ADC_CHANNEL_TBAT,
 	ADC_CHANNEL_VOUT,
+	ADC_CHANNEL_VUSB,
+	ADC_CHANNEL_TUSB,
 	ADC_CHANNEL_MAX,
 };
 
@@ -131,6 +133,8 @@ struct charger_ops {
 	int (*set_vbusovp_alarm)(struct charger_device *dev, u32 uV);
 	int (*reset_vbusovp_alarm)(struct charger_device *dev);
 	int (*is_vbuslowerr)(struct charger_device *dev, bool *err);
+	int (*is_direct_charging_vbushigerr)(struct charger_device *dev,
+					     bool *err);
 	int (*init_chip)(struct charger_device *dev);
 	int (*enable_auto_trans)(struct charger_device *dev, bool en);
 	int (*set_auto_trans)(struct charger_device *dev, u32 uV, bool en);
@@ -183,6 +187,19 @@ struct charger_ops {
 	int (*enable_hz)(struct charger_device *dev, bool en);
 
 	int (*enable_bleed_discharge)(struct charger_device *dev, bool en);
+	int (*get_ext_chgtyp)(struct charger_device *dev);
+	int (*set_dp_3_0_v)(struct charger_device *dev, bool en);
+	int (*set_dp_0_6_v)(struct charger_device *dev);
+	int (*set_dm_0_6_v)(struct charger_device *dev);
+	int (*set_dp_dm_recover)(struct charger_device *dev);
+	int (*set_tc30_gpio_enable)(struct charger_device *dev, bool en);
+	int (*get_boost_status)(struct charger_device *dev);
+	int (*set_stat_pin_val)(struct charger_device *dev, bool en);
+	int (*get_vdpm_status)(struct charger_device *dev, bool *en);
+	int (*charging_current_analyze)(struct charger_device *dev);
+	int (*input_current_analyze)(struct charger_device *dev);
+	int (*set_comp_ir)(struct charger_device *dev, u32 uV);
+	int (*set_comp_iv)(struct charger_device *dev, u32 uV);
 };
 
 static inline void *charger_dev_get_drvdata(
@@ -282,6 +299,27 @@ extern int charger_dev_safety_check(
 	struct charger_device *charger_dev, u32 polling_ieoc);
 extern int charger_dev_enable_hz(
 	struct charger_device *charger_dev, bool en);
+extern int charger_dev_get_ext_chgtyp(struct charger_device *charger_dev);
+extern int charger_dev_set_dp_3_0_v(
+	struct charger_device *charger_dev, bool en);
+extern int charger_dev_set_dp_0_6_v(struct charger_device *charger_dev);
+extern int charger_dev_set_dm_0_6_v(struct charger_device *charger_dev);
+extern int charger_dev_set_dp_dm_recover(struct charger_device *charger_dev);
+extern int charger_dev_set_tc30_gpio_enable(
+	struct charger_device *charger_dev, bool en);
+extern int charger_dev_get_boost_status(struct charger_device *charger_dev);
+extern int charger_dev_set_stat_pin_val(
+	struct charger_device *charger_dev, bool en);
+extern int charger_dev_get_vdpm_status(
+	struct charger_device *charger_dev, bool *en);
+extern int charger_dev_charging_current_analyze(
+	struct charger_device *charger_dev);
+extern int charger_dev_input_current_analyze(
+	struct charger_device *charger_dev);
+extern int charger_dev_set_comp_ir(
+	struct charger_device *charger_dev, u32 uV);
+extern int charger_dev_set_comp_iv(
+	struct charger_device *charger_dev, u32 uV);
 
 /* PE+/PE+2.0 */
 extern int charger_dev_send_ta_current_pattern(
@@ -334,6 +372,8 @@ extern int charger_dev_set_vbusovp_alarm(struct charger_device *chg_dev,
 					 u32 uV);
 extern int charger_dev_reset_vbusovp_alarm(struct charger_device *chg_dev);
 extern int charger_dev_is_vbuslowerr(struct charger_device *chg_dev, bool *err);
+extern int charger_dev_is_direct_charging_vbushigerr(
+	struct charger_device *chg_dev, bool *err);
 extern int charger_dev_init_chip(struct charger_device *chg_dev);
 extern int charger_dev_enable_auto_trans(struct charger_device *chg_dev,
 					 bool en);

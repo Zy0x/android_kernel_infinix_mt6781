@@ -306,9 +306,9 @@ int mtk_pdc_setup(struct charger_manager *info, int idx)
 
 	if (pd->pd_idx != idx || force_update) {
 		if (pd->cap.max_mv[idx] > 5000)
-			charger_enable_vbus_ovp(info, false);
+			charger_enable_vbus_ovp(info, false, 3);
 		else
-			charger_enable_vbus_ovp(info, true);
+			charger_enable_vbus_ovp(info, true, 3);
 
 		charger_dev_get_mivr(info->chg1_dev, &oldmivr);
 		mivr = info->data.min_charger_voltage / 1000;

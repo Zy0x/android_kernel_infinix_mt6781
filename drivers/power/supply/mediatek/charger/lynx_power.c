@@ -24,10 +24,10 @@
 bool g_lynx_bypass_active = false;
 EXPORT_SYMBOL(g_lynx_bypass_active);
 
-bool g_lynx_hyper_charge = true;
+bool g_lynx_hyper_charge = false;
 EXPORT_SYMBOL(g_lynx_hyper_charge);
 
-bool g_lynx_thermal_silencer = true;
+bool g_lynx_thermal_silencer = false;
 EXPORT_SYMBOL(g_lynx_thermal_silencer);
 
 extern int dcp_get_ta_status(void);

@@ -267,3 +267,53 @@ config CHARGER_MM8013
 	  Say Y to enable
 	  mm8013 driver.
 	  Set to Yes if MM8013 is used.
+
+config MTK_HVDCP20_SUPPORT
+	bool "MediaTek HVDCP 2.0 Interface Support"
+	depends on MTK_CHARGER
+	default y
+	help
+	  Enable Qualcomm QuickCharge / HVDCP 2.0 TA detection and voltage control.
+
+config MTK_TC30_SUPPORT
+	bool "MediaTek TC 3.0 Interface Support"
+	depends on MTK_CHARGER
+	default y
+	help
+	  Enable MediaTek TC 3.0 TA protocol interface.
+
+config PROP_TA_CLASS
+	bool "Richtek Proprietary TA Class Support"
+	default y
+	help
+	  Enable Richtek proprietary Travel Adapter class interface.
+
+config RFC_TA
+	bool "Richtek Fast Charge TA Driver"
+	depends on PROP_TA_CLASS
+	default y
+	help
+	  Enable Richtek RFC fast charge TA driver.
+
+config PCA_RFC_TA
+	bool "Proprietary Charger Algorithm RFC TA Support"
+	depends on RT_PROP_CHGALGO
+	default y
+	help
+	  Enable RFC adapter control in proprietary charging algorithm.
+
+config TRAN_CHARGER_FUNCS_ADD
+	bool "Transsion Charger Functions and Thermal Control"
+	depends on MTK_CHARGER
+	default y
+	help
+	  Enable Transsion charging helper functions, JEITA thermal throttling,
+	  call state current drop, and OTG battery protection.
+
+config TRAN_CHARGER_AGING_SUPPORT
+	bool "Transsion Battery Aging and Health Monitoring Support"
+	depends on MTK_CHARGER
+	default y
+	help
+	  Enable Transsion battery aging estimation, cycle counting, and
+	  health uevent reporting.

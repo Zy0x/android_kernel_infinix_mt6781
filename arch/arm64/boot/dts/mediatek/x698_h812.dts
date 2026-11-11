@@ -5487,6 +5487,7 @@
       int_deg = <0x0>;
     };
     charger {
+      status = "disabled";
       compatible = "mediatek,mt6370_pmu_charger";
       interrupt-names = "chg_mivr", "chg_aiclmeasi", "attachi", "ovpctrl_uvp_d_evt", "chg_wdtmri", "chg_vbusov", "chg_tmri", "chg_treg", "dcdti";
       charger_name = "primary_chg";

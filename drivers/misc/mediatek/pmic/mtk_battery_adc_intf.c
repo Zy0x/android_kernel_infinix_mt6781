@@ -52,8 +52,6 @@ int pmic_get_battery_voltage(void)
 
 bool pmic_is_battery_exist(void)
 {
-	return true; /* Infinix Hardware Battery Guard */
-
 	int temp;
 	bool is_bat_exist;
 	int hw_id = pmic_get_register_value(PMIC_HWCID);

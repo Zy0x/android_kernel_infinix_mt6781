@@ -51,7 +51,7 @@ static int pe_enable_vbus_ovp(struct charger_manager *pinfo, bool enable)
 		return ret;
 	}
 
-	charger_enable_vbus_ovp(pinfo, enable);
+	charger_enable_vbus_ovp(pinfo, enable, 0);
 
 	return ret;
 }

@@ -409,18 +409,19 @@ bool set_charge_power_sel(enum CHARGE_SEL select)
 
 int dump_pseudo100(enum CHARGE_SEL select)
 {
+#if MAX_CHARGE_RDC > 0
 	int i = 0;
 
 	bm_err("%s:select=%d\n", __func__, select);
 
-	if (select > MAX_CHARGE_RDC || select < 0)
+	if (select >= MAX_CHARGE_RDC || select < 0)
 		return 0;
 
 	for (i = 0; i < MAX_TABLE; i++) {
 		bm_err("%6d\n",
 			fg_table_cust_data.fg_profile[i].r_pseudo100.pseudo[select]);
 	}
-
+#endif
 	return 0;
 }
 
@@ -616,12 +617,12 @@ static int battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		val->intval = data->BAT_batt_vol * 1000;
 		if (val->intval <= 0)
-			val->intval = 4200000;
+			val->intval = battery_get_bat_voltage() * 1000;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
 		val->intval = gm.tbat_precise;
-		if (val->intval > 500 || val->intval < -100 || val->intval == 0)
-			val->intval = 250;
+		if (val->intval <= 0 || val->intval > 700 || val->intval < -400)
+			val->intval = battery_get_bat_temperature() * 10;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY_LEVEL: {
 		int cap = mtk_battery_get_ui_capacity(data);
@@ -667,8 +668,7 @@ static int battery_get_property(struct power_supply *psy,
 			int q_max_uah = 0;
 
 			q_max_mah =
-				fg_table_cust_data.fg_profile[
-				gm.battery_id].q_max / 10;
+				fg_table_cust_data.fg_profile[0].q_max;
 
 			q_max_uah = q_max_mah * 1000;
 			if (q_max_uah <= 100000) {
@@ -1163,7 +1163,11 @@ static void dump_daemon_table(struct seq_file *m)
 				ptr[i].mah,
 				ptr[i].voltage,
 				ptr[i].resistance,
+#if MAX_CHARGE_RDC > 0
 				ptr[i].charge_r.rdc[0],
+#else
+				ptr[i].resistance,
+#endif
 				ptr[i].percentage);
 		}
 	}
@@ -1178,7 +1182,11 @@ static void dump_daemon_table(struct seq_file *m)
 			ptr[i].mah,
 			ptr[i].voltage,
 			ptr[i].resistance,
+#if MAX_CHARGE_RDC > 0
 			ptr[i].charge_r.rdc[0],
+#else
+			ptr[i].resistance,
+#endif
 			ptr[i].percentage);
 
 	}
@@ -1193,7 +1201,11 @@ static void dump_daemon_table(struct seq_file *m)
 			ptr[i].mah,
 			ptr[i].voltage,
 			ptr[i].resistance,
+#if MAX_CHARGE_RDC > 0
 			ptr[i].charge_r.rdc[0],
+#else
+			ptr[i].resistance,
+#endif
 			ptr[i].percentage);
 	}
 
@@ -1241,7 +1253,11 @@ static void dump_kernel_table(struct seq_file *m)
 				ptr[i].mah,
 				ptr[i].voltage,
 				ptr[i].resistance,
+#if MAX_CHARGE_RDC > 0
 				ptr[i].charge_r.rdc[0],
+#else
+				ptr[i].resistance,
+#endif
 				ptr[i].percentage);
 		}
 	}
@@ -1260,7 +1276,11 @@ static void dump_kernel_table(struct seq_file *m)
 				ptr[i].mah,
 				ptr[i].voltage,
 				ptr[i].resistance,
+#if MAX_CHARGE_RDC > 0
 				ptr[i].charge_r.rdc[0],
+#else
+				ptr[i].resistance,
+#endif
 				ptr[i].percentage);
 		}
 	}
@@ -1461,7 +1481,7 @@ static ssize_t store_Battery_Temperature(
 
 	if (kstrtoint(buf, 10, &temp) == 0) {
 
-		if (temp > 58 || temp < -10) {
+		if (temp != 0xffff && (temp > 58 || temp < -10)) {
 			bm_err(
 				"%s: setting tmp:%d!,reject set\n",
 				__func__,
@@ -1480,14 +1500,12 @@ static ssize_t store_Battery_Temperature(
 			wakeup_fg_algo(FG_INTR_BAT_TMP_C_HT);
 			wakeup_fg_algo(FG_INTR_BAT_TMP_HT);
 		}
-#ifndef OPLUS_FEATURE_CHG_BASIC
 		battery_main.BAT_batt_temp = force_get_tbat(true);
 		bm_err(
 			"%s: fixed_bat_tmp:%d ,tmp:%d!\n",
 			__func__,
 			temp, battery_main.BAT_batt_temp);
 		battery_update(&battery_main);
-#endif /* OPLUS_FEATURE_CHG_BASIC */
 	} else {
 		bm_err("%s: format error!\n", __func__);
 	}
@@ -1619,92 +1637,15 @@ int BattThermistorConverTemp(int Res)
 	int RES1 = 0, RES2 = 0;
 	int TBatt_Value = -2000, TMP1 = 0, TMP2 = 0;
 
-#if defined(CONFIG_MACH_MT6781)
-	if(get_PCB_Version() < 4){
-		if(odm_select_bat_ntc_support == ODM_SPACE_B_33W){
-			if (Res >= Fg_Temperature_Table_33w_temp[0].TemperatureR) {
-				TBatt_Value = -400;
-			} else if (Res <= Fg_Temperature_Table_33w_temp[20].TemperatureR) {
-				TBatt_Value = 900;
-			} else {
-				RES1 = Fg_Temperature_Table_33w_temp[0].TemperatureR;
-				TMP1 = Fg_Temperature_Table_33w_temp[0].BatteryTemp;
-
-				for (i = 0; i <= 20; i++) {
-					if (Res >= Fg_Temperature_Table_33w_temp[i].TemperatureR) {
-						RES2 = Fg_Temperature_Table_33w_temp[i].TemperatureR;
-						TMP2 = Fg_Temperature_Table_33w_temp[i].BatteryTemp;
-						break;
-					}
-					{	/* hidden else */
-						RES1 = Fg_Temperature_Table_33w_temp[i].TemperatureR;
-						TMP1 = Fg_Temperature_Table_33w_temp[i].BatteryTemp;
-					}
-				}
-
-				TBatt_Value = (((Res - RES2) * TMP1) +
-					((RES1 - Res) * TMP2)) * 10 / (RES1 - RES2);
-			}
-		} else {
-			if (Res >= Fg_Temperature_Table_18w_temp[0].TemperatureR) {
-				TBatt_Value = -400;
-			} else if (Res <= Fg_Temperature_Table_18w_temp[20].TemperatureR) {
-				TBatt_Value = 900;
-			} else {
-				RES1 = Fg_Temperature_Table_18w_temp[0].TemperatureR;
-				TMP1 = Fg_Temperature_Table_18w_temp[0].BatteryTemp;
-
-				for (i = 0; i <= 20; i++) {
-					if (Res >= Fg_Temperature_Table_18w_temp[i].TemperatureR) {
-						RES2 = Fg_Temperature_Table_18w_temp[i].TemperatureR;
-						TMP2 = Fg_Temperature_Table_18w_temp[i].BatteryTemp;
-						break;
-					}
-					{	/* hidden else */
-						RES1 = Fg_Temperature_Table_18w_temp[i].TemperatureR;
-						TMP1 = Fg_Temperature_Table_18w_temp[i].BatteryTemp;
-					}
-				}
-
-				TBatt_Value = (((Res - RES2) * TMP1) +
-					((RES1 - Res) * TMP2)) * 10 / (RES1 - RES2);
-			}
-		}
-	} else {
-			if (Res >= Fg_Temperature_Table_new_temp[0].TemperatureR) {
-				TBatt_Value = -400;
-			} else if (Res <= Fg_Temperature_Table_new_temp[27].TemperatureR) {
-				TBatt_Value = 950;
-			} else {
-				RES1 = Fg_Temperature_Table_new_temp[0].TemperatureR;
-				TMP1 = Fg_Temperature_Table_new_temp[0].BatteryTemp;
-
-				for (i = 0; i <= 27; i++) {
-					if (Res >= Fg_Temperature_Table_new_temp[i].TemperatureR) {
-						RES2 = Fg_Temperature_Table_new_temp[i].TemperatureR;
-						TMP2 = Fg_Temperature_Table_new_temp[i].BatteryTemp;
-						break;
-					}
-					{	/* hidden else */
-						RES1 = Fg_Temperature_Table_new_temp[i].TemperatureR;
-						TMP1 = Fg_Temperature_Table_new_temp[i].BatteryTemp;
-					}
-				}
-
-				TBatt_Value = (((Res - RES2) * TMP1) +
-					((RES1 - Res) * TMP2)) * 10 / (RES1 - RES2);
-			}
-	}
-#else
 	if (Res >= Fg_Temperature_Table[0].TemperatureR) {
-		TBatt_Value = -400;
-	} else if (Res <= Fg_Temperature_Table[26].TemperatureR) {
-		TBatt_Value = 900;
+		TBatt_Value = Fg_Temperature_Table[0].BatteryTemp * 10;
+	} else if (Res <= Fg_Temperature_Table[20].TemperatureR) {
+		TBatt_Value = Fg_Temperature_Table[20].BatteryTemp * 10;
 	} else {
 		RES1 = Fg_Temperature_Table[0].TemperatureR;
 		TMP1 = Fg_Temperature_Table[0].BatteryTemp;
 
-		for (i = 0; i <= 26; i++) {
+		for (i = 0; i <= 20; i++) {
 			if (Res >= Fg_Temperature_Table[i].TemperatureR) {
 				RES2 = Fg_Temperature_Table[i].TemperatureR;
 				TMP2 = Fg_Temperature_Table[i].BatteryTemp;
@@ -1716,10 +1657,12 @@ int BattThermistorConverTemp(int Res)
 			}
 		}
 
-		TBatt_Value = (((Res - RES2) * TMP1) +
-			((RES1 - Res) * TMP2)) * 10 / (RES1 - RES2);
+		if (RES1 != RES2)
+			TBatt_Value = (((Res - RES2) * TMP1) +
+				((RES1 - Res) * TMP2)) * 10 / (RES1 - RES2);
+		else
+			TBatt_Value = TMP2 * 10;
 	}
-#endif
 	bm_trace(
 		"[%s] %d %d %d %d %d %d\n",
 		__func__,
@@ -1843,15 +1786,7 @@ int BattVoltToTemp(int dwVolt, int volt_cali)
 
 	TRes_temp = (gm.rbat.rbat_pull_up_r * (long long) dwVolt);
 #ifdef RBAT_PULL_UP_VOLT_BY_BIF
-#if defined(CONFIG_MACH_MT6781)
-	if((odm_select_bat_ntc_support == ODM_SPACE_B_33W) || (odm_select_bat_ntc_support == ODM_SPACE_D_18W)){
-		vbif28 = gm.rbat.rbat_pull_up_volt;
-	}else{
-		vbif28 = pmic_get_vbif28_volt() + volt_cali;
-	}
-#else
 	vbif28 = pmic_get_vbif28_volt() + volt_cali;
-#endif
 	delta_v = abs(vbif28 - dwVolt);
 	if (delta_v == 0)
 		delta_v = 1;
@@ -2178,32 +2113,11 @@ int force_get_tbat_internal(bool update)
 
 int force_get_tbat(bool update)
 {
-	gm.tbat_precise = 250;
-	return 25;
-#if 0
 	int bat_temperature_val = 0;
 	int counts = 0;
-	int borad_temp = 0;
-	if (prj_is_subboard_temp_support()){
-		if (oplus_chg_get_voocphy_support()) {
-			borad_temp = oplus_chg_get_subboard_temp_cal()/10;
-			if (prj_for_mtk_60w_support() == true) {
-					bat_temperature_val = force_get_tbat_internal(update);
-					bm_debug("[force_get_tbat] real battery temp:%d subborad_temp:%d\n",
-					bat_temperature_val,borad_temp);
-			}
-		} else {
-			borad_temp = oplus_force_get_subboard_temp()/10;
-		}
-		bm_debug("[%s] borad_temp:%d precise:%d\n", __func__,
-			borad_temp, gm.tbat_precise);
-
-		return borad_temp;
-	}
 
 	if (is_fg_disabled()) {
-		bm_debug("[%s] fixed TBAT=25 t\n",
-			__func__);
+		bm_debug("[%s] fixed TBAT=25 t\n", __func__);
 		gm.tbat_precise = 250;
 		return 25;
 	}
@@ -2213,67 +2127,43 @@ int force_get_tbat(bool update)
 	gm.tbat_precise = 250;
 	return 25;
 #else
-	if (is_fuelgauge_apply() == false) {
-		return oplus_gauge_get_batt_temperature()/10;
-	} else {
-		bat_temperature_val = force_get_tbat_internal(update);
-		bm_err("[force_get_tbat] tbat_precise bat_temperature_val:%d\n",
-			bat_temperature_val);
-		while (counts < 5 && bat_temperature_val >= 60) {
-//#ifdef OPLUS_FEATURE_CHG_BASIC
-/*
-			bm_err("[%s]over60 count=%d, bat_temp=%d\n",
-				__func__,
-				counts, bat_temperature_val);
-*/
-//#endif
-			bat_temperature_val = force_get_tbat_internal(true);
-			counts++;
-		}
+	bat_temperature_val = force_get_tbat_internal(update);
+	while (counts < 5 && bat_temperature_val >= 60) {
+		bat_temperature_val = force_get_tbat_internal(true);
+		counts++;
+	}
 
-	if (bat_temperature_val <=
-		BATTERY_TMP_TO_DISABLE_GM30 && gm.disableGM30 == false) {
-		bm_err(
-			"battery temperature is too low %d and disable GM3.0\n",
-			bat_temperature_val);
+	if (bat_temperature_val <= BATTERY_TMP_TO_DISABLE_GM30 &&
+	    gm.disableGM30 == false) {
+		bm_err("battery temperature is too low %d and disable GM3.0\n",
+		       bat_temperature_val);
 		disable_fg();
-#ifndef OPLUS_FEATURE_CHG_BASIC
 		if (gm.disableGM30 == true)
 			battery_main.BAT_CAPACITY = 50;
 		battery_update(&battery_main);
-#endif /* OPLUS_FEATURE_CHG_BASIC */
 	}
 
 	if (bat_temperature_val <= BATTERY_TMP_TO_DISABLE_NAFG) {
 		int fgv;
 
 		fgv = gauge_get_hw_version();
-		if (fgv >= GAUGE_HW_V1000
-		&& fgv < GAUGE_HW_V2000) {
+		if (fgv >= GAUGE_HW_V1000 && fgv < GAUGE_HW_V2000)
 			en_intr_VBATON_UNDET(0);
-		}
 
 		gm.ntc_disable_nafg = true;
 		bm_err("[%s] ntc_disable_nafg %d %d\n",
-			__func__,
-			bat_temperature_val,
-			DEFAULT_BATTERY_TMP_WHEN_DISABLE_NAFG);
+		       __func__, bat_temperature_val,
+		       DEFAULT_BATTERY_TMP_WHEN_DISABLE_NAFG);
 
 		gm.tbat_precise = DEFAULT_BATTERY_TMP_WHEN_DISABLE_NAFG * 10;
-#ifndef OPLUS_FEATURE_CHG_BASIC
 		return DEFAULT_BATTERY_TMP_WHEN_DISABLE_NAFG;
-#else
-			return bat_temperature_val;
-#endif
 	}
 
 	gm.ntc_disable_nafg = false;
 	bm_debug("[%s] t:%d precise:%d\n", __func__,
-		bat_temperature_val, gm.tbat_precise);
+		 bat_temperature_val, gm.tbat_precise);
 
-		return bat_temperature_val;
-	}
-#endif
+	return bat_temperature_val;
 #endif
 }
 unsigned int battery_meter_get_fg_time(void)

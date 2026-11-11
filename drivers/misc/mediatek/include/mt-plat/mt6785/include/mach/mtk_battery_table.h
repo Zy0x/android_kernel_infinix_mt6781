@@ -31,7 +31,7 @@
 #define Q_MAX_H_CURRENT 10000
 
 /* multiple battery profile compile options */
-/*#define MTK_GET_BATTERY_ID_BY_AUXADC*/
+#define MTK_GET_BATTERY_ID_BY_AUXADC
 
 
 /* if ACTIVE_TABLE == 0 && MULTI_BATTERY == 0
@@ -85,7 +85,7 @@ int g_Q_MAX_SYS_VOLTAGE[TOTAL_BATTERY_NUMBER] = { 3400, 3400, 3400, 3400};
 /* 0~0.5V for battery 0, 0.5~1V for battery 1*/
 /* 1~1.5V for battery 2, -1 for the last one (battery 3) */
 int g_battery_id_voltage[TOTAL_BATTERY_NUMBER] = {
-	500000, 1000000, 1500000, -1};
+	150000, 1000000, 1400000, -1};
 
 int g_FG_PSEUDO1[MAX_TABLE][TOTAL_BATTERY_NUMBER] = {
 	/*bat1,   bat2,   bat3,    bat4*/

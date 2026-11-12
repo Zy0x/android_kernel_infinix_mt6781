@@ -458,35 +458,6 @@ int32_t nvt_set_spi_speed(uint32_t hz)
 	return ret;
 }
 
-int32_t nvt_read_event_regs(uint8_t start_reg, uint8_t *out, uint16_t len)
-{
-	uint8_t buf[36] = { 0 };
-	int32_t ret;
-
-	if (!ts || !ts->client || !ts->mmap || !out || len == 0 || len > 32)
-		return -EINVAL;
-
-	mutex_lock(&ts->lock);
-	if (!bTouchIsAwake) {
-		mutex_unlock(&ts->lock);
-		return -EAGAIN;
-	}
-
-	ret = nvt_set_page(ts->mmap->EVENT_BUF_ADDR);
-	if (ret) {
-		mutex_unlock(&ts->lock);
-		return ret;
-	}
-
-	buf[0] = start_reg;
-	ret = CTP_SPI_READ(ts->client, buf, len + 1);
-	if (ret == 0)
-		memcpy(out, &buf[1], len);
-	mutex_unlock(&ts->lock);
-
-	return ret;
-}
-
 void nvt_reset_touch_stats(void)
 {
 	if (!ts)
@@ -513,8 +484,12 @@ void nvt_reset_touch_stats(void)
 
 void nvt_reapply_touch_modes(void)
 {
-	if (!ts || !bTouchIsAwake)
+	if (!ts || !ts->client || !bTouchIsAwake)
 		return;
+
+	if (ts->spi_max_hz_req >= 4800000 && ts->spi_max_hz_req <= 15000000 &&
+	    ts->client->max_speed_hz != ts->spi_max_hz_req)
+		nvt_set_spi_speed(ts->spi_max_hz_req);
 
 	if (ts->game_mode_enabled)
 		nvt_set_game_mode(true);
@@ -1821,9 +1796,13 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	ts->client->controller_data = (void *)&ts->spi_ctrl;
 #endif
 
-	ts->spi_max_hz_req = ts->client->max_speed_hz;
+	ts->spi_max_hz_req = 15000000;
 	ts->game_mode_enabled = true;
 	ts->hopping_fix_freq = true;
+	ts->has_jitter_level = true;
+	ts->jitter_level = 0x00;
+	ts->has_smooth_level = true;
+	ts->smooth_level = 0x00;
 	ts->last_cmd_ret = 0;
 	ts->dt_us_min = U32_MAX;
 

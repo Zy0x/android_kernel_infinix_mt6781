@@ -663,25 +663,16 @@ static const struct file_operations nvt_spi_speed_fops = {
 
 static int nvt_touch_stats_show(struct seq_file *m, void *v)
 {
-	uint8_t r50[2] = { 0 };
-	uint8_t r5e_buf[2] = { 0 };
-	uint8_t r60[2] = { 0 };
-	uint8_t r78[8] = { 0 };
-	int32_t ret50, ret5e, ret60, ret78;
 	uint32_t ev_addr = 0;
 
 	if (!ts || !ts->client)
 		return -ENODEV;
 
-	ev_addr = ts->mmap ? ts->mmap->EVENT_BUF_ADDR : 0;
-	ret50 = nvt_read_event_regs(0x50, r50, sizeof(r50));
-	ret5e = nvt_read_event_regs(0x5E, r5e_buf, sizeof(r5e_buf));
-	ret60 = nvt_read_event_regs(0x60, r60, sizeof(r60));
-	ret78 = nvt_read_event_regs(0x78, r78, sizeof(r78));
-
 	mutex_lock(&ts->lock);
-	seq_printf(m, "awake=%u pid=0x%04X fw_ver=0x%02X ev_buf=0x%05X spi_hz=%u game=%d hop_fix=%d jitter=%d(0x%02X) smooth=%d(0x%02X)\n",
-		   bTouchIsAwake, ts->nvt_pid, ts->fw_ver, ev_addr, ts->client->max_speed_hz,
+	ev_addr = ts->mmap ? ts->mmap->EVENT_BUF_ADDR : 0;
+	seq_printf(m, "awake=%u pid=0x%04X fw_ver=0x%02X ev_buf=0x%05X spi_hz=%u spi_req=%u game=%d hop_fix=%d jitter=%d(0x%02X) smooth=%d(0x%02X)\n",
+		   bTouchIsAwake, ts->nvt_pid, ts->fw_ver, ev_addr,
+		   ts->client->max_speed_hz, ts->spi_max_hz_req,
 		   ts->game_mode_enabled ? 1 : 0, ts->hopping_fix_freq ? 1 : 0,
 		   ts->has_jitter_level ? 1 : 0, ts->jitter_level,
 		   ts->has_smooth_level ? 1 : 0, ts->smooth_level);
@@ -692,22 +683,10 @@ static int nvt_touch_stats_show(struct seq_file *m, void *v)
 		   ts->dt_us_last,
 		   (ts->dt_us_min == U32_MAX) ? 0 : ts->dt_us_min,
 		   ts->dt_us_max, ts->last_x, ts->last_y, ts->last_dx, ts->last_dy);
+	seq_printf(m, "last_cmd=0x%02X sub=0x%02X val=0x%02X ack=0x%02X ret=%d\n",
+		   ts->last_cmd, ts->last_cmd_sub, ts->last_cmd_val,
+		   ts->last_cmd_ack, ts->last_cmd_ret);
 	mutex_unlock(&ts->lock);
-
-	if (ret5e == 0) {
-		uint8_t r5e = r5e_buf[0];
-		uint8_t r5f = r5e_buf[1];
-		seq_printf(m, "reg50=%02X:%02X(r=%d) reg60=%02X:%02X(r=%d) reg5e=0x%02X (edge=%u pwr=%u hop_fix=%u hop_poll=%u jitter=%u hs=%u) reg5f=0x%02X\n",
-			   r50[0], r50[1], ret50, r60[0], r60[1], ret60,
-			   r5e, r5e & 0x03, (r5e >> 2) & 0x01, (r5e >> 3) & 0x01,
-			   (r5e >> 4) & 0x01, (r5e >> 6) & 0x01, (r5e >> 7) & 0x01, r5f);
-	} else {
-		seq_printf(m, "reg5e=unavail(%d)\n", ret5e);
-	}
-	if (ret78 == 0) {
-		seq_printf(m, "reg78=%02X %02X %02X %02X %02X %02X %02X %02X\n",
-			   r78[0], r78[1], r78[2], r78[3], r78[4], r78[5], r78[6], r78[7]);
-	}
 
 	return 0;
 }

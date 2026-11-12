@@ -112,7 +112,9 @@ static int fops_vcodec_open(struct file *file)
 
 		dev->dec_capability =
 			vcu_get_vdec_hw_capa(dev->vcu_plat_dev);
-		mtk_v4l2_debug(0, "decoder capability %x", dev->dec_capability);
+		/* Force unlock 4K & high-resolution decoding */
+		dev->dec_capability &= ~VCODEC_CAPABILITY_4K_DISABLED;
+		mtk_v4l2_debug(0, "decoder capability %x (4K unlocked)", dev->dec_capability);
 	}
 
 	list_add(&ctx->list, &dev->ctx_list);

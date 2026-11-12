@@ -282,6 +282,48 @@ static int vdec_decode(unsigned long h_vdec, struct mtk_vcodec_mem *bs,
 	*(errormap_info + bs->index % VB2_MAX_FRAME) =
 		inst->vsi->dec.error_map;
 
+	/* 4K VDEC HARDWARE UNLOCK:
+	 * Intercept VDEC_HW_NOT_SUPPORT flag from VCU for resolutions up to 4096x2304.
+	 * Prevents erroneous fallback to slow CPU software decoding (c2.android.vp9.decoder).
+	 */
+	if ((*src_chg & VDEC_HW_NOT_SUPPORT) != 0U && ret != -EIO) {
+		unsigned int coded_w = inst->ctx->q_data[MTK_Q_DATA_SRC].coded_width;
+		unsigned int coded_h = inst->ctx->q_data[MTK_Q_DATA_SRC].coded_height;
+		unsigned int pic_w = inst->vsi->pic.pic_w;
+		unsigned int pic_h = inst->vsi->pic.pic_h;
+
+		mtk_vcodec_err(inst, "[4K_VDEC] VCU returned HW_NOT_SUPPORT! pic=(%u,%u) buf=(%u,%u) coded=(%u,%u) ret=%d\n",
+			pic_w, pic_h, inst->vsi->pic.buf_w, inst->vsi->pic.buf_h, coded_w, coded_h, ret);
+
+		if ((pic_w > 0 && pic_w <= MTK_VDEC_MAX_W && pic_h <= MTK_VDEC_MAX_H) ||
+		    (coded_w > 0 && coded_w <= MTK_VDEC_MAX_W && coded_h <= MTK_VDEC_MAX_H)) {
+			mtk_vcodec_err(inst, "[4K_VDEC] UNLOCKING 4K HARDWARE DECODE! Overriding VDEC_HW_NOT_SUPPORT.\n");
+			*src_chg &= ~VDEC_HW_NOT_SUPPORT;
+			inst->vsi->dec.vdec_changed_info &= ~VDEC_HW_NOT_SUPPORT;
+
+			if (pic_w > 0) {
+				*src_chg |= VDEC_RES_CHANGE;
+				inst->vsi->dec.vdec_changed_info |= VDEC_RES_CHANGE;
+			} else if (coded_w > 0) {
+				inst->vsi->pic.pic_w = coded_w;
+				inst->vsi->pic.pic_h = coded_h;
+				inst->vsi->pic.buf_w = round_up(coded_w, 64);
+				inst->vsi->pic.buf_h = round_up(coded_h, 64);
+				inst->vsi->pic.fb_sz[0] = inst->vsi->pic.buf_w * inst->vsi->pic.buf_h * 3 / 2;
+				inst->vsi->pic.fb_sz[1] = 0;
+				inst->vsi->crop.left = 0;
+				inst->vsi->crop.top = 0;
+				inst->vsi->crop.width = coded_w;
+				inst->vsi->crop.height = coded_h;
+				if (inst->vsi->dec.dpb_sz == 0)
+					inst->vsi->dec.dpb_sz = 8;
+				*src_chg |= VDEC_RES_CHANGE;
+				inst->vsi->dec.vdec_changed_info |= VDEC_RES_CHANGE;
+			}
+			ret = 0;
+		}
+	}
+
 	if ((*src_chg & VDEC_NEED_SEQ_HEADER) != 0U)
 		mtk_vcodec_err(inst, "- need first seq header -");
 	else if ((*src_chg & VDEC_RES_CHANGE) != 0U)

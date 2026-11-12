@@ -3179,11 +3179,8 @@ static void mtk_output_dsi_disable(struct mtk_dsi *dsi,
 {
 	bool new_doze_state = mtk_dsi_doze_state(dsi);
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(dsi->encoder.crtc);
-
-	#ifdef OPLUS_BUG_STABILITY
 	int blank_mode = FB_BLANK_POWERDOWN;
 	struct fb_event event;
-	#endif /* OPLUS_BUG_STABILITY */
 
 	DDPINFO("%s+ doze_enabled:%d\n", __func__, new_doze_state);
 	//#ifdef OPLUS_FEATURE_AOD
@@ -3202,15 +3199,10 @@ static void mtk_output_dsi_disable(struct mtk_dsi *dsi,
 		return;
 	}
 
-	{
-		int blank_mode = FB_BLANK_POWERDOWN;
-		struct fb_event event;
-
-		event.info = NULL;
-		event.data = &blank_mode;
-		fb_notifier_call_chain(FB_EARLY_EVENT_BLANK, &event);
-		usleep_range(15 * 1000, 15 * 1000);
-	}
+	event.info = NULL;
+	event.data = &blank_mode;
+	fb_notifier_call_chain(FB_EARLY_EVENT_BLANK, &event);
+	usleep_range(15 * 1000, 15 * 1000);
 
 	mtk_drm_crtc_wait_blank(mtk_crtc);
 

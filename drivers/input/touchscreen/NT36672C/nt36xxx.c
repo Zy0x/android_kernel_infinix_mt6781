@@ -321,6 +321,194 @@ int32_t nvt_write_addr(uint32_t addr, uint8_t data)
 	return ret;
 }
 
+int32_t nvt_send_host_cmd(uint8_t cmd, uint8_t subcmd, bool has_subcmd,
+			  uint8_t val, bool has_val, uint8_t *ack_out)
+{
+	int32_t i, retry = 5;
+	uint8_t buf[5] = { 0 };
+	uint8_t tx_len = 2;
+	int32_t ret = -EAGAIN;
+	uint8_t ack = 0xFF;
+
+	if (!ts || !ts->client || !ts->mmap)
+		return -ENODEV;
+
+	mutex_lock(&ts->lock);
+
+	ts->last_cmd = cmd;
+	ts->last_cmd_sub = has_subcmd ? subcmd : 0;
+	ts->last_cmd_val = has_val ? val : 0;
+
+	if (!bTouchIsAwake) {
+		ts->last_cmd_ack = 0xFF;
+		ts->last_cmd_ret = -EAGAIN;
+		mutex_unlock(&ts->lock);
+		if (ack_out)
+			*ack_out = 0xFF;
+		return -EAGAIN;
+	}
+
+	if (has_subcmd && has_val)
+		tx_len = 4;
+	else if (has_subcmd)
+		tx_len = 3;
+
+	nvt_set_page(ts->mmap->EVENT_BUF_ADDR);
+
+	for (i = 0; i < retry; i++) {
+		buf[0] = EVENT_MAP_HOST_CMD;
+		buf[1] = cmd;
+		buf[2] = subcmd;
+		buf[3] = val;
+		ret = CTP_SPI_WRITE(ts->client, buf, tx_len);
+		if (ret) {
+			ack = 0xFE;
+			continue;
+		}
+
+		msleep(20);
+
+		buf[0] = EVENT_MAP_HOST_CMD;
+		buf[1] = 0xFF;
+		ret = CTP_SPI_READ(ts->client, buf, 2);
+		if (ret) {
+			ack = 0xFD;
+			continue;
+		}
+
+		ack = buf[1];
+		if (ack == 0x00) {
+			ret = 0;
+			break;
+		}
+		ret = -ETIMEDOUT;
+	}
+
+	if (ret == 0) {
+		if (cmd == EVENTBUFFER_GAME_ON)
+			ts->game_mode_enabled = true;
+		else if (cmd == EVENTBUFFER_GAME_OFF)
+			ts->game_mode_enabled = false;
+		else if (cmd == EVENTBUFFER_HOPPING_FIX_FREQ_ON)
+			ts->hopping_fix_freq = true;
+		else if (cmd == EVENTBUFFER_HOPPING_FIX_FREQ_OFF)
+			ts->hopping_fix_freq = false;
+		else if (cmd == EVENTBUFFER_EXT_CMD && has_subcmd && has_val) {
+			if (subcmd == EVENTBUFFER_EXT_JITTER_LEVEL) {
+				ts->has_jitter_level = true;
+				ts->jitter_level = val;
+			} else if (subcmd == EVENTBUFFER_EXT_SMOOTH_LEVEL) {
+				ts->has_smooth_level = true;
+				ts->smooth_level = val;
+			}
+		}
+	}
+
+	ts->last_cmd_ack = ack;
+	ts->last_cmd_ret = ret;
+	mutex_unlock(&ts->lock);
+
+	if (ack_out)
+		*ack_out = ack;
+
+	NVT_LOG("cmd=0x%02X sub=0x%02X val=0x%02X len=%u ack=0x%02X ret=%d tries=%d\n",
+		cmd, ts->last_cmd_sub, ts->last_cmd_val, tx_len, ack, ret, i);
+
+	return ret;
+}
+
+int32_t nvt_set_game_mode(bool enable)
+{
+	uint8_t ack = 0xFF;
+	int32_t ret;
+
+	ret = nvt_send_host_cmd(enable ? EVENTBUFFER_GAME_ON : EVENTBUFFER_GAME_OFF,
+				0, false, 0, false, &ack);
+	if (!ts)
+		return ret;
+
+	mutex_lock(&ts->lock);
+	if (ret == 0)
+		ts->game_mode_enabled = enable;
+	else if (!enable)
+		ts->game_mode_enabled = false;
+	mutex_unlock(&ts->lock);
+
+	return ret;
+}
+
+int32_t nvt_set_spi_speed(uint32_t hz)
+{
+	int32_t ret;
+
+	if (!ts || !ts->client)
+		return -ENODEV;
+	if (hz < 4800000 || hz > 9600000)
+		return -EINVAL;
+
+	mutex_lock(&ts->lock);
+	ts->client->max_speed_hz = hz;
+	ts->spi_max_hz_req = hz;
+	ret = spi_setup(ts->client);
+	mutex_unlock(&ts->lock);
+
+	NVT_LOG("spi max_speed_hz set to %u ret=%d\n", hz, ret);
+	return ret;
+}
+
+int32_t nvt_read_event_regs(uint8_t start_reg, uint8_t *out, uint16_t len)
+{
+	uint8_t buf[36] = { 0 };
+	int32_t ret;
+
+	if (!ts || !ts->client || !ts->mmap || !out || len == 0 || len > 32)
+		return -EINVAL;
+
+	mutex_lock(&ts->lock);
+	if (!bTouchIsAwake) {
+		mutex_unlock(&ts->lock);
+		return -EAGAIN;
+	}
+
+	ret = nvt_set_page(ts->mmap->EVENT_BUF_ADDR);
+	if (ret) {
+		mutex_unlock(&ts->lock);
+		return ret;
+	}
+
+	buf[0] = start_reg;
+	ret = CTP_SPI_READ(ts->client, buf, len + 1);
+	if (ret == 0)
+		memcpy(out, &buf[1], len);
+	mutex_unlock(&ts->lock);
+
+	return ret;
+}
+
+void nvt_reset_touch_stats(void)
+{
+	if (!ts)
+		return;
+
+	mutex_lock(&ts->lock);
+	ts->irq_cnt = 0;
+	ts->spi_err_cnt = 0;
+	ts->csum_err_cnt = 0;
+	ts->frame_cnt = 0;
+	ts->dup_xy_cnt = 0;
+	ts->micro_move_cnt = 0;
+	ts->last_frame_kt = 0;
+	ts->dt_us_last = 0;
+	ts->dt_us_min = U32_MAX;
+	ts->dt_us_max = 0;
+	ts->last_x = 0;
+	ts->last_y = 0;
+	ts->last_dx = 0;
+	ts->last_dy = 0;
+	ts->last_xy_valid = false;
+	mutex_unlock(&ts->lock);
+}
+
 /*******************************************************
 Description:
 	Novatek touchscreen enable hw bld crc function.
@@ -1238,9 +1426,11 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 #endif
 
 	mutex_lock(&ts->lock);
+	ts->irq_cnt++;
 
 	ret = CTP_SPI_READ(ts->client, point_data, POINT_DATA_LEN + 1);
 	if (ret < 0) {
+		ts->spi_err_cnt++;
 		NVT_ERR("CTP_SPI_READ failed.(%d)\n", ret);
 		goto XFER_ERROR;
 	}
@@ -1264,6 +1454,7 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 	if (POINT_DATA_LEN >= POINT_DATA_CHECKSUM_LEN) {
 		ret = nvt_ts_point_data_checksum(point_data, POINT_DATA_CHECKSUM_LEN);
 		if (ret) {
+			ts->csum_err_cnt++;
 			goto XFER_ERROR;
 		}
 	}
@@ -1342,6 +1533,39 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
 			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
 
+			if (finger_cnt == 0) {
+				ktime_t now_kt = ktime_get();
+				if (ts->last_frame_kt != 0) {
+					s64 dt_us = ktime_us_delta(now_kt, ts->last_frame_kt);
+					if (dt_us > 0 && dt_us < 500000) {
+						u32 dtu = (u32)dt_us;
+						ts->dt_us_last = dtu;
+						if (dtu < ts->dt_us_min)
+							ts->dt_us_min = dtu;
+						if (dtu > ts->dt_us_max)
+							ts->dt_us_max = dtu;
+					}
+				}
+				ts->last_frame_kt = now_kt;
+				ts->frame_cnt++;
+				if (ts->last_xy_valid) {
+					int32_t dx = (int32_t)input_x - (int32_t)ts->last_x;
+					int32_t dy = (int32_t)input_y - (int32_t)ts->last_y;
+					uint32_t adx = (dx < 0) ? (uint32_t)(-dx) : (uint32_t)dx;
+					uint32_t ady = (dy < 0) ? (uint32_t)(-dy) : (uint32_t)dy;
+
+					ts->last_dx = dx;
+					ts->last_dy = dy;
+					if (adx + ady == 0)
+						ts->dup_xy_cnt++;
+					else if (adx + ady <= 4)
+						ts->micro_move_cnt++;
+				}
+				ts->last_x = input_x;
+				ts->last_y = input_y;
+				ts->last_xy_valid = true;
+			}
+
 #if MT_PROTOCOL_B
 #else				/* MT_PROTOCOL_B */
 			input_mt_sync(ts->input_dev);
@@ -1385,6 +1609,11 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 		}
 	}
 #endif
+
+	if (finger_cnt == 0) {
+		ts->last_xy_valid = false;
+		ts->last_frame_kt = 0;
+	}
 
 	input_sync(ts->input_dev);
 
@@ -1528,7 +1757,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 
 	NVT_LOG("start\n");
 
-	ts = kmalloc(sizeof(struct nvt_ts_data), GFP_KERNEL);
+	ts = kzalloc(sizeof(struct nvt_ts_data), GFP_KERNEL);
 	if (ts == NULL) {
 		NVT_ERR("failed to allocated memory for nvt ts data\n");
 		return -ENOMEM;
@@ -1572,6 +1801,11 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	memcpy(&ts->spi_ctrl, &spi_ctrdata, sizeof(struct mtk_chip_config));
 	ts->client->controller_data = (void *)&ts->spi_ctrl;
 #endif
+
+	ts->spi_max_hz_req = ts->client->max_speed_hz;
+	ts->game_mode_enabled = false;
+	ts->last_cmd_ret = 0;
+	ts->dt_us_min = U32_MAX;
 
 	NVT_LOG("mode=%d, max_speed_hz=%d\n", ts->client->mode, ts->client->max_speed_hz);
 
@@ -2192,6 +2426,15 @@ static int32_t nvt_ts_resume(struct device *dev)
 	bTouchIsAwake = 1;
 
 	mutex_unlock(&ts->lock);
+
+	if (ts->game_mode_enabled)
+		nvt_set_game_mode(true);
+	if (ts->hopping_fix_freq)
+		nvt_send_host_cmd(EVENTBUFFER_HOPPING_FIX_FREQ_ON, 0, false, 0, false, NULL);
+	if (ts->has_jitter_level)
+		nvt_send_host_cmd(EVENTBUFFER_EXT_CMD, EVENTBUFFER_EXT_JITTER_LEVEL, true, ts->jitter_level, true, NULL);
+	if (ts->has_smooth_level)
+		nvt_send_host_cmd(EVENTBUFFER_EXT_CMD, EVENTBUFFER_EXT_SMOOTH_LEVEL, true, ts->smooth_level, true, NULL);
 
 	NVT_LOG("end\n");
 

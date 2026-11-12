@@ -19,6 +19,8 @@
 
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
+#include <linux/uaccess.h>
+#include <linux/string.h>
 
 #include "nt36xxx.h"
 
@@ -27,6 +29,10 @@
 #define NVT_BASELINE "nvt_baseline"
 #define NVT_RAW "nvt_raw"
 #define NVT_DIFF "nvt_diff"
+#define NVT_GAME_MODE "nvt_game_mode"
+#define NVT_TOUCH_CMD "nvt_touch_cmd"
+#define NVT_SPI_SPEED "nvt_spi_speed"
+#define NVT_TOUCH_STATS "nvt_touch_stats"
 
 #define BUS_TRANSFER_LENGTH  256
 
@@ -44,6 +50,10 @@ static struct proc_dir_entry *NVT_proc_fw_version_entry;
 static struct proc_dir_entry *NVT_proc_baseline_entry;
 static struct proc_dir_entry *NVT_proc_raw_entry;
 static struct proc_dir_entry *NVT_proc_diff_entry;
+static struct proc_dir_entry *NVT_proc_game_mode_entry;
+static struct proc_dir_entry *NVT_proc_touch_cmd_entry;
+static struct proc_dir_entry *NVT_proc_spi_speed_entry;
+static struct proc_dir_entry *NVT_proc_touch_stats_entry;
 
 /*******************************************************
 Description:
@@ -511,6 +521,226 @@ static const struct file_operations nvt_diff_fops = {
 	.release = seq_release,
 };
 
+static int nvt_game_mode_show(struct seq_file *m, void *v)
+{
+	if (!ts || !ts->client)
+		return -ENODEV;
+
+	seq_printf(m, "game_mode=%d pid=0x%04X fw_ver=0x%02X spi_hz=%u irq=%d last_cmd=0x%02X sub=0x%02X val=0x%02X ack=0x%02X ret=%d\n",
+		   ts->game_mode_enabled ? 1 : 0, ts->nvt_pid, ts->fw_ver,
+		   ts->client->max_speed_hz, ts->client->irq,
+		   ts->last_cmd, ts->last_cmd_sub, ts->last_cmd_val,
+		   ts->last_cmd_ack, ts->last_cmd_ret);
+	return 0;
+}
+
+static int nvt_game_mode_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, nvt_game_mode_show, NULL);
+}
+
+static ssize_t nvt_game_mode_write(struct file *file, const char __user *buf,
+				   size_t count, loff_t *ppos)
+{
+	char kbuf[16];
+	unsigned int val;
+	int32_t ret;
+
+	if (count == 0 || count >= sizeof(kbuf))
+		return -EINVAL;
+	if (copy_from_user(kbuf, buf, count))
+		return -EFAULT;
+	kbuf[count] = '\0';
+
+	if (kstrtouint(strim(kbuf), 10, &val))
+		return -EINVAL;
+
+	ret = nvt_set_game_mode(val != 0);
+	return ret < 0 ? ret : (ssize_t)count;
+}
+
+static const struct file_operations nvt_game_mode_fops = {
+	.owner = THIS_MODULE,
+	.open = nvt_game_mode_open,
+	.read = seq_read,
+	.write = nvt_game_mode_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int nvt_touch_cmd_show(struct seq_file *m, void *v)
+{
+	if (!ts)
+		return -ENODEV;
+
+	seq_printf(m, "last_cmd=0x%02X sub=0x%02X val=0x%02X ack=0x%02X ret=%d\n",
+		   ts->last_cmd, ts->last_cmd_sub, ts->last_cmd_val,
+		   ts->last_cmd_ack, ts->last_cmd_ret);
+	return 0;
+}
+
+static int nvt_touch_cmd_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, nvt_touch_cmd_show, NULL);
+}
+
+static ssize_t nvt_touch_cmd_write(struct file *file, const char __user *buf,
+				   size_t count, loff_t *ppos)
+{
+	char kbuf[32];
+	unsigned int b0 = 0, b1 = 0, b2 = 0;
+	int n;
+	uint8_t ack = 0xFF;
+	int32_t ret;
+
+	if (count == 0 || count >= sizeof(kbuf))
+		return -EINVAL;
+	if (copy_from_user(kbuf, buf, count))
+		return -EFAULT;
+	kbuf[count] = '\0';
+
+	n = sscanf(strim(kbuf), "%x %x %x", &b0, &b1, &b2);
+	if (n < 1 || b0 > 0xFF || b1 > 0xFF || b2 > 0xFF)
+		return -EINVAL;
+
+	ret = nvt_send_host_cmd((uint8_t)b0, (uint8_t)b1, (n >= 2),
+				(uint8_t)b2, (n >= 3), &ack);
+	return ret < 0 ? ret : (ssize_t)count;
+}
+
+static const struct file_operations nvt_touch_cmd_fops = {
+	.owner = THIS_MODULE,
+	.open = nvt_touch_cmd_open,
+	.read = seq_read,
+	.write = nvt_touch_cmd_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int nvt_spi_speed_show(struct seq_file *m, void *v)
+{
+	if (!ts || !ts->client)
+		return -ENODEV;
+
+	seq_printf(m, "spi_hz=%u req=%u\n",
+		   ts->client->max_speed_hz, ts->spi_max_hz_req);
+	return 0;
+}
+
+static int nvt_spi_speed_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, nvt_spi_speed_show, NULL);
+}
+
+static ssize_t nvt_spi_speed_write(struct file *file, const char __user *buf,
+				   size_t count, loff_t *ppos)
+{
+	char kbuf[24];
+	unsigned int hz;
+	int32_t ret;
+
+	if (count == 0 || count >= sizeof(kbuf))
+		return -EINVAL;
+	if (copy_from_user(kbuf, buf, count))
+		return -EFAULT;
+	kbuf[count] = '\0';
+
+	if (kstrtouint(strim(kbuf), 10, &hz))
+		return -EINVAL;
+
+	ret = nvt_set_spi_speed((uint32_t)hz);
+	return ret < 0 ? ret : (ssize_t)count;
+}
+
+static const struct file_operations nvt_spi_speed_fops = {
+	.owner = THIS_MODULE,
+	.open = nvt_spi_speed_open,
+	.read = seq_read,
+	.write = nvt_spi_speed_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int nvt_touch_stats_show(struct seq_file *m, void *v)
+{
+	uint8_t r50[2] = { 0 };
+	uint8_t r5e_buf[2] = { 0 };
+	uint8_t r60[2] = { 0 };
+	uint8_t r78[8] = { 0 };
+	int32_t ret50, ret5e, ret60, ret78;
+	uint32_t ev_addr = 0;
+
+	if (!ts || !ts->client)
+		return -ENODEV;
+
+	ev_addr = ts->mmap ? ts->mmap->EVENT_BUF_ADDR : 0;
+	ret50 = nvt_read_event_regs(0x50, r50, sizeof(r50));
+	ret5e = nvt_read_event_regs(0x5E, r5e_buf, sizeof(r5e_buf));
+	ret60 = nvt_read_event_regs(0x60, r60, sizeof(r60));
+	ret78 = nvt_read_event_regs(0x78, r78, sizeof(r78));
+
+	mutex_lock(&ts->lock);
+	seq_printf(m, "awake=%u pid=0x%04X fw_ver=0x%02X ev_buf=0x%05X spi_hz=%u game=%d hop_fix=%d jitter=%d(0x%02X) smooth=%d(0x%02X)\n",
+		   bTouchIsAwake, ts->nvt_pid, ts->fw_ver, ev_addr, ts->client->max_speed_hz,
+		   ts->game_mode_enabled ? 1 : 0, ts->hopping_fix_freq ? 1 : 0,
+		   ts->has_jitter_level ? 1 : 0, ts->jitter_level,
+		   ts->has_smooth_level ? 1 : 0, ts->smooth_level);
+	seq_printf(m, "irq=%llu frame=%llu spi_err=%llu csum_err=%llu dup_xy=%llu micro_move=%llu\n",
+		   ts->irq_cnt, ts->frame_cnt, ts->spi_err_cnt, ts->csum_err_cnt,
+		   ts->dup_xy_cnt, ts->micro_move_cnt);
+	seq_printf(m, "dt_us(last/min/max)=%u/%u/%u last_xy=(%u,%u) last_d=(%d,%d)\n",
+		   ts->dt_us_last,
+		   (ts->dt_us_min == U32_MAX) ? 0 : ts->dt_us_min,
+		   ts->dt_us_max, ts->last_x, ts->last_y, ts->last_dx, ts->last_dy);
+	mutex_unlock(&ts->lock);
+
+	if (ret5e == 0) {
+		uint8_t r5e = r5e_buf[0];
+		uint8_t r5f = r5e_buf[1];
+		seq_printf(m, "reg50=%02X:%02X(r=%d) reg60=%02X:%02X(r=%d) reg5e=0x%02X (edge=%u pwr=%u hop_fix=%u hop_poll=%u jitter=%u hs=%u) reg5f=0x%02X\n",
+			   r50[0], r50[1], ret50, r60[0], r60[1], ret60,
+			   r5e, r5e & 0x03, (r5e >> 2) & 0x01, (r5e >> 3) & 0x01,
+			   (r5e >> 4) & 0x01, (r5e >> 6) & 0x01, (r5e >> 7) & 0x01, r5f);
+	} else {
+		seq_printf(m, "reg5e=unavail(%d)\n", ret5e);
+	}
+	if (ret78 == 0) {
+		seq_printf(m, "reg78=%02X %02X %02X %02X %02X %02X %02X %02X\n",
+			   r78[0], r78[1], r78[2], r78[3], r78[4], r78[5], r78[6], r78[7]);
+	}
+
+	return 0;
+}
+
+static int nvt_touch_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, nvt_touch_stats_show, NULL);
+}
+
+static ssize_t nvt_touch_stats_write(struct file *file, const char __user *buf,
+				     size_t count, loff_t *ppos)
+{
+	char kbuf[16];
+
+	if (count == 0 || count >= sizeof(kbuf))
+		return -EINVAL;
+	if (copy_from_user(kbuf, buf, count))
+		return -EFAULT;
+
+	nvt_reset_touch_stats();
+	return (ssize_t)count;
+}
+
+static const struct file_operations nvt_touch_stats_fops = {
+	.owner = THIS_MODULE,
+	.open = nvt_touch_stats_open,
+	.read = seq_read,
+	.write = nvt_touch_stats_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+
 /*******************************************************
 Description:
 	Novatek touchscreen extra function proc. file node
@@ -553,6 +783,22 @@ int32_t nvt_extra_proc_init(void)
 		NVT_LOG("create proc/%s Succeeded!\n", NVT_DIFF);
 	}
 
+	NVT_proc_game_mode_entry = proc_create(NVT_GAME_MODE, 0664, NULL, &nvt_game_mode_fops);
+	if (NVT_proc_game_mode_entry == NULL)
+		NVT_ERR("create proc/%s Failed!\n", NVT_GAME_MODE);
+
+	NVT_proc_touch_cmd_entry = proc_create(NVT_TOUCH_CMD, 0664, NULL, &nvt_touch_cmd_fops);
+	if (NVT_proc_touch_cmd_entry == NULL)
+		NVT_ERR("create proc/%s Failed!\n", NVT_TOUCH_CMD);
+
+	NVT_proc_spi_speed_entry = proc_create(NVT_SPI_SPEED, 0664, NULL, &nvt_spi_speed_fops);
+	if (NVT_proc_spi_speed_entry == NULL)
+		NVT_ERR("create proc/%s Failed!\n", NVT_SPI_SPEED);
+
+	NVT_proc_touch_stats_entry = proc_create(NVT_TOUCH_STATS, 0664, NULL, &nvt_touch_stats_fops);
+	if (NVT_proc_touch_stats_entry == NULL)
+		NVT_ERR("create proc/%s Failed!\n", NVT_TOUCH_STATS);
+
 	return 0;
 }
 
@@ -588,6 +834,26 @@ void nvt_extra_proc_deinit(void)
 		remove_proc_entry(NVT_DIFF, NULL);
 		NVT_proc_diff_entry = NULL;
 		NVT_LOG("Removed /proc/%s\n", NVT_DIFF);
+	}
+
+	if (NVT_proc_game_mode_entry != NULL) {
+		remove_proc_entry(NVT_GAME_MODE, NULL);
+		NVT_proc_game_mode_entry = NULL;
+	}
+
+	if (NVT_proc_touch_cmd_entry != NULL) {
+		remove_proc_entry(NVT_TOUCH_CMD, NULL);
+		NVT_proc_touch_cmd_entry = NULL;
+	}
+
+	if (NVT_proc_spi_speed_entry != NULL) {
+		remove_proc_entry(NVT_SPI_SPEED, NULL);
+		NVT_proc_spi_speed_entry = NULL;
+	}
+
+	if (NVT_proc_touch_stats_entry != NULL) {
+		remove_proc_entry(NVT_TOUCH_STATS, NULL);
+		NVT_proc_touch_stats_entry = NULL;
 	}
 }
 #endif

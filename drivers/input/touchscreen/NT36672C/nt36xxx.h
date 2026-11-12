@@ -139,6 +139,33 @@ struct nvt_ts_data {
 	uint8_t *xbuf;
 	struct mutex xbuf_lock;
 	bool irq_enabled;
+	bool game_mode_enabled;
+	bool hopping_fix_freq;
+	bool has_jitter_level;
+	uint8_t jitter_level;
+	bool has_smooth_level;
+	uint8_t smooth_level;
+	uint8_t last_cmd;
+	uint8_t last_cmd_sub;
+	uint8_t last_cmd_val;
+	uint8_t last_cmd_ack;
+	int32_t last_cmd_ret;
+	uint32_t spi_max_hz_req;
+	u64 irq_cnt;
+	u64 spi_err_cnt;
+	u64 csum_err_cnt;
+	u64 frame_cnt;
+	u64 dup_xy_cnt;
+	u64 micro_move_cnt;
+	ktime_t last_frame_kt;
+	u32 dt_us_last;
+	u32 dt_us_min;
+	u32 dt_us_max;
+	uint32_t last_x;
+	uint32_t last_y;
+	int32_t last_dx;
+	int32_t last_dy;
+	bool last_xy_valid;
 #ifdef CONFIG_MTK_SPI
 	struct mt_chip_conf spi_ctrl;
 #endif
@@ -168,6 +195,22 @@ typedef enum {
 	EVENT_MAP_FWINFO = 0x78,
 	EVENT_MAP_PROJECTID = 0x9A,
 } SPI_EVENT_MAP;
+
+/* Novatek extended host commands (register EVENT_MAP_HOST_CMD = 0x50) */
+#define EVENTBUFFER_HOPPING_POLLING_ON   0x73
+#define EVENTBUFFER_HOPPING_POLLING_OFF  0x74
+#define EVENTBUFFER_HOPPING_FIX_FREQ_ON  0x75
+#define EVENTBUFFER_HOPPING_FIX_FREQ_OFF 0x76
+#define EVENTBUFFER_HS_PLUG_IN           0x77
+#define EVENTBUFFER_HS_PLUG_OUT          0x78
+#define EVENTBUFFER_EDGE_LIMIT_VERTICAL  0x7A
+#define EVENTBUFFER_EDGE_LIMIT_LEFT_UP   0x7B
+#define EVENTBUFFER_EDGE_LIMIT_RIGHT_UP  0x7C
+#define EVENTBUFFER_GAME_ON              0x7D
+#define EVENTBUFFER_GAME_OFF             0x7E
+#define EVENTBUFFER_EXT_CMD              0x7F
+#define EVENTBUFFER_EXT_JITTER_LEVEL     0x0C
+#define EVENTBUFFER_EXT_SMOOTH_LEVEL     0x0D
 
 //---SPI READ/WRITE---
 #define SPI_WRITE_MASK(a)	(a | 0x80)
@@ -201,6 +244,12 @@ int32_t nvt_clear_fw_status(void);
 int32_t nvt_check_fw_status(void);
 int32_t nvt_set_page(uint32_t addr);
 int32_t nvt_write_addr(uint32_t addr, uint8_t data);
+int32_t nvt_send_host_cmd(uint8_t cmd, uint8_t subcmd, bool has_subcmd,
+			  uint8_t val, bool has_val, uint8_t *ack_out);
+int32_t nvt_set_game_mode(bool enable);
+int32_t nvt_set_spi_speed(uint32_t hz);
+int32_t nvt_read_event_regs(uint8_t start_reg, uint8_t *out, uint16_t len);
+void nvt_reset_touch_stats(void);
 void nvt_irq_enable(bool enable);
 extern uint8_t bTouchIsAwake;
 #if NVT_TOUCH_ESD_PROTECT

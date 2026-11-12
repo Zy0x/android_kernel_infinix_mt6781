@@ -1223,7 +1223,7 @@ static int vidioc_vdec_qbuf(struct file *file, void *priv,
 				ctx->input_max_ts);
 		}
 	} else {
-		if (buf->reserved == 0xFFFFFFFF)
+		if (buf->reserved == 0xFFFFFFFF || buf->reserved == 0)
 			mtkbuf->general_user_fd = -1;
 		else
 			mtkbuf->general_user_fd = (int)buf->reserved;
@@ -1992,40 +1992,41 @@ static int vb2ops_vdec_buf_prepare(struct vb2_buffer *vb)
 	vb2_v4l2 = container_of(vb, struct vb2_v4l2_buffer, vb2_buf);
 	mtkbuf = container_of(vb2_v4l2, struct mtk_video_dec_buf, vb);
 	if (vb->vb2_queue->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		if (mtkbuf->general_user_fd > -1) {
-			struct dma_buf_attachment *buf_att;
-			struct sg_table *sgt;
-
+		if (mtkbuf->general_user_fd > 0) {
 			mtkbuf->frame_buffer.dma_general_buf =
 				dma_buf_get(mtkbuf->general_user_fd);
 
 			if (IS_ERR(mtkbuf->frame_buffer.dma_general_buf)) {
-				mtk_v4l2_err("%s dma_general_buf is err 0x%p.\n",
-					__func__,
-					mtkbuf->frame_buffer.dma_general_buf);
-
-				mtk_vdec_queue_error_event(ctx);
-				return -EINVAL;
+				mtk_v4l2_debug(1, "%s dma_general_buf is err, skip general buf.\n",
+					__func__);
+				mtkbuf->frame_buffer.dma_general_buf = NULL;
+			} else {
+				buf_att = dma_buf_attach(
+					mtkbuf->frame_buffer.dma_general_buf,
+					&ctx->dev->plat_dev->dev);
+				if (IS_ERR_OR_NULL(buf_att)) {
+					dma_buf_put(mtkbuf->frame_buffer.dma_general_buf);
+					mtkbuf->frame_buffer.dma_general_buf = NULL;
+				} else {
+					sgt = dma_buf_map_attachment(buf_att, DMA_TO_DEVICE);
+					if (IS_ERR_OR_NULL(sgt)) {
+						mtk_v4l2_debug(1, "dma_buf_map_attachment fail %p, skip.\n", sgt);
+						dma_buf_detach(mtkbuf->frame_buffer.dma_general_buf,
+							buf_att);
+						dma_buf_put(mtkbuf->frame_buffer.dma_general_buf);
+						mtkbuf->frame_buffer.dma_general_buf = NULL;
+					} else {
+						mtkbuf->frame_buffer.dma_general_addr =
+							sg_dma_address(sgt->sgl);
+						dma_buf_unmap_attachment(buf_att, sgt, DMA_TO_DEVICE);
+						dma_buf_detach(mtkbuf->frame_buffer.dma_general_buf,
+							buf_att);
+					}
+				}
 			}
-
-			buf_att = dma_buf_attach(
-				mtkbuf->frame_buffer.dma_general_buf,
-				&ctx->dev->plat_dev->dev);
-			sgt = dma_buf_map_attachment(buf_att, DMA_TO_DEVICE);
-			if (IS_ERR_OR_NULL(sgt)) {
-				mtk_v4l2_err("dma_buf_map_attachment fail %p.\n", sgt);
-				dma_buf_detach(mtkbuf->frame_buffer.dma_general_buf,
-					buf_att);
-				return -EINVAL;
-			}
-			mtkbuf->frame_buffer.dma_general_addr =
-				sg_dma_address(sgt->sgl);
-			dma_buf_unmap_attachment(buf_att, sgt, DMA_TO_DEVICE);
-			dma_buf_detach(mtkbuf->frame_buffer.dma_general_buf,
-				buf_att);
-
-		} else
+		} else {
 			mtkbuf->frame_buffer.dma_general_buf = 0;
+		}
 		mtk_v4l2_debug(4,
 			"dma_buf_get general_buf fd=%d, dma_buf=%p, DMA=%lx",
 			mtkbuf->general_user_fd,
@@ -2471,6 +2472,7 @@ static int vb2ops_vdec_buf_init(struct vb2_buffer *vb)
 		}
 		for (i = 0; i < VIDEO_MAX_PLANES; i++)
 			buf->frame_buffer.fb_base[i].buf_fd = -1;
+		buf->general_user_fd = -1;
 	} else if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		/* Do not reset EOS for 1st buffer with Early EOS*/
 		/* buf->lastframe = NON_EOS; */

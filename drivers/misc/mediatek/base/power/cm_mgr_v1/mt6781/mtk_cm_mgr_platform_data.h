@@ -91,7 +91,7 @@ static int update_v2f_table = 1;
 static int cm_mgr_opp_enable = 1;
 int cm_mgr_enable = 1;
 #if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT) && defined(USE_CM_MGR_AT_SSPM)
-int cm_mgr_sspm_enable = 1;
+int cm_mgr_sspm_enable = 0; /* Sol-Kernel: default AP-side CM_MGR for dynamic idle DDR downscaling */
 #endif /* CONFIG_MTK_TINYSYS_SSPM_SUPPORT */
 #ifdef USE_TIMER_CHECK
 int cm_mgr_timer_enable = 1;

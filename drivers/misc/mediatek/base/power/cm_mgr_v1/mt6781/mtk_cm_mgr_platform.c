@@ -459,11 +459,15 @@ int cm_mgr_check_stall_ratio(int mp0, int mp1)
 	return 0;
 }
 
-#if !defined(USE_CM_MGR_AT_SSPM)
 static void init_cpu_stall_counter(int cluster)
 {
 	unsigned int val;
 	int i;
+
+#if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT) && defined(USE_CM_MGR_AT_SSPM)
+	if (cm_mgr_sspm_enable)
+		return;
+#endif
 
 	if (!timekeeping_suspended) {
 		cm_mgr_init_time = ktime_get();
@@ -551,7 +555,6 @@ static void cm_mgr_sched_pm_init(void)
 #else
 static inline void cm_mgr_sched_pm_init(void) { }
 #endif /* CONFIG_CPU_PM */
-#endif /* !USE_CM_MGR_AT_SSPM */
 
 int debounce_times_perf_down_local = -1;
 int debounce_times_perf_down_force_local = -1;
@@ -909,9 +912,7 @@ int cm_mgr_platform_init(void)
 		return r;
 	}
 
-#if !defined(USE_CM_MGR_AT_SSPM)
 	cm_mgr_sched_pm_init();
-#endif /* !USE_CM_MGR_AT_SSPM */
 
 	r = fb_register_client(&cm_mgr_fb_notifier);
 	if (r) {
@@ -919,12 +920,10 @@ int cm_mgr_platform_init(void)
 		return r;
 	}
 
-#if !defined(USE_CM_MGR_AT_SSPM)
 	cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN,
 			"cm_mgr:online",
 			cm_mgr_cpuhp_online,
 			cm_mgr_cpuhp_offline);
-#endif /* !USE_CM_MGR_AT_SSPM */
 
 #ifdef USE_IDLE_NOTIFY
 	mtk_idle_notifier_register(&cm_mgr_idle_notify);

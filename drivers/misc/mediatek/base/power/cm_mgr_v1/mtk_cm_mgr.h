@@ -78,6 +78,9 @@ extern int debounce_times_reset_adb;
 extern int debounce_times_perf_down;
 extern int debounce_times_perf_force_down;
 extern int cm_mgr_enable;
+#if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT) && defined(USE_CM_MGR_AT_SSPM)
+extern int cm_mgr_sspm_enable;
+#endif
 extern int cm_mgr_perf_enable;
 extern int cm_mgr_perf_timer_enable;
 extern int cm_mgr_perf_force_enable;

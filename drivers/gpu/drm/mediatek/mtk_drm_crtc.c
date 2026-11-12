@@ -2838,7 +2838,12 @@ static unsigned int overlap_to_bw(struct drm_crtc *crtc,
 	unsigned int overlap_num)
 {
 	unsigned int bw_base = mtk_drm_primary_frame_bw(crtc);
-	unsigned int bw = (bw_base * overlap_num) / 2; /* Sol-Kernel: full 100% OVL read BW */
+	unsigned int fps = (crtc && crtc->state) ?
+		drm_mode_vrefresh(&crtc->state->adjusted_mode) : 0;
+	/* Sol-Kernel: stock 40% overlap BW at <90Hz for power efficiency; 50% at >=90Hz */
+	unsigned int bw = (fps > 0 && fps < 90) ?
+		(bw_base * overlap_num * 80 / 200) :
+		((bw_base * overlap_num) / 2);
 
 	return bw;
 }
@@ -2890,15 +2895,17 @@ static void mtk_crtc_update_hrt_state_ex(struct drm_crtc *crtc,
 	unsigned int  ovl0_2l_no_compress_num =
 		HRT_GET_NO_COMPRESS_FLAG(lyeblob_ids->hrt_num);
 	unsigned int max_fps = mtk_crtc->max_fps;
+	unsigned int cur_fps = (crtc->state && crtc->state->adjusted_mode.vrefresh) ?
+		drm_mode_vrefresh(&crtc->state->adjusted_mode) : max_fps;
 
 	DDPINFO("%s bw=%d, last_hrt_req=%d\n",
 			__func__, bw, mtk_crtc->qos_ctx->last_hrt_req);
 
-	DDPINFO("%s CRTC%u bw:%d, no_compress_num:%d max_fps:%d\n",
-		__func__, crtc_idx, bw, ovl0_2l_no_compress_num, max_fps);
+	DDPINFO("%s CRTC%u bw:%d, no_compress_num:%d max_fps:%d cur_fps:%d\n",
+		__func__, crtc_idx, bw, ovl0_2l_no_compress_num, max_fps, cur_fps);
 
-	/* Workaround for 120hz SMI larb BW limitation */
-	if (crtc_idx == 0 && max_fps == 120) {
+	/* Workaround for 120hz SMI larb BW limitation (active >=120Hz only) */
+	if (crtc_idx == 0 && cur_fps >= 120) {
 		if (ovl0_2l_no_compress_num == 1 &&
 			bw < 2944) {
 			bw = 2944;

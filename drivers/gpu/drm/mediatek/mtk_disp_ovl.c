@@ -1245,21 +1245,32 @@ static int mtk_ovl_yuv_matrix_convert(enum mtk_drm_dataspace plane_ds)
 	case MTK_DRM_DATASPACE_STANDARD_BT709:
 	case MTK_DRM_DATASPACE_STANDARD_DCI_P3:
 	case MTK_DRM_DATASPACE_STANDARD_BT2020:
-		ret = OVL_CON_MTX_BT709_TO_RGB;
+		ret = ((plane_ds & MTK_DRM_DATASPACE_RANGE_MASK) ==
+			MTK_DRM_DATASPACE_RANGE_FULL)
+			       ? OVL_CON_MTX_JPEG_TO_RGB
+			       : OVL_CON_MTX_BT709_TO_RGB;
 		break;
 
 	case 0:
 		switch (plane_ds & 0xffff) {
 		case MTK_DRM_DATASPACE_JFIF:
+			ret = OVL_CON_MTX_JPEG_TO_RGB;
+			break;
 		case MTK_DRM_DATASPACE_BT601_625:
 		case MTK_DRM_DATASPACE_BT601_525:
-			ret = OVL_CON_MTX_BT601_TO_RGB;
+			ret = ((plane_ds & MTK_DRM_DATASPACE_RANGE_MASK) ==
+				MTK_DRM_DATASPACE_RANGE_FULL)
+				       ? OVL_CON_MTX_JPEG_TO_RGB
+				       : OVL_CON_MTX_BT601_TO_RGB;
 			break;
 
 		case MTK_DRM_DATASPACE_SRGB_LINEAR:
 		case MTK_DRM_DATASPACE_SRGB:
 		case MTK_DRM_DATASPACE_BT709:
-			ret = OVL_CON_MTX_BT709_TO_RGB;
+			ret = ((plane_ds & MTK_DRM_DATASPACE_RANGE_MASK) ==
+				MTK_DRM_DATASPACE_RANGE_FULL)
+				       ? OVL_CON_MTX_JPEG_TO_RGB
+				       : OVL_CON_MTX_BT709_TO_RGB;
 			break;
 		}
 	}
@@ -1267,7 +1278,8 @@ static int mtk_ovl_yuv_matrix_convert(enum mtk_drm_dataspace plane_ds)
 	if (ret)
 		return ret;
 
-	return OVL_CON_MTX_BT601_TO_RGB;
+	/* Sol-Kernel: Default fallback to BT709 for modern Android HD/2K/4K media */
+	return OVL_CON_MTX_BT709_TO_RGB;
 }
 
 /* config addr, pitch, src_size */

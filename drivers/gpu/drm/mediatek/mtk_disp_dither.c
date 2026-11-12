@@ -102,6 +102,10 @@ static void mtk_dither_config(struct mtk_ddp_comp *comp,
 
 	priv->pwr_sta = 1;
 
+	/* Sol-Kernel: Fallback 0 bpc to 8 bpc (NT36672C RGB888 panel) to ensure hardware dither is always active */
+	if (cfg->bpc == 0)
+		cfg->bpc = 8;
+
 	if (cfg->bpc == 8) { /* 888 */
 		cmdq_pkt_write(handle, comp->cmdq_base,
 			       comp->regs_pa + DITHER_REG(15),

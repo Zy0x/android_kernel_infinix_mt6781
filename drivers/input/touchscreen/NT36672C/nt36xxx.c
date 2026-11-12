@@ -482,6 +482,91 @@ void nvt_reset_touch_stats(void)
 	mutex_unlock(&ts->lock);
 }
 
+static void nvt_update_touch_qos(bool active)
+{
+	if (!ts || ts->touch_qos_active == active)
+		return;
+	ts->touch_qos_active = active;
+	pm_qos_update_request(&ts->touch_qos, active ? 50 : PM_QOS_DEFAULT_VALUE);
+}
+
+static void nvt_reset_micro_slots(void)
+{
+	memset(ts->slot_active, 0, sizeof(ts->slot_active));
+	memset(ts->gain_off_x, 0, sizeof(ts->gain_off_x));
+	memset(ts->gain_off_y, 0, sizeof(ts->gain_off_y));
+	memset(ts->gain_acc_x, 0, sizeof(ts->gain_acc_x));
+	memset(ts->gain_acc_y, 0, sizeof(ts->gain_acc_y));
+}
+
+void nvt_set_micro_gain(uint8_t gain)
+{
+	if (!ts)
+		return;
+	if (gain > NVT_MICRO_GAIN_MAX)
+		gain = NVT_MICRO_GAIN_MAX;
+	mutex_lock(&ts->lock);
+	ts->micro_gain = gain;
+	nvt_reset_micro_slots();
+	mutex_unlock(&ts->lock);
+}
+
+static uint32_t nvt_step_micro_axis(int32_t d, int32_t *acc, int32_t *off,
+				      uint8_t gain, int32_t max_val, int32_t raw)
+{
+	int32_t ad = (d < 0) ? -d : d;
+
+	if (ad > 0 && ad <= 5) {
+		int32_t extra;
+
+		*acc += d * (int32_t)gain;
+		extra = *acc / 2;
+		*acc -= extra * 2;
+		*off = clamp_val(*off + extra, -NVT_MICRO_GAIN_MAX_OFF, NVT_MICRO_GAIN_MAX_OFF);
+	} else if (ad > 12) {
+		if (*off > 0)
+			(*off)--;
+		else if (*off < 0)
+			(*off)++;
+		*acc = 0;
+	}
+	return (uint32_t)clamp_val(raw + *off, 0, max_val);
+}
+
+static void nvt_apply_micro_gain(uint8_t slot, uint32_t *x, uint32_t *y)
+{
+	int32_t dx, dy;
+	int32_t raw_x = (int32_t)(*x);
+	int32_t raw_y = (int32_t)(*y);
+
+	if (slot >= TOUCH_MAX_FINGER_NUM)
+		return;
+
+	if (!ts->slot_active[slot]) {
+		ts->slot_active[slot] = true;
+		ts->prev_raw_x[slot] = raw_x;
+		ts->prev_raw_y[slot] = raw_y;
+		ts->gain_off_x[slot] = 0;
+		ts->gain_off_y[slot] = 0;
+		ts->gain_acc_x[slot] = 0;
+		ts->gain_acc_y[slot] = 0;
+		return;
+	}
+
+	dx = raw_x - ts->prev_raw_x[slot];
+	dy = raw_y - ts->prev_raw_y[slot];
+	ts->prev_raw_x[slot] = raw_x;
+	ts->prev_raw_y[slot] = raw_y;
+
+	if (ts->micro_gain == 0)
+		return;
+
+	*x = nvt_step_micro_axis(dx, &ts->gain_acc_x[slot], &ts->gain_off_x[slot],
+				 ts->micro_gain, (int32_t)ts->abs_x_max, raw_x);
+	*y = nvt_step_micro_axis(dy, &ts->gain_acc_y[slot], &ts->gain_off_y[slot],
+				 ts->micro_gain, (int32_t)ts->abs_y_max, raw_y);
+}
+
 void nvt_reapply_touch_modes(void)
 {
 	if (!ts || !ts->client || !bTouchIsAwake)
@@ -1522,8 +1607,14 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 			input_report_key(ts->input_dev, BTN_TOUCH, 1);
 #endif				/* MT_PROTOCOL_B */
 
-			input_report_abs(ts->input_dev, ABS_MT_POSITION_X, input_x);
-			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, input_y);
+			{
+				uint32_t rep_x = input_x;
+				uint32_t rep_y = input_y;
+
+				nvt_apply_micro_gain(input_id - 1, &rep_x, &rep_y);
+				input_report_abs(ts->input_dev, ABS_MT_POSITION_X, rep_x);
+				input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, rep_y);
+			}
 			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
 			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
 
@@ -1572,6 +1663,11 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 #if MT_PROTOCOL_B
 	for (i = 0; i < ts->max_touch_num; i++) {
 		if (press_id[i] != 1) {
+			ts->slot_active[i] = false;
+			ts->gain_off_x[i] = 0;
+			ts->gain_off_y[i] = 0;
+			ts->gain_acc_x[i] = 0;
+			ts->gain_acc_y[i] = 0;
 			input_mt_slot(ts->input_dev, i);
 			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
 			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
@@ -1609,6 +1705,7 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 		ts->last_frame_kt = 0;
 	}
 
+	nvt_update_touch_qos(finger_cnt > 0);
 	input_sync(ts->input_dev);
 
 XFER_ERROR:
@@ -1804,6 +1901,8 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	ts->has_smooth_level = true;
 	ts->smooth_level = 0x00;
 	ts->last_cmd_ret = 0;
+	ts->micro_gain = 1;
+	ts->touch_qos_active = false;
 	ts->dt_us_min = U32_MAX;
 
 	NVT_LOG("mode=%d, max_speed_hz=%d\n", ts->client->mode, ts->client->max_speed_hz);
@@ -1848,6 +1947,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 
 	mutex_init(&ts->lock);
 	mutex_init(&ts->xbuf_lock);
+	pm_qos_add_request(&ts->touch_qos, PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
 
 	//---eng reset before TP_RESX high
 	nvt_eng_reset();
@@ -2170,6 +2270,8 @@ err_input_register_device_failed:
 	}
 err_input_dev_alloc_failed:
 err_chipvertrim_failed:
+	nvt_update_touch_qos(false);
+	pm_qos_remove_request(&ts->touch_qos);
 	mutex_destroy(&ts->xbuf_lock);
 	mutex_destroy(&ts->lock);
 	nvt_gpio_deconfig(ts);
@@ -2245,6 +2347,8 @@ static int32_t nvt_ts_remove(struct spi_device *client)
 	nvt_irq_enable(false);
 	free_irq(client->irq, ts);
 
+	nvt_update_touch_qos(false);
+	pm_qos_remove_request(&ts->touch_qos);
 	mutex_destroy(&ts->xbuf_lock);
 	mutex_destroy(&ts->lock);
 
@@ -2350,6 +2454,8 @@ static int32_t nvt_ts_suspend(struct device *dev)
 	NVT_LOG("start\n");
 
 	bTouchIsAwake = 0;
+	nvt_update_touch_qos(false);
+	nvt_reset_micro_slots();
 
 #if WAKEUP_GESTURE
 	//---write command to enter "wakeup gesture mode"---

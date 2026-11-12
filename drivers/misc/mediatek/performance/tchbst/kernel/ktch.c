@@ -35,11 +35,11 @@
 #define MAX_FREQ (20000000)
 #define KTCH_MAX_CLSTRS (4)
 #define TARGET_CORE (-1)
-#define TARGET_FREQ (1500000)
-#define TARGET_BIG_FREQ (1796000)
+#define TARGET_FREQ (1800000)
+#define TARGET_BIG_FREQ (1860000)
 #define DEFAULT_TAIL_MS (280)
-#define DEFAULT_EAS_BOOST (65)
-#define DEFAULT_GPU_OPP_IDX (24)
+#define DEFAULT_EAS_BOOST (80)
+#define DEFAULT_GPU_OPP_IDX (15)
 
 struct boost {
 	spinlock_t touch_lock;

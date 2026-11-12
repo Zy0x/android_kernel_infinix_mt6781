@@ -22,6 +22,7 @@
 #include <linux/input.h>
 #include <linux/of.h>
 #include <linux/spi/spi.h>
+#include <linux/pm_qos.h>
 #include <linux/uaccess.h>
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -77,6 +78,8 @@
 extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 #endif
 #define TOUCH_FORCE_NUM 1000
+#define NVT_MICRO_GAIN_MAX 3
+#define NVT_MICRO_GAIN_MAX_OFF 16
 
 /* Enable only when module have tp reset pin and connected to host */
 #define NVT_TOUCH_SUPPORT_HW_RST 0
@@ -166,6 +169,16 @@ struct nvt_ts_data {
 	int32_t last_dx;
 	int32_t last_dy;
 	bool last_xy_valid;
+	struct pm_qos_request touch_qos;
+	bool touch_qos_active;
+	uint8_t micro_gain;
+	bool slot_active[TOUCH_MAX_FINGER_NUM];
+	int32_t prev_raw_x[TOUCH_MAX_FINGER_NUM];
+	int32_t prev_raw_y[TOUCH_MAX_FINGER_NUM];
+	int32_t gain_off_x[TOUCH_MAX_FINGER_NUM];
+	int32_t gain_off_y[TOUCH_MAX_FINGER_NUM];
+	int32_t gain_acc_x[TOUCH_MAX_FINGER_NUM];
+	int32_t gain_acc_y[TOUCH_MAX_FINGER_NUM];
 #ifdef CONFIG_MTK_SPI
 	struct mt_chip_conf spi_ctrl;
 #endif
@@ -249,6 +262,7 @@ int32_t nvt_send_host_cmd(uint8_t cmd, uint8_t subcmd, bool has_subcmd,
 int32_t nvt_set_game_mode(bool enable);
 int32_t nvt_set_spi_speed(uint32_t hz);
 void nvt_reapply_touch_modes(void);
+void nvt_set_micro_gain(uint8_t gain);
 void nvt_reset_touch_stats(void);
 void nvt_irq_enable(bool enable);
 extern uint8_t bTouchIsAwake;

@@ -33,6 +33,7 @@
 #define NVT_TOUCH_CMD "nvt_touch_cmd"
 #define NVT_SPI_SPEED "nvt_spi_speed"
 #define NVT_TOUCH_STATS "nvt_touch_stats"
+#define NVT_MICRO_GAIN "nvt_micro_gain"
 
 #define BUS_TRANSFER_LENGTH  256
 
@@ -54,6 +55,7 @@ static struct proc_dir_entry *NVT_proc_game_mode_entry;
 static struct proc_dir_entry *NVT_proc_touch_cmd_entry;
 static struct proc_dir_entry *NVT_proc_spi_speed_entry;
 static struct proc_dir_entry *NVT_proc_touch_stats_entry;
+static struct proc_dir_entry *NVT_proc_micro_gain_entry;
 
 /*******************************************************
 Description:
@@ -670,12 +672,13 @@ static int nvt_touch_stats_show(struct seq_file *m, void *v)
 
 	mutex_lock(&ts->lock);
 	ev_addr = ts->mmap ? ts->mmap->EVENT_BUF_ADDR : 0;
-	seq_printf(m, "awake=%u pid=0x%04X fw_ver=0x%02X ev_buf=0x%05X spi_hz=%u spi_req=%u game=%d hop_fix=%d jitter=%d(0x%02X) smooth=%d(0x%02X)\n",
+	seq_printf(m, "awake=%u pid=0x%04X fw_ver=0x%02X ev_buf=0x%05X spi_hz=%u spi_req=%u game=%d hop_fix=%d jitter=%d(0x%02X) smooth=%d(0x%02X) gain=%u qos=%d\n",
 		   bTouchIsAwake, ts->nvt_pid, ts->fw_ver, ev_addr,
 		   ts->client->max_speed_hz, ts->spi_max_hz_req,
 		   ts->game_mode_enabled ? 1 : 0, ts->hopping_fix_freq ? 1 : 0,
 		   ts->has_jitter_level ? 1 : 0, ts->jitter_level,
-		   ts->has_smooth_level ? 1 : 0, ts->smooth_level);
+		   ts->has_smooth_level ? 1 : 0, ts->smooth_level,
+		   ts->micro_gain, ts->touch_qos_active ? 1 : 0);
 	seq_printf(m, "irq=%llu frame=%llu spi_err=%llu csum_err=%llu dup_xy=%llu micro_move=%llu\n",
 		   ts->irq_cnt, ts->frame_cnt, ts->spi_err_cnt, ts->csum_err_cnt,
 		   ts->dup_xy_cnt, ts->micro_move_cnt);
@@ -709,6 +712,43 @@ static ssize_t nvt_touch_stats_write(struct file *file, const char __user *buf,
 	nvt_reset_touch_stats();
 	return (ssize_t)count;
 }
+
+static int nvt_micro_gain_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%u\n", ts ? ts->micro_gain : 0);
+	return 0;
+}
+
+static int nvt_micro_gain_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, nvt_micro_gain_show, NULL);
+}
+
+static ssize_t nvt_micro_gain_write(struct file *file, const char __user *buf,
+				    size_t count, loff_t *ppos)
+{
+	char kbuf[16];
+	unsigned int val;
+
+	if (count == 0 || count >= sizeof(kbuf))
+		return -EINVAL;
+	if (copy_from_user(kbuf, buf, count))
+		return -EFAULT;
+	kbuf[count] = '\0';
+	if (kstrtouint(strim(kbuf), 10, &val) || val > NVT_MICRO_GAIN_MAX)
+		return -EINVAL;
+	nvt_set_micro_gain((uint8_t)val);
+	return (ssize_t)count;
+}
+
+static const struct file_operations nvt_micro_gain_fops = {
+	.owner = THIS_MODULE,
+	.open = nvt_micro_gain_open,
+	.read = seq_read,
+	.write = nvt_micro_gain_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
 
 static const struct file_operations nvt_touch_stats_fops = {
 	.owner = THIS_MODULE,
@@ -778,6 +818,10 @@ int32_t nvt_extra_proc_init(void)
 	if (NVT_proc_touch_stats_entry == NULL)
 		NVT_ERR("create proc/%s Failed!\n", NVT_TOUCH_STATS);
 
+	NVT_proc_micro_gain_entry = proc_create(NVT_MICRO_GAIN, 0664, NULL, &nvt_micro_gain_fops);
+	if (NVT_proc_micro_gain_entry == NULL)
+		NVT_ERR("create proc/%s Failed!\n", NVT_MICRO_GAIN);
+
 	return 0;
 }
 
@@ -833,6 +877,11 @@ void nvt_extra_proc_deinit(void)
 	if (NVT_proc_touch_stats_entry != NULL) {
 		remove_proc_entry(NVT_TOUCH_STATS, NULL);
 		NVT_proc_touch_stats_entry = NULL;
+	}
+
+	if (NVT_proc_micro_gain_entry != NULL) {
+		remove_proc_entry(NVT_MICRO_GAIN, NULL);
+		NVT_proc_micro_gain_entry = NULL;
 	}
 }
 #endif

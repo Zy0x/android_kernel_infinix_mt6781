@@ -3095,6 +3095,15 @@ static void mtk_output_dsi_enable(struct mtk_dsi *dsi,
 
 	DDPINFO("%s -\n", __func__);
 
+	{
+		int blank_mode = FB_BLANK_UNBLANK;
+		struct fb_event event;
+
+		event.info = NULL;
+		event.data = &blank_mode;
+		fb_notifier_call_chain(FB_EVENT_BLANK, &event);
+	}
+
 	dsi->output_en = true;
 	te_cnt = 1;
 	dsi->doze_enabled = new_doze_state;
@@ -3193,14 +3202,15 @@ static void mtk_output_dsi_disable(struct mtk_dsi *dsi,
 		return;
 	}
 
-	#ifdef OPLUS_BUG_STABILITY
-	if (dsi->ext && dsi->ext->params && dsi->ext->params->tp_lcd_suspend) {
-		event.info  = NULL;
+	{
+		int blank_mode = FB_BLANK_POWERDOWN;
+		struct fb_event event;
+
+		event.info = NULL;
 		event.data = &blank_mode;
 		fb_notifier_call_chain(FB_EARLY_EVENT_BLANK, &event);
 		usleep_range(15 * 1000, 15 * 1000);
 	}
-	#endif /* OPLUS_BUG_STABILITY */
 
 	mtk_drm_crtc_wait_blank(mtk_crtc);
 

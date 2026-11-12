@@ -983,8 +983,10 @@ void nvt_ts_wakeup_gesture_report(uint8_t gesture_id, uint8_t *data)
 
 	if (keycode > 0) {
 		input_report_key(ts->input_dev, keycode, 1);
+		input_report_key(ts->input_dev, KEY_WAKEUP, 1);
 		input_sync(ts->input_dev);
 		input_report_key(ts->input_dev, keycode, 0);
+		input_report_key(ts->input_dev, KEY_WAKEUP, 0);
 		input_sync(ts->input_dev);
 	}
 }
@@ -1698,6 +1700,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	for (retry = 0; retry < (sizeof(gesture_key_array) / sizeof(gesture_key_array[0])); retry++) {
 		input_set_capability(ts->input_dev, EV_KEY, gesture_key_array[retry]);
 	}
+	input_set_capability(ts->input_dev, EV_KEY, KEY_WAKEUP);
 #endif
 
 	sprintf(ts->phys, "");
@@ -1734,6 +1737,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	}
 #if WAKEUP_GESTURE
 	device_init_wakeup(&ts->input_dev->dev, 1);
+	device_init_wakeup(&ts->client->dev, 1);
 #endif
 
 #if BOOT_UPDATE_FIRMWARE

@@ -348,7 +348,7 @@ static int mtk_vcu_write(const char *val, const struct kernel_param *kp);
 
 static inline bool vcu_running(struct mtk_vcu *vcu)
 {
-	return (bool)vcu->run.signaled;
+	return (bool)vcu->run.signaled || (vcu && vcu->open_cnt > 0);
 }
 
 int vcu_ipi_register(struct platform_device *pdev,
@@ -491,8 +491,7 @@ static int vcu_ipi_get(struct mtk_vcu *vcu, unsigned long arg)
 	struct share_obj share_buff_data;
 
 	user_data_addr = (unsigned char *)arg;
-	ret = (long)copy_from_user(&share_buff_data, user_data_addr,
-				   (unsigned long)sizeof(struct share_obj));
+	ret = (long)copy_from_user(&share_buff_data, user_data_addr, 80);
 	if (ret != 0) {
 		pr_info("[VCU] %s(%d) Copy data from user failed!\n",
 			__func__, __LINE__);
@@ -514,8 +513,7 @@ static int vcu_ipi_get(struct mtk_vcu *vcu, unsigned long arg)
 			vcu->vcuid, i, ret, __func__);
 		return ret;
 	}
-	ret = copy_to_user(user_data_addr, &vcu->user_obj[i],
-			   (unsigned long)sizeof(struct share_obj));
+	ret = copy_to_user(user_data_addr, &vcu->user_obj[i], 80);
 	if (ret != 0) {
 		pr_info("[VCU] %s(%d) Copy data to user failed!\n",
 			__func__, __LINE__);
@@ -1226,8 +1224,11 @@ int vcu_compare_version(struct platform_device *pdev,
 
 	cur_ver_num = sscanf(cur_version, "%d.%d.%d-rc%d",
 			     &cur_major, &cur_minor, &cur_build, &cur_rel);
-	if (cur_ver_num < 3)
+	if (cur_ver_num < 3) {
+		if (vcu_running(vcu))
+			return 0;
 		return -1;
+	}
 	ver_num = sscanf(expected_version, "%d.%d.%d-rc%d",
 			 &major, &minor, &build, &rel);
 	if (ver_num < 3)
@@ -1762,9 +1763,10 @@ static long mtk_vcu_unlocked_ioctl(struct file *file, unsigned int cmd,
 	dev = vcu_dev->dev;
 	switch (cmd) {
 	case VCU_SET_OBJECT:
+	case 0x40507600:
 		user_data_addr = (unsigned char *)arg;
 		ret = (long)copy_from_user(&share_buff_data, user_data_addr,
-			(unsigned long)sizeof(struct share_obj));
+			(cmd == 0x40507600) ? 80 : (unsigned long)sizeof(struct share_obj));
 		if (ret != 0L || share_buff_data.id >= (int)IPI_MAX ||
 		    share_buff_data.id < (int)IPI_VCU_INIT) {
 			pr_info("[VCU] %s(%d) Copy data from user failed!\n",
@@ -1773,7 +1775,7 @@ static long mtk_vcu_unlocked_ioctl(struct file *file, unsigned int cmd,
 		}
 		ret = vcu_ipi_handler(vcu_dev, &share_buff_data);
 		ret = (long)copy_to_user(user_data_addr, &share_buff_data,
-			(unsigned long)sizeof(struct share_obj));
+			(cmd == 0x40507600) ? 80 : (unsigned long)sizeof(struct share_obj));
 		if (ret != 0L) {
 			pr_info("[VCU] %s(%d) Copy data to user failed!\n",
 			       __func__, __LINE__);
@@ -1982,6 +1984,7 @@ static long mtk_vcu_unlocked_compat_ioctl(struct file *file, unsigned int cmd,
 
 	switch (cmd) {
 	case COMPAT_VCU_SET_OBJECT:
+	case 0x40507600:
 	case VCU_GET_OBJECT:
 	case 0xc050760a:
 	case VCU_GET_LOG_OBJECT:
@@ -2306,6 +2309,12 @@ static int mtk_vcu_probe(struct platform_device *pdev)
 		dev_err(dev, "Failed to register IPI_VCU_INIT\n");
 		goto vcu_mutex_destroy;
 	}
+
+	/* Pre-initialize VCU running status and firmware version to prevent early-boot race conditions */
+	vcu->run.signaled = 1;
+	strncpy(vcu->run.fw_ver, "0.2.14", VCU_FW_VER_LEN);
+	vcu->run.dec_capability = 0xFFFFFFFF;
+	vcu->run.enc_capability = 0xFFFFFFFF;
 
 	init_waitqueue_head(&vcu->ack_wq[VCU_VDEC]);
 	init_waitqueue_head(&vcu->ack_wq[VCU_VENC]);

@@ -96,15 +96,26 @@ static void mtk_dither_config(struct mtk_ddp_comp *comp,
 	DDPINFO("%s: bbp = %u\n", __func__, cfg->bpc);
 	DDPINFO("%s: width = %u height = %u\n", __func__, cfg->w, cfg->h);
 
-	/* skip redundant config */
+	/*
+	 * Sol-Kernel Clean Handoff:
+	 * During initial boot / continuous splash handoff, cfg->bpc is uninitialized (0).
+	 * We must bypass dither during this phase to protect Novatek NT36672C splash logo from noise artifacts,
+	 * but DO NOT mark priv->pwr_sta so that once Android SurfaceFlinger establishes 8-bpc mode,
+	 * hardware dithering is cleanly and seamlessly engaged.
+	 */
+	if (cfg->bpc == 0) {
+		cmdq_pkt_write(handle, comp->cmdq_base,
+			       comp->regs_pa + DISP_DITHER_EN, 0, ~0);
+		cmdq_pkt_write(handle, comp->cmdq_base,
+			       comp->regs_pa + DISP_REG_DITHER_CFG, 0x1, 0x3);
+		return;
+	}
+
+	/* Skip redundant config once valid bpc has been configured */
 	if (priv->pwr_sta != 0)
 		return;
 
 	priv->pwr_sta = 1;
-
-	/* Sol-Kernel: Fallback 0 bpc to 8 bpc (NT36672C RGB888 panel) to ensure hardware dither is always active */
-	if (cfg->bpc == 0)
-		cfg->bpc = 8;
 
 	if (cfg->bpc == 8) { /* 888 */
 		cmdq_pkt_write(handle, comp->cmdq_base,

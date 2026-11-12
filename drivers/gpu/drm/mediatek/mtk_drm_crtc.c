@@ -2838,7 +2838,7 @@ static unsigned int overlap_to_bw(struct drm_crtc *crtc,
 	unsigned int overlap_num)
 {
 	unsigned int bw_base = mtk_drm_primary_frame_bw(crtc);
-	unsigned int bw = bw_base * overlap_num * 80 / 200; //mtk patch for reduce power
+	unsigned int bw = (bw_base * overlap_num) / 2; /* Sol-Kernel: full 100% OVL read BW */
 
 	return bw;
 }
@@ -2876,7 +2876,7 @@ static void mtk_crtc_update_hrt_state(struct drm_crtc *crtc,
 }
 
 #if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
-	defined(CONFIG_MACH_MT6877)
+	defined(CONFIG_MACH_MT6877) || defined(CONFIG_MACH_MT6781)
 static void mtk_crtc_update_hrt_state_ex(struct drm_crtc *crtc,
 				      struct mtk_drm_lyeblob_ids *lyeblob_ids,
 				      struct cmdq_pkt *cmdq_handle)
@@ -3167,7 +3167,7 @@ static void mtk_crtc_update_ddp_state(struct drm_crtc *crtc,
 					cmdq_handle);
 			if (index == 0) {
 #if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
-	defined(CONFIG_MACH_MT6877)
+	defined(CONFIG_MACH_MT6877) || defined(CONFIG_MACH_MT6781)
 				mtk_crtc_update_hrt_state_ex(
 					crtc, lyeblob_ids,
 					cmdq_handle);

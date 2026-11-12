@@ -1728,7 +1728,7 @@ static int _dispatch_lye_blob_idx(struct drm_mtk_layering_info *disp_info,
 	int i;
 	int clear_idx = -1;
 #if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
-	defined(CONFIG_MACH_MT6877)
+	defined(CONFIG_MACH_MT6877) || defined(CONFIG_MACH_MT6781)
 	int no_compress_layer_num = 0;
 #endif
 
@@ -1782,7 +1782,7 @@ static int _dispatch_lye_blob_idx(struct drm_mtk_layering_info *disp_info,
 			comp_state.ext_lye_id = LYE_NORMAL;
 		}
 #if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
-	defined(CONFIG_MACH_MT6877)
+	defined(CONFIG_MACH_MT6877) || defined(CONFIG_MACH_MT6781)
 		if (disp_idx == 0 &&
 			(comp_state.comp_id == DDP_COMPONENT_OVL0_2L) &&
 			!is_extended_layer(layer_info) &&
@@ -1801,7 +1801,7 @@ static int _dispatch_lye_blob_idx(struct drm_mtk_layering_info *disp_info,
 		prev_comp_id = comp_state.comp_id;
 	}
 #if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
-	defined(CONFIG_MACH_MT6877)
+	defined(CONFIG_MACH_MT6877) || defined(CONFIG_MACH_MT6781)
 	if (disp_idx == 0) {
 		HRT_SET_NO_COMPRESS_FLAG(disp_info->hrt_num,
 				no_compress_layer_num);

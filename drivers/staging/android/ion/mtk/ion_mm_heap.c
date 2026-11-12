@@ -100,7 +100,7 @@ static unsigned int order_gfp_flags[] = {
 	(GFP_HIGHUSER | __GFP_ZERO)
 };
 
-static const unsigned int orders[] = { 4, 1, 0 };
+static const unsigned int orders[] = { 8, 4, 0 };
 
 #ifdef CONFIG_OPLUS_ION_BOOSTPOOL
 struct kmem_cache *boost_ion_info_cachep;

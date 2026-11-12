@@ -445,7 +445,7 @@ int32_t nvt_set_spi_speed(uint32_t hz)
 
 	if (!ts || !ts->client)
 		return -ENODEV;
-	if (hz < 4800000 || hz > 15000000)
+	if (hz < NVT_SPI_SPEED_MIN || hz > NVT_SPI_SPEED_MAX)
 		return -EINVAL;
 
 	mutex_lock(&ts->lock);
@@ -528,14 +528,19 @@ void nvt_set_edge_guard(uint16_t px)
 
 /*
  * Quarter-pixel fixed-point micro-displacement gain (1/4 px accumulator):
- *   gain 0..4 => 1.0x, 1.5x, 2.0x, 2.5x, 3.0x on 1..8 px/frame deltas,
+ *   gain 0..12 => 1.0x..7.0x (0.5x steps) on 1..8 px/frame deltas,
  *   tapered half-gain on 9..14 px/frame fast micro-twitches, and smooth
  *   bleed-back toward 0 on large >20 px/frame swipes.
+ *   gain <= 4 keeps exact +/-36 px offset envelope; 5..12 scales up to +/-120 px.
  */
 static uint32_t nvt_step_micro_axis(int32_t d, int32_t *acc, int32_t *off,
 				      uint8_t gain, int32_t max_val, int32_t raw)
 {
 	int32_t ad = (d < 0) ? -d : d;
+	int32_t max_off = (gain <= 4) ? NVT_MICRO_GAIN_MAX_OFF : ((int32_t)gain * 10);
+
+	if (max_off > NVT_MICRO_GAIN_MAX_OFF_CEIL)
+		max_off = NVT_MICRO_GAIN_MAX_OFF_CEIL;
 
 	if (ad > 0 && ad <= 8) {
 		int32_t extra;
@@ -543,16 +548,17 @@ static uint32_t nvt_step_micro_axis(int32_t d, int32_t *acc, int32_t *off,
 		*acc += d * (int32_t)gain * 2;
 		extra = *acc / 4;
 		*acc -= extra * 4;
-		*off = clamp_val(*off + extra, -NVT_MICRO_GAIN_MAX_OFF, NVT_MICRO_GAIN_MAX_OFF);
+		*off = clamp_val(*off + extra, -max_off, max_off);
 	} else if (ad >= 9 && ad <= 14) {
 		int32_t extra;
 
 		*acc += d * (int32_t)gain;
 		extra = *acc / 4;
 		*acc -= extra * 4;
-		*off = clamp_val(*off + extra, -NVT_MICRO_GAIN_MAX_OFF, NVT_MICRO_GAIN_MAX_OFF);
+		*off = clamp_val(*off + extra, -max_off, max_off);
 	} else if (ad > 20) {
-		int32_t bleed = clamp_val(*off, -2, 2);
+		int32_t max_bleed = ((int32_t)gain / 2 > 2) ? ((int32_t)gain / 2) : 2;
+		int32_t bleed = clamp_val(*off, -max_bleed, max_bleed);
 
 		*off -= bleed;
 		*acc = 0;
@@ -618,7 +624,7 @@ void nvt_reapply_touch_modes(void)
 	if (!ts || !ts->client || !bTouchIsAwake)
 		return;
 
-	if (ts->spi_max_hz_req >= 4800000 && ts->spi_max_hz_req <= 15000000 &&
+	if (ts->spi_max_hz_req >= NVT_SPI_SPEED_MIN && ts->spi_max_hz_req <= NVT_SPI_SPEED_MAX &&
 	    ts->client->max_speed_hz != ts->spi_max_hz_req)
 		nvt_set_spi_speed(ts->spi_max_hz_req);
 
@@ -1950,7 +1956,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	ts->has_smooth_level = true;
 	ts->smooth_level = 0x00;
 	ts->last_cmd_ret = 0;
-	ts->micro_gain = 3;
+	ts->micro_gain = 4;
 	ts->edge_guard_px = NVT_EDGE_GUARD_DEFAULT;
 	ts->touch_qos_active = false;
 	ts->dt_us_min = U32_MAX;

@@ -248,6 +248,7 @@ int32_t nvt_send_host_cmd(uint8_t cmd, uint8_t subcmd, bool has_subcmd,
 			  uint8_t val, bool has_val, uint8_t *ack_out);
 int32_t nvt_set_game_mode(bool enable);
 int32_t nvt_set_spi_speed(uint32_t hz);
+void nvt_reapply_touch_modes(void);
 int32_t nvt_read_event_regs(uint8_t start_reg, uint8_t *out, uint16_t len);
 void nvt_reset_touch_stats(void);
 void nvt_irq_enable(bool enable);

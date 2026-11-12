@@ -1045,6 +1045,7 @@ void Boot_Update_Firmware(struct kthread_work *work)
 			nvt_irq_enable(true);
 			bTouchIsAwake = 1;
 			mutex_unlock(&ts->lock);
+			nvt_reapply_touch_modes();
 			return;
 		}
 		update_firmware_release();
@@ -1068,5 +1069,6 @@ void Boot_Update_Firmware(struct kthread_work *work)
 	nvt_irq_enable(true);
 	bTouchIsAwake = 1;
 	mutex_unlock(&ts->lock);
+	nvt_reapply_touch_modes();
 }
 #endif				/* BOOT_UPDATE_FIRMWARE */

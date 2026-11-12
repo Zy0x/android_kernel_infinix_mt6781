@@ -19,6 +19,8 @@
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
+#include <linux/irqdesc.h>
+#include <linux/sched.h>
 #include <linux/gpio.h>
 #include <linux/proc_fs.h>
 #include <linux/input/mt.h>
@@ -443,7 +445,7 @@ int32_t nvt_set_spi_speed(uint32_t hz)
 
 	if (!ts || !ts->client)
 		return -ENODEV;
-	if (hz < 4800000 || hz > 9600000)
+	if (hz < 4800000 || hz > 15000000)
 		return -EINVAL;
 
 	mutex_lock(&ts->lock);
@@ -507,6 +509,23 @@ void nvt_reset_touch_stats(void)
 	ts->last_dy = 0;
 	ts->last_xy_valid = false;
 	mutex_unlock(&ts->lock);
+}
+
+void nvt_reapply_touch_modes(void)
+{
+	if (!ts || !bTouchIsAwake)
+		return;
+
+	if (ts->game_mode_enabled)
+		nvt_set_game_mode(true);
+	if (ts->hopping_fix_freq)
+		nvt_send_host_cmd(EVENTBUFFER_HOPPING_FIX_FREQ_ON, 0, false, 0, false, NULL);
+	if (ts->has_jitter_level)
+		nvt_send_host_cmd(EVENTBUFFER_EXT_CMD, EVENTBUFFER_EXT_JITTER_LEVEL,
+				  true, ts->jitter_level, true, NULL);
+	if (ts->has_smooth_level)
+		nvt_send_host_cmd(EVENTBUFFER_EXT_CMD, EVENTBUFFER_EXT_SMOOTH_LEVEL,
+				  true, ts->smooth_level, true, NULL);
 }
 
 /*******************************************************
@@ -1803,7 +1822,8 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 #endif
 
 	ts->spi_max_hz_req = ts->client->max_speed_hz;
-	ts->game_mode_enabled = false;
+	ts->game_mode_enabled = true;
+	ts->hopping_fix_freq = true;
 	ts->last_cmd_ret = 0;
 	ts->dt_us_min = U32_MAX;
 
@@ -1965,6 +1985,15 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 			NVT_ERR("request irq failed. ret=%d\n", ret);
 			goto err_int_request_failed;
 		} else {
+			struct irq_desc *desc = irq_to_desc(client->irq);
+			cpumask_t big_mask;
+
+			cpumask_clear(&big_mask);
+			cpumask_set_cpu(6, &big_mask);
+			cpumask_set_cpu(7, &big_mask);
+			cpumask_and(&big_mask, &big_mask, cpu_online_mask);
+			if (!cpumask_empty(&big_mask) && desc && desc->action && desc->action->thread)
+				set_cpus_allowed_ptr(desc->action->thread, &big_mask);
 			nvt_irq_enable(false);
 			NVT_LOG("request irq %d succeed\n", client->irq);
 		}
@@ -2427,14 +2456,7 @@ static int32_t nvt_ts_resume(struct device *dev)
 
 	mutex_unlock(&ts->lock);
 
-	if (ts->game_mode_enabled)
-		nvt_set_game_mode(true);
-	if (ts->hopping_fix_freq)
-		nvt_send_host_cmd(EVENTBUFFER_HOPPING_FIX_FREQ_ON, 0, false, 0, false, NULL);
-	if (ts->has_jitter_level)
-		nvt_send_host_cmd(EVENTBUFFER_EXT_CMD, EVENTBUFFER_EXT_JITTER_LEVEL, true, ts->jitter_level, true, NULL);
-	if (ts->has_smooth_level)
-		nvt_send_host_cmd(EVENTBUFFER_EXT_CMD, EVENTBUFFER_EXT_SMOOTH_LEVEL, true, ts->smooth_level, true, NULL);
+	nvt_reapply_touch_modes();
 
 	NVT_LOG("end\n");
 

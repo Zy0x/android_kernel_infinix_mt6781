@@ -78,8 +78,10 @@
 extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 #endif
 #define TOUCH_FORCE_NUM 1000
-#define NVT_MICRO_GAIN_MAX 3
-#define NVT_MICRO_GAIN_MAX_OFF 16
+#define NVT_MICRO_GAIN_MAX 4
+#define NVT_MICRO_GAIN_MAX_OFF 36
+#define NVT_EDGE_GUARD_MAX 120
+#define NVT_EDGE_GUARD_DEFAULT 48
 
 /* Enable only when module have tp reset pin and connected to host */
 #define NVT_TOUCH_SUPPORT_HW_RST 0
@@ -172,7 +174,11 @@ struct nvt_ts_data {
 	struct pm_qos_request touch_qos;
 	bool touch_qos_active;
 	uint8_t micro_gain;
+	uint16_t edge_guard_px;
 	bool slot_active[TOUCH_MAX_FINGER_NUM];
+	bool slot_edge_lock[TOUCH_MAX_FINGER_NUM];
+	int32_t down_raw_x[TOUCH_MAX_FINGER_NUM];
+	int32_t down_raw_y[TOUCH_MAX_FINGER_NUM];
 	int32_t prev_raw_x[TOUCH_MAX_FINGER_NUM];
 	int32_t prev_raw_y[TOUCH_MAX_FINGER_NUM];
 	int32_t gain_off_x[TOUCH_MAX_FINGER_NUM];
@@ -263,6 +269,7 @@ int32_t nvt_set_game_mode(bool enable);
 int32_t nvt_set_spi_speed(uint32_t hz);
 void nvt_reapply_touch_modes(void);
 void nvt_set_micro_gain(uint8_t gain);
+void nvt_set_edge_guard(uint16_t px);
 void nvt_reset_touch_stats(void);
 void nvt_irq_enable(bool enable);
 extern uint8_t bTouchIsAwake;

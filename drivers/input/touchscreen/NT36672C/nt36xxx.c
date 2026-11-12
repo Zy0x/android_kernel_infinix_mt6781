@@ -487,12 +487,15 @@ static void nvt_update_touch_qos(bool active)
 	if (!ts || ts->touch_qos_active == active)
 		return;
 	ts->touch_qos_active = active;
-	pm_qos_update_request(&ts->touch_qos, active ? 50 : PM_QOS_DEFAULT_VALUE);
+	pm_qos_update_request(&ts->touch_qos, active ? 25 : PM_QOS_DEFAULT_VALUE);
 }
 
 static void nvt_reset_micro_slots(void)
 {
 	memset(ts->slot_active, 0, sizeof(ts->slot_active));
+	memset(ts->slot_edge_lock, 0, sizeof(ts->slot_edge_lock));
+	memset(ts->down_raw_x, 0, sizeof(ts->down_raw_x));
+	memset(ts->down_raw_y, 0, sizeof(ts->down_raw_y));
 	memset(ts->gain_off_x, 0, sizeof(ts->gain_off_x));
 	memset(ts->gain_off_y, 0, sizeof(ts->gain_off_y));
 	memset(ts->gain_acc_x, 0, sizeof(ts->gain_acc_x));
@@ -511,23 +514,47 @@ void nvt_set_micro_gain(uint8_t gain)
 	mutex_unlock(&ts->lock);
 }
 
+void nvt_set_edge_guard(uint16_t px)
+{
+	if (!ts)
+		return;
+	if (px > NVT_EDGE_GUARD_MAX)
+		px = NVT_EDGE_GUARD_MAX;
+	mutex_lock(&ts->lock);
+	ts->edge_guard_px = px;
+	nvt_reset_micro_slots();
+	mutex_unlock(&ts->lock);
+}
+
+/*
+ * Quarter-pixel fixed-point micro-displacement gain (1/4 px accumulator):
+ *   gain 0..4 => 1.0x, 1.5x, 2.0x, 2.5x, 3.0x on 1..8 px/frame deltas,
+ *   tapered half-gain on 9..14 px/frame fast micro-twitches, and smooth
+ *   bleed-back toward 0 on large >20 px/frame swipes.
+ */
 static uint32_t nvt_step_micro_axis(int32_t d, int32_t *acc, int32_t *off,
 				      uint8_t gain, int32_t max_val, int32_t raw)
 {
 	int32_t ad = (d < 0) ? -d : d;
 
-	if (ad > 0 && ad <= 5) {
+	if (ad > 0 && ad <= 8) {
+		int32_t extra;
+
+		*acc += d * (int32_t)gain * 2;
+		extra = *acc / 4;
+		*acc -= extra * 4;
+		*off = clamp_val(*off + extra, -NVT_MICRO_GAIN_MAX_OFF, NVT_MICRO_GAIN_MAX_OFF);
+	} else if (ad >= 9 && ad <= 14) {
 		int32_t extra;
 
 		*acc += d * (int32_t)gain;
-		extra = *acc / 2;
-		*acc -= extra * 2;
+		extra = *acc / 4;
+		*acc -= extra * 4;
 		*off = clamp_val(*off + extra, -NVT_MICRO_GAIN_MAX_OFF, NVT_MICRO_GAIN_MAX_OFF);
-	} else if (ad > 12) {
-		if (*off > 0)
-			(*off)--;
-		else if (*off < 0)
-			(*off)++;
+	} else if (ad > 20) {
+		int32_t bleed = clamp_val(*off, -2, 2);
+
+		*off -= bleed;
 		*acc = 0;
 	}
 	return (uint32_t)clamp_val(raw + *off, 0, max_val);
@@ -535,21 +562,27 @@ static uint32_t nvt_step_micro_axis(int32_t d, int32_t *acc, int32_t *off,
 
 static void nvt_apply_micro_gain(uint8_t slot, uint32_t *x, uint32_t *y)
 {
-	int32_t dx, dy;
+	int32_t dx, dy, eg;
 	int32_t raw_x = (int32_t)(*x);
 	int32_t raw_y = (int32_t)(*y);
 
 	if (slot >= TOUCH_MAX_FINGER_NUM)
 		return;
 
+	eg = (int32_t)ts->edge_guard_px;
 	if (!ts->slot_active[slot]) {
 		ts->slot_active[slot] = true;
+		ts->down_raw_x[slot] = raw_x;
+		ts->down_raw_y[slot] = raw_y;
 		ts->prev_raw_x[slot] = raw_x;
 		ts->prev_raw_y[slot] = raw_y;
 		ts->gain_off_x[slot] = 0;
 		ts->gain_off_y[slot] = 0;
 		ts->gain_acc_x[slot] = 0;
 		ts->gain_acc_y[slot] = 0;
+		ts->slot_edge_lock[slot] = (eg > 0) &&
+			(raw_x <= eg || raw_x >= (int32_t)ts->abs_x_max - eg ||
+			 raw_y <= eg || raw_y >= (int32_t)ts->abs_y_max - eg);
 		return;
 	}
 
@@ -560,6 +593,19 @@ static void nvt_apply_micro_gain(uint8_t slot, uint32_t *x, uint32_t *y)
 
 	if (ts->micro_gain == 0)
 		return;
+
+	if (ts->slot_edge_lock[slot]) {
+		int32_t tx = raw_x - ts->down_raw_x[slot];
+		int32_t ty = raw_y - ts->down_raw_y[slot];
+		int32_t atx = (tx < 0) ? -tx : tx;
+		int32_t aty = (ty < 0) ? -ty : ty;
+
+		/* Hold raw 1:1 near bezel rims so edge presses never inflate into Back swipes */
+		if (eg == 0 || atx > eg + 12 || aty > eg + 12)
+			ts->slot_edge_lock[slot] = false;
+		else
+			return;
+	}
 
 	*x = nvt_step_micro_axis(dx, &ts->gain_acc_x[slot], &ts->gain_off_x[slot],
 				 ts->micro_gain, (int32_t)ts->abs_x_max, raw_x);
@@ -1664,6 +1710,9 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 	for (i = 0; i < ts->max_touch_num; i++) {
 		if (press_id[i] != 1) {
 			ts->slot_active[i] = false;
+			ts->slot_edge_lock[i] = false;
+			ts->down_raw_x[i] = 0;
+			ts->down_raw_y[i] = 0;
 			ts->gain_off_x[i] = 0;
 			ts->gain_off_y[i] = 0;
 			ts->gain_acc_x[i] = 0;
@@ -1901,7 +1950,8 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	ts->has_smooth_level = true;
 	ts->smooth_level = 0x00;
 	ts->last_cmd_ret = 0;
-	ts->micro_gain = 1;
+	ts->micro_gain = 3;
+	ts->edge_guard_px = NVT_EDGE_GUARD_DEFAULT;
 	ts->touch_qos_active = false;
 	ts->dt_us_min = U32_MAX;
 

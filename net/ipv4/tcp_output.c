@@ -59,8 +59,8 @@ int sysctl_tcp_limit_output_bytes __read_mostly = 16 * 65536;
  */
 int sysctl_tcp_tso_win_divisor __read_mostly = 3;
 
-/* By default, RFC2861 behavior.  */
-int sysctl_tcp_slow_start_after_idle __read_mostly = 1;
+/* Disable RFC2861 collapse after idle to keep persistent flows fast. */
+int sysctl_tcp_slow_start_after_idle __read_mostly = 0;
 
 //#ifdef OPLUS_FEATURE_NWPOWER
 #include <net/oplus_nwpower.h>

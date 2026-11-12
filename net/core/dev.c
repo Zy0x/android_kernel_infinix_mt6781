@@ -3567,13 +3567,13 @@ EXPORT_SYMBOL(dev_queue_xmit_accel);
  *			Receiver routines
  *************************************************************************/
 
-int netdev_max_backlog __read_mostly = 1000;
+int netdev_max_backlog __read_mostly = 2500;
 EXPORT_SYMBOL(netdev_max_backlog);
 
 int netdev_tstamp_prequeue __read_mostly = 1;
-int netdev_budget __read_mostly = 300;
+int netdev_budget __read_mostly = 600;
 /* Must be at least 2 jiffes to guarantee 1 jiffy timeout */
-unsigned int __read_mostly netdev_budget_usecs = 2 * USEC_PER_SEC / HZ;
+unsigned int __read_mostly netdev_budget_usecs = 4 * USEC_PER_SEC / HZ;
 int weight_p __read_mostly = 64;           /* old backlog weight */
 int dev_weight_rx_bias __read_mostly = 1;  /* bias for backlog weight */
 int dev_weight_tx_bias __read_mostly = 1;  /* bias for output_queue quota */
@@ -9090,6 +9090,25 @@ static int __init net_dev_init(void)
 
 	open_softirq(NET_TX_SOFTIRQ, net_tx_action);
 	open_softirq(NET_RX_SOFTIRQ, net_rx_action);
+
+#ifdef CONFIG_RPS
+	/* Enable RFS global flow table by default so packets steer to socket CPU */
+	{
+		struct rps_sock_flow_table *sock_table;
+		const unsigned int size = 32768;
+
+		sock_table = vmalloc(RPS_SOCK_FLOW_TABLE_SIZE(size));
+		if (sock_table) {
+			rps_cpu_mask = roundup_pow_of_two(nr_cpu_ids) - 1;
+			sock_table->mask = size - 1;
+			for (i = 0; i < size; i++)
+				sock_table->ents[i] = RPS_NO_CPU;
+			rcu_assign_pointer(rps_sock_flow_table, sock_table);
+			static_key_slow_inc(&rps_needed);
+			static_key_slow_inc(&rfs_needed);
+		}
+	}
+#endif
 
 	rc = cpuhp_setup_state_nocalls(CPUHP_NET_DEV_DEAD, "net/dev:dead",
 				       NULL, dev_cpu_dead);

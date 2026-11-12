@@ -787,12 +787,86 @@ static void rps_dev_flow_table_release(struct rcu_head *rcu)
 	vfree(table);
 }
 
+static DEFINE_SPINLOCK(rps_dev_flow_lock);
+
+static int alloc_rps_dev_flow_table(unsigned long count,
+				    struct rps_dev_flow_table **out)
+{
+	unsigned long mask;
+	struct rps_dev_flow_table *table;
+
+	if (!count) {
+		*out = NULL;
+		return 0;
+	}
+
+	mask = count - 1;
+	/* mask = roundup_pow_of_two(count) - 1;
+	 * without overflows...
+	 */
+	while ((mask | (mask >> 1)) != mask)
+		mask |= (mask >> 1);
+	/* On 64 bit arches, must check mask fits in table->mask (u32),
+	 * and on 32bit arches, must check
+	 * RPS_DEV_FLOW_TABLE_SIZE(mask + 1) doesn't overflow.
+	 */
+#if BITS_PER_LONG > 32
+	if (mask > (unsigned long)(u32)mask)
+		return -EINVAL;
+#else
+	if (mask > (ULONG_MAX - RPS_DEV_FLOW_TABLE_SIZE(1))
+			/ sizeof(struct rps_dev_flow)) {
+		/* Enforce a limit to prevent overflow */
+		return -EINVAL;
+	}
+#endif
+	table = vmalloc(RPS_DEV_FLOW_TABLE_SIZE(mask + 1));
+	if (!table)
+		return -ENOMEM;
+
+	table->mask = mask;
+	for (count = 0; count <= mask; count++)
+		table->flows[count].cpu = RPS_NO_CPU;
+
+	*out = table;
+	return 0;
+}
+
+static void init_default_rfs_flow_table(struct net_device *dev,
+					struct netdev_rx_queue *queue)
+{
+	struct rps_dev_flow_table *table = NULL;
+
+	if (dev->flags & IFF_LOOPBACK)
+		return;
+
+	if (strncmp(dev->name, "wlan", 4) &&
+	    strncmp(dev->name, "ccmni", 5) &&
+	    strncmp(dev->name, "rmnet", 5) &&
+	    strncmp(dev->name, "rndis", 5) &&
+	    strncmp(dev->name, "eth", 3))
+		return;
+
+	if (alloc_rps_dev_flow_table(4096, &table))
+		return;
+
+	spin_lock(&rps_dev_flow_lock);
+	if (!rcu_dereference_protected(queue->rps_flow_table,
+				       lockdep_is_held(&rps_dev_flow_lock))) {
+		rcu_assign_pointer(queue->rps_flow_table, table);
+		table = NULL;
+	}
+	spin_unlock(&rps_dev_flow_lock);
+
+	if (table)
+		vfree(table);
+}
+
 static ssize_t store_rps_dev_flow_table_cnt(struct netdev_rx_queue *queue,
 					    const char *buf, size_t len)
 {
-	unsigned long mask, count;
+	unsigned long count;
 	struct rps_dev_flow_table *table, *old_table;
-	static DEFINE_SPINLOCK(rps_dev_flow_lock);
 	int rc;
 
 	if (!capable(CAP_NET_ADMIN))
@@ -802,37 +876,9 @@ static ssize_t store_rps_dev_flow_table_cnt(struct netdev_rx_queue *queue,
 	if (rc < 0)
 		return rc;
 
-	if (count) {
-		mask = count - 1;
-		/* mask = roundup_pow_of_two(count) - 1;
-		 * without overflows...
-		 */
-		while ((mask | (mask >> 1)) != mask)
-			mask |= (mask >> 1);
-		/* On 64 bit arches, must check mask fits in table->mask (u32),
-		 * and on 32bit arches, must check
-		 * RPS_DEV_FLOW_TABLE_SIZE(mask + 1) doesn't overflow.
-		 */
-#if BITS_PER_LONG > 32
-		if (mask > (unsigned long)(u32)mask)
-			return -EINVAL;
-#else
-		if (mask > (ULONG_MAX - RPS_DEV_FLOW_TABLE_SIZE(1))
-				/ sizeof(struct rps_dev_flow)) {
-			/* Enforce a limit to prevent overflow */
-			return -EINVAL;
-		}
-#endif
-		table = vmalloc(RPS_DEV_FLOW_TABLE_SIZE(mask + 1));
-		if (!table)
-			return -ENOMEM;
-
-		table->mask = mask;
-		for (count = 0; count <= mask; count++)
-			table->flows[count].cpu = RPS_NO_CPU;
-	} else {
-		table = NULL;
-	}
+	rc = alloc_rps_dev_flow_table(count, &table);
+	if (rc < 0)
+		return rc;
 
 	spin_lock(&rps_dev_flow_lock);
 	old_table = rcu_dereference_protected(queue->rps_flow_table,
@@ -927,6 +973,10 @@ static int rx_queue_add_kobject(struct net_device *dev, int index)
 		if (error)
 			goto err;
 	}
+
+#ifdef CONFIG_RPS
+	init_default_rfs_flow_table(dev, queue);
+#endif
 
 	kobject_uevent(kobj, KOBJ_ADD);
 

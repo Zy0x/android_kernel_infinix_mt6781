@@ -45,7 +45,7 @@
 #include "ged_global.h"
 
 #define MTK_DEFER_DVFS_WORK_MS          10000
-#define MTK_DVFS_SWITCH_INTERVAL_MS     25
+#define MTK_DVFS_SWITCH_INTERVAL_MS     12
 
 /* Definition of GED_DVFS_SKIP_ROUNDS is to skip DVFS when boost raised
  *  the value stands for counting down rounds of DVFS period
@@ -86,6 +86,7 @@ static unsigned int gpu_cust_upbound_freq;
 static unsigned int g_ui32PreFreqID;
 static unsigned int g_ui32CurFreqID;
 static unsigned int g_bottom_freq_id;
+static unsigned int g_touch_boost_freq_id;
 static unsigned int g_last_def_commit_freq_id;
 static unsigned int g_cust_upbound_freq_id;
 static unsigned int g_cust_boost_freq_id;
@@ -590,6 +591,11 @@ bool ged_dvfs_gpu_freq_commit(unsigned long ui32NewFreqID,
 			ged_log_perf_trace_counter("gpu_api_boost",
 				(long long)g_bottom_freq_id,
 				5566, 0, 0);
+		}
+
+		if (ui32NewFreqID > g_touch_boost_freq_id) {
+			ui32NewFreqID = g_touch_boost_freq_id;
+			g_CommitType = MTK_GPU_DVFS_TYPE_SMARTBOOST;
 		}
 
 		if (ui32NewFreqID > g_cust_boost_freq_id) {
@@ -1556,6 +1562,30 @@ void ged_dvfs_boost_gpu_freq(void)
 	ged_dvfs_freq_input_boostCB(0);
 }
 
+void ged_dvfs_touch_boost_gpu_freq(int opp_idx)
+{
+	unsigned int ui32MaxLevel;
+
+	if (g_iSkipCount > 0 || gpu_dvfs_enable == 0)
+		return;
+
+	ui32MaxLevel = mt_gpufreq_get_dvfs_table_num() - 1;
+
+	mutex_lock(&gsDVFSLock);
+	if (opp_idx < 0 || (unsigned int)opp_idx >= ui32MaxLevel) {
+		g_touch_boost_freq_id = ui32MaxLevel;
+	} else {
+		g_touch_boost_freq_id = (unsigned int)opp_idx;
+		if (g_touch_boost_freq_id < mt_gpufreq_get_cur_freq_index()) {
+			ged_dvfs_gpu_freq_commit(g_touch_boost_freq_id,
+				mt_gpufreq_get_freq_by_idx(g_touch_boost_freq_id),
+				GED_DVFS_INPUT_BOOST_COMMIT);
+			g_dvfs_skip_round = GED_DVFS_SKIP_ROUNDS;
+		}
+	}
+	mutex_unlock(&gsDVFSLock);
+}
+
 static void ged_dvfs_set_bottom_gpu_freq(unsigned int ui32FreqLevel)
 {
 	unsigned int ui32MaxLevel;
@@ -2298,6 +2328,7 @@ GED_ERROR ged_dvfs_system_init(void)
 	g_dvfs_skip_round = 0;
 
 	g_bottom_freq_id = mt_gpufreq_get_dvfs_table_num() - 1;
+	g_touch_boost_freq_id = g_bottom_freq_id;
 	gpu_bottom_freq = mt_gpufreq_get_freq_by_idx(g_bottom_freq_id);
 
 	g_cust_boost_freq_id = mt_gpufreq_get_dvfs_table_num() - 1;
@@ -2334,6 +2365,7 @@ GED_ERROR ged_dvfs_system_init(void)
 	mtk_boost_gpu_freq_fp = ged_dvfs_boost_gpu_freq;
 #endif
 	mtk_set_bottom_gpu_freq_fp = ged_dvfs_set_bottom_gpu_freq;
+	mtk_set_touch_boost_gpu_freq_fp = ged_dvfs_touch_boost_gpu_freq;
 	mtk_get_bottom_gpu_freq_fp = ged_dvfs_get_bottom_gpu_freq;
 	mtk_custom_get_gpu_freq_level_count_fp =
 		ged_dvfs_get_gpu_freq_level_count;

@@ -146,7 +146,10 @@ void ged_dvfs_get_gpu_pre_freq(struct GED_DVFS_FREQ_DATA *psData);
 
 void ged_dvfs_sw_vsync_query_data(struct GED_DVFS_UM_QUERY_PACK *psQueryData);
 
+extern unsigned long g_ulvsync_period;
+void set_target_fps(int i32FPS);
 void ged_dvfs_boost_gpu_freq(void);
+void ged_dvfs_touch_boost_gpu_freq(int opp_idx);
 
 GED_ERROR ged_dvfs_probe(int pid);
 GED_ERROR ged_dvfs_um_commit(unsigned long gpu_tar_freq, bool bFallback);

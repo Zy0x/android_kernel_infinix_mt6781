@@ -212,6 +212,19 @@ bool mtk_set_bottom_gpu_freq(unsigned int ui32FreqLevel)
 }
 EXPORT_SYMBOL(mtk_set_bottom_gpu_freq);
 
+void (*mtk_set_touch_boost_gpu_freq_fp)(int) = NULL;
+EXPORT_SYMBOL(mtk_set_touch_boost_gpu_freq_fp);
+
+bool mtk_set_touch_boost_gpu_freq(int i32OppIdx)
+{
+	if (NULL != mtk_set_touch_boost_gpu_freq_fp) {
+		mtk_set_touch_boost_gpu_freq_fp(i32OppIdx);
+		return true;
+	}
+	return false;
+}
+EXPORT_SYMBOL(mtk_set_touch_boost_gpu_freq);
+
 //-----------------------------------------------------------------------------
 unsigned int (*mtk_get_bottom_gpu_freq_fp)(void) = NULL;
 EXPORT_SYMBOL(mtk_get_bottom_gpu_freq_fp);

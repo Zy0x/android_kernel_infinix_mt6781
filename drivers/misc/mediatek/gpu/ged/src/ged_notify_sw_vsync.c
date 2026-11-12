@@ -142,7 +142,9 @@ static void ged_notify_sw_sync_work_handle(struct work_struct *psWork)
 	}
 }
 
-#define GED_VSYNC_MISS_QUANTUM_NS 16666666
+#define GED_VSYNC_MISS_QUANTUM_NS \
+	((long long)((g_ulvsync_period >= 8000000UL && g_ulvsync_period <= 16666666UL) ? \
+	g_ulvsync_period : 16666666UL))
 
 
 

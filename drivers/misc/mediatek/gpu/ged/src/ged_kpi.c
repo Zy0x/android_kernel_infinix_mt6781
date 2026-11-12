@@ -2410,6 +2410,18 @@ void ged_dfrc_fps_limit_cb(unsigned int target_fps)
 	g_target_fps_default =
 		(target_fps > 0 && target_fps <= GED_KPI_FPS_LIMIT)?
 		target_fps : g_target_fps_default;
+	set_target_fps(g_target_fps_default);
+#ifdef GED_KPI_CPU_BOOST
+	if (g_target_fps_default > 0) {
+		long period_ns = (long)(GED_KPI_SEC_DIVIDER / g_target_fps_default);
+
+		if (period_ns < 8333333L)
+			period_ns = 8333333L;
+		else if (period_ns > 16666666L)
+			period_ns = 16666666L;
+		target_t_cpu_remained = period_ns;
+	}
+#endif
 #ifdef GED_KPI_DEBUG
 	GED_LOGD("[GED_KPI] dfrc_fps %d\n", g_target_fps_default);
 #endif /* GED_KPI_DEBUG */

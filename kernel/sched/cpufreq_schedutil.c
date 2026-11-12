@@ -1192,8 +1192,9 @@ static int sugov_init(struct cpufreq_policy *policy)
 		goto stop_kthread;
 	}
 
-	tunables->up_rate_limit_us = cpufreq_policy_transition_delay_us(policy);
-	tunables->down_rate_limit_us = cpufreq_policy_transition_delay_us(policy);
+	/* 120Hz frame-hold hysteresis: fast ramp-up, hold >= 1 frame (8.33ms) before downclock */
+	tunables->up_rate_limit_us = 500;
+	tunables->down_rate_limit_us = 10000;
 
 #if defined(OPLUS_FEATURE_SCHEDUTIL_USE_TL) && defined(CONFIG_SCHEDUTIL_USE_TL)
 	tunables->target_loads = default_target_loads;

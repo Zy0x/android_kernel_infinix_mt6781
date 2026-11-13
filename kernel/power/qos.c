@@ -985,7 +985,10 @@ EXPORT_SYMBOL(pm_qos_request_for_cpu);
 
 int pm_qos_request_active(struct pm_qos_request *req)
 {
-	return req->pm_qos_class != 0;
+	if (!req)
+		return 0;
+	return req->pm_qos_class > PM_QOS_RESERVED &&
+	       req->pm_qos_class < PM_QOS_NUM_CLASSES;
 }
 EXPORT_SYMBOL_GPL(pm_qos_request_active);
 
@@ -1022,14 +1025,19 @@ EXPORT_SYMBOL(pm_qos_request_for_cpumask);
 static void __pm_qos_update_request(struct pm_qos_request *req,
 			   s32 new_value)
 {
-	trace_pm_qos_update_request(req->pm_qos_class, new_value, req->owner);
+	int qos_class = req->pm_qos_class;
+
+	if (qos_class <= PM_QOS_RESERVED || qos_class >= PM_QOS_NUM_CLASSES)
+		return;
+
+	trace_pm_qos_update_request(qos_class, new_value, req->owner);
 
 	if (new_value != req->node.prio) {
 		pm_qos_update_target(
-			pm_qos_array[req->pm_qos_class]->constraints,
+			pm_qos_array[qos_class]->constraints,
 			&req->node, PM_QOS_UPDATE_REQ, new_value);
 		pm_qos_update_target_req_list(
-			pm_qos_array[req->pm_qos_class]->constraints,
+			pm_qos_array[qos_class]->constraints,
 			req, PM_QOS_UPDATE_REQ);
 	}
 }
@@ -1186,11 +1194,12 @@ void pm_qos_update_request(struct pm_qos_request *req,
 		return;
 
 	if (!pm_qos_request_active(req)) {
-		WARN(1, KERN_ERR "pm_qos_update_request() called for unknown object\n");
+		pr_warn_ratelimited("pm_qos_update_request() called for unknown object\n");
 		return;
 	}
 
-	cancel_delayed_work_sync(&req->work);
+	if (delayed_work_pending(&req->work))
+		cancel_delayed_work_sync(&req->work);
 	__pm_qos_update_request(req, new_value);
 }
 EXPORT_SYMBOL_GPL(pm_qos_update_request);
@@ -1206,22 +1215,30 @@ EXPORT_SYMBOL_GPL(pm_qos_update_request);
 void pm_qos_update_request_timeout(struct pm_qos_request *req, s32 new_value,
 				   unsigned long timeout_us)
 {
+	int qos_class;
+
 	if (!req)
 		return;
-	if (WARN(!pm_qos_request_active(req),
-		 "%s called for unknown object.", __func__))
+	if (!pm_qos_request_active(req)) {
+		pr_warn_ratelimited("%s called for unknown object.\n", __func__);
+		return;
+	}
+
+	if (delayed_work_pending(&req->work))
+		cancel_delayed_work_sync(&req->work);
+
+	qos_class = req->pm_qos_class;
+	if (qos_class <= PM_QOS_RESERVED || qos_class >= PM_QOS_NUM_CLASSES)
 		return;
 
-	cancel_delayed_work_sync(&req->work);
-
-	trace_pm_qos_update_request_timeout(req->pm_qos_class,
+	trace_pm_qos_update_request_timeout(qos_class,
 					    new_value, timeout_us);
 	if (new_value != req->node.prio) {
 		pm_qos_update_target(
-			pm_qos_array[req->pm_qos_class]->constraints,
+			pm_qos_array[qos_class]->constraints,
 			&req->node, PM_QOS_UPDATE_REQ, new_value);
 		pm_qos_update_target_req_list(
-			pm_qos_array[req->pm_qos_class]->constraints,
+			pm_qos_array[qos_class]->constraints,
 			req, PM_QOS_UPDATE_REQ);
 	}
 
@@ -1238,24 +1255,33 @@ void pm_qos_update_request_timeout(struct pm_qos_request *req, s32 new_value,
  */
 void pm_qos_remove_request(struct pm_qos_request *req)
 {
+	int qos_class;
+
 	if (!req) /*guard against callers passing in null */
 		return;
 		/* silent return to keep pcm code cleaner */
 
 	if (!pm_qos_request_active(req)) {
-		WARN(1, KERN_ERR "pm_qos_remove_request() called for unknown object\n");
+		pr_warn_ratelimited("pm_qos_remove_request() called for unknown object\n");
 		return;
 	}
 
-	cancel_delayed_work_sync(&req->work);
+	if (delayed_work_pending(&req->work))
+		cancel_delayed_work_sync(&req->work);
 
-	trace_pm_qos_remove_request(req->pm_qos_class, PM_QOS_DEFAULT_VALUE,
+	qos_class = req->pm_qos_class;
+	req->pm_qos_class = PM_QOS_RESERVED;
+
+	if (qos_class <= PM_QOS_RESERVED || qos_class >= PM_QOS_NUM_CLASSES)
+		return;
+
+	trace_pm_qos_remove_request(qos_class, PM_QOS_DEFAULT_VALUE,
 			req->owner);
-	pm_qos_update_target(pm_qos_array[req->pm_qos_class]->constraints,
+	pm_qos_update_target(pm_qos_array[qos_class]->constraints,
 			     &req->node, PM_QOS_REMOVE_REQ,
 			     PM_QOS_DEFAULT_VALUE);
 	pm_qos_update_target_req_list(
-			pm_qos_array[req->pm_qos_class]->constraints, req,
+			pm_qos_array[qos_class]->constraints, req,
 			PM_QOS_REMOVE_REQ);
 	memset(req, 0, sizeof(*req));
 }

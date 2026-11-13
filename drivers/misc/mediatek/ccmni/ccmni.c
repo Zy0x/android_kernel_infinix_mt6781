@@ -66,7 +66,7 @@ struct ccmni_ctl_block *ccmni_ctl_blk[MAX_MD_NUM];
 
 /* Time in ns. This number must be less than 500ms. */
 #ifdef ENABLE_WQ_GRO
-long int gro_flush_timer __read_mostly = 2000000L;
+long int gro_flush_timer __read_mostly = 1000000L;
 #else
 long int gro_flush_timer;
 #endif

@@ -284,7 +284,7 @@
 
 #include <perf_tracker_internal.h>
 
-int sysctl_tcp_min_tso_segs __read_mostly = 2;
+int sysctl_tcp_min_tso_segs __read_mostly = 1;
 
 int sysctl_tcp_autocorking __read_mostly = 1;
 
@@ -2369,6 +2369,8 @@ int tcp_disconnect(struct sock *sk, int flags)
 	tp->snd_cwnd_cnt = 0;
 	tp->window_clamp = 0;
 	tp->delivered = 0;
+	tp->delivered_ce = 0;
+	tp->fast_ack_mode = 0;
 	tcp_set_ca_state(sk, TCP_CA_Open);
 	tp->is_sack_reneg = 0;
 	tcp_clear_retrans(tp);

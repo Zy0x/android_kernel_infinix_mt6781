@@ -317,6 +317,9 @@ struct lynx_brightness_arbiter {
 	u64 silky_consumed_gen;            /* Last consumed handoff generation (BLK-39) */
 	unsigned long silky_deadline_jiffies; /* Expiration deadline in jiffies (BLK-33) */
 
+	/* Outdoor HBM Override (Protected by arbiter_lock) */
+	bool hbm_override;                 /* True while outdoor HBM peak is held */
+
 	/* Thermal Throttling Integration (Protected by arbiter_lock) */
 	bool thermal_limited;              /* True when thermal throttling active */
 	int thermal_limit_level;           /* Clamped upper bound during throttle */
@@ -364,6 +367,7 @@ void lynx_arbiter_cancel_silky_pending_locked(void);
 bool lynx_arbiter_route_legacy(struct mtk_led_data *led_dat, int level);
 bool lynx_arbiter_route_legacy_locked(struct mtk_led_data *led_dat, int level);
 void lynx_arbiter_notify_slider(int slider_level);
+void lynx_arbiter_set_hbm(bool enable);
 int lynx_arbiter_commit_aal_locked(struct lynx_drm_file_ctx *ctx,
 				   int backlight_level,
 				   u64 causal_seq,

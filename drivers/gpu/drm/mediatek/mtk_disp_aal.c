@@ -1953,6 +1953,25 @@ static int disp_aal_set_init_reg(struct mtk_ddp_comp *comp,
  * if thermal_limited is active), clears any pending Silky handoff, and records
  * LYNX_OWNER_WATCHDOG ownership.
  */
+static inline int lynx_arbiter_apply_hbm_and_thermal_locked(int unclamped_level,
+							      int max_bl)
+{
+	int applied_level;
+
+	if (unclamped_level <= 0) {
+		/* Safety: never keep outdoor HBM illuminated when backlight goes to zero. */
+		g_lynx_arbiter.hbm_override = false;
+		return 0;
+	}
+
+	applied_level = g_lynx_arbiter.hbm_override ? max_bl : unclamped_level;
+	if (g_lynx_arbiter.thermal_limited &&
+	    applied_level > g_lynx_arbiter.thermal_limit_level)
+		applied_level = g_lynx_arbiter.thermal_limit_level;
+
+	return applied_level;
+}
+
 static void lynx_arbiter_watchdog_work(struct work_struct *work)
 {
 	unsigned long flags;
@@ -1978,10 +1997,9 @@ static void lynx_arbiter_watchdog_work(struct work_struct *work)
 	g_lynx_arbiter.silky_pending = false;
 	spin_unlock_irqrestore(&g_aal_hist_lock, flags);
 
-	restore_level = g_lynx_arbiter.slider_target_level;
-	if (g_lynx_arbiter.thermal_limited &&
-	    restore_level > g_lynx_arbiter.thermal_limit_level)
-		restore_level = g_lynx_arbiter.thermal_limit_level;
+	restore_level = lynx_arbiter_apply_hbm_and_thermal_locked(
+		g_lynx_arbiter.slider_target_level,
+		READ_ONCE(g_lynx_arbiter.max_backlight));
 
 	g_lynx_arbiter.active_owner = LYNX_OWNER_WATCHDOG;
 	g_lynx_arbiter.slider_level = restore_level;
@@ -2007,10 +2025,7 @@ static void lynx_arbiter_apply_slider_locked(int slider_level)
 	g_lynx_arbiter.active_owner = LYNX_OWNER_SLIDER;
 	g_lynx_arbiter.diag_slider_commits++;
 
-	applied_level = unclamped_level;
-	if (g_lynx_arbiter.thermal_limited &&
-	    applied_level > g_lynx_arbiter.thermal_limit_level)
-		applied_level = g_lynx_arbiter.thermal_limit_level;
+	applied_level = lynx_arbiter_apply_hbm_and_thermal_locked(unclamped_level, max_bl);
 
 	g_lynx_arbiter.slider_level = applied_level;
 	g_lynx_arbiter.last_applied_level = applied_level;
@@ -2082,6 +2097,7 @@ int lynx_arbiter_init(struct mtk_led_data *led_dat, int max_bl)
 	g_lynx_arbiter.slider_level = 0;
 	g_lynx_arbiter.aal_level = 0;
 	g_lynx_arbiter.last_applied_level = 0;
+	g_lynx_arbiter.hbm_override = false;
 	g_lynx_arbiter.thermal_limited = false;
 	g_lynx_arbiter.thermal_limit_level = max_bl;
 	g_lynx_arbiter.watchdog_gen = 0;
@@ -2255,10 +2271,7 @@ bool lynx_arbiter_route_ccorr_silky_locked(struct mtk_led_data *led_dat, int lev
 	if (atomic_read(&g_aal_backlight_notified) == 0)
 		unclamped_level = 0;
 
-	applied_level = unclamped_level;
-	if (g_lynx_arbiter.thermal_limited &&
-	    applied_level > g_lynx_arbiter.thermal_limit_level)
-		applied_level = g_lynx_arbiter.thermal_limit_level;
+	applied_level = lynx_arbiter_apply_hbm_and_thermal_locked(unclamped_level, max_bl);
 
 	/* BLK-31: Record unclamped intent in ccorr_target_level */
 	g_lynx_arbiter.ccorr_target_level = unclamped_level;
@@ -2320,10 +2333,7 @@ bool lynx_arbiter_route_legacy_locked(struct mtk_led_data *led_dat, int level)
 	}
 
 	unclamped_level = clamp(level, 0, max_bl);
-	applied_level = unclamped_level;
-	if (g_lynx_arbiter.thermal_limited &&
-	    applied_level > g_lynx_arbiter.thermal_limit_level)
-		applied_level = g_lynx_arbiter.thermal_limit_level;
+	applied_level = lynx_arbiter_apply_hbm_and_thermal_locked(unclamped_level, max_bl);
 
 	g_lynx_arbiter.legacy_target_level = unclamped_level;
 	g_lynx_arbiter.active_owner = LYNX_OWNER_LEGACY;
@@ -2361,6 +2371,53 @@ void lynx_arbiter_notify_slider(int slider_level)
 	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
 }
 EXPORT_SYMBOL(lynx_arbiter_notify_slider);
+
+void lynx_arbiter_set_hbm(bool enable)
+{
+	int restore_target;
+	int applied_level;
+	int max_bl;
+
+	mutex_lock(&g_lynx_arbiter.arbiter_lock);
+	if (unlikely(!g_lynx_arbiter.initialized ||
+		     g_lynx_arbiter.shutting_down ||
+		     !g_lynx_arbiter.led_dat)) {
+		g_lynx_arbiter.hbm_override = false;
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return;
+	}
+
+	max_bl = READ_ONCE(g_lynx_arbiter.max_backlight);
+	restore_target = (g_lynx_arbiter.active_owner == LYNX_OWNER_AAL) ?
+		max(g_lynx_arbiter.aal_target_level, 0) :
+		max(g_lynx_arbiter.slider_target_level, 0);
+	if (restore_target <= 0 && g_lynx_arbiter.slider_target_level > 0)
+		restore_target = g_lynx_arbiter.slider_target_level;
+
+	/* Never engage or write HBM PWM if display backlight is blanked. */
+	if (atomic_read(&g_aal_backlight_notified) == 0 ||
+	    g_lynx_arbiter.last_applied_level == 0 ||
+	    restore_target == 0) {
+		g_lynx_arbiter.hbm_override = false;
+		mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+		return;
+	}
+
+	g_lynx_arbiter.hbm_override = enable;
+	applied_level = lynx_arbiter_apply_hbm_and_thermal_locked(
+		clamp(restore_target, 1, max_bl), max_bl);
+
+	if (g_lynx_arbiter.active_owner == LYNX_OWNER_AAL)
+		g_lynx_arbiter.aal_level = applied_level;
+	else
+		g_lynx_arbiter.slider_level = applied_level;
+	g_lynx_arbiter.last_applied_level = applied_level;
+
+	mtk_led_pwm_commit_level(g_lynx_arbiter.led_dat, applied_level,
+				 g_lynx_arbiter.active_owner == LYNX_OWNER_AAL);
+	mutex_unlock(&g_lynx_arbiter.arbiter_lock);
+}
+EXPORT_SYMBOL(lynx_arbiter_set_hbm);
 
 /*
  * Lynx Arbiter: Safe Atomic Daemon Registration with Decoupled RCU
@@ -2638,10 +2695,7 @@ int lynx_arbiter_commit_aal_locked(struct lynx_drm_file_ctx *ctx,
 	unclamped_level = clamp(backlight_level, 0, max_bl);
 	g_lynx_arbiter.aal_target_level = unclamped_level;
 
-	final_level = unclamped_level;
-	if (g_lynx_arbiter.thermal_limited &&
-	    final_level > g_lynx_arbiter.thermal_limit_level)
-		final_level = g_lynx_arbiter.thermal_limit_level;
+	final_level = lynx_arbiter_apply_hbm_and_thermal_locked(unclamped_level, max_bl);
 
 	g_lynx_arbiter.active_owner = LYNX_OWNER_AAL;
 	g_lynx_arbiter.aal_level = final_level;

@@ -138,4 +138,6 @@ struct aod_area {
 #define RAMLESS_AOD_AREA_NUM		6
 #define RAMLESS_AOD_PAYLOAD_SIZE	100
 
+void oplus_display_reset_hbm_state(void);
+
 #endif /* _OPLUS_DISPLAY_PRIVATE_API_H_ */

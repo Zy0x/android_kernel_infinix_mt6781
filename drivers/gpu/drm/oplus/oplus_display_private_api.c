@@ -49,6 +49,7 @@ typedef struct panel_serial_info
 extern struct drm_device* get_drm_device(void);
 extern int mtk_drm_setbacklight(struct drm_crtc *crtc, unsigned int level);
 extern int oplus_mtk_drm_sethbm(struct drm_crtc *crtc, unsigned int hbm_mode);
+extern void lynx_arbiter_set_hbm(bool enable);
 extern int oplus_mtk_drm_setseed(struct drm_crtc *crtc, unsigned int seed_mode);
 extern PANEL_VOLTAGE_BAK panel_vol_bak[PANEL_VOLTAGE_ID_MAX];
 extern struct drm_panel *p_node;
@@ -168,10 +169,16 @@ static ssize_t oplus_display_get_maxbrightness(struct kobject *kobj,
 }
 
 unsigned int hbm_mode = 0;
+void oplus_display_reset_hbm_state(void)
+{
+	WRITE_ONCE(hbm_mode, 0);
+}
+EXPORT_SYMBOL(oplus_display_reset_hbm_state);
+
 static ssize_t oplus_display_get_hbm(struct kobject *kobj,
                                 struct kobj_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%ld\n", hbm_mode);
+	return sprintf(buf, "%u\n", READ_ONCE(hbm_mode));
 }
 
 static ssize_t oplus_display_set_hbm(struct kobject *kobj,
@@ -183,19 +190,25 @@ static ssize_t oplus_display_set_hbm(struct kobject *kobj,
 	unsigned int tmp = 0;
 
 	ret = kstrtouint(buf, 10, &tmp);
+	if (ret < 0 || tmp > 2)
+		return -EINVAL;
 
-	printk("%s, %d to be %d\n", __func__, hbm_mode, tmp);
+	if (!ddev || list_empty(&ddev->mode_config.crtc_list))
+		return -ENODEV;
 
 	/* this debug cmd only for crtc0 */
-	crtc = list_first_entry(&(ddev)->mode_config.crtc_list,
+	crtc = list_first_entry(&ddev->mode_config.crtc_list,
 				typeof(*crtc), head);
-	if (!crtc) {
-		printk(KERN_ERR "find crtc fail\n");
-		return 0;
-	}
+	if (!crtc)
+		return -ENODEV;
 
-	oplus_mtk_drm_sethbm(crtc, tmp);
-	hbm_mode = tmp;
+	ret = oplus_mtk_drm_sethbm(crtc, tmp);
+	if (ret < 0)
+		return ret;
+
+	WRITE_ONCE(hbm_mode, tmp);
+	/* Lock ordering: arbiter_lock must always be acquired outside mtk_crtc->lock. */
+	lynx_arbiter_set_hbm(tmp > 0);
 
 	if (tmp == 1)
 		usleep_range(30000, 31000);
@@ -920,10 +933,10 @@ static ssize_t oplus_display_set_ESD(struct kobject *kobj,
 	return num;
 }
 
-unsigned long cabc_mode = 1;
-unsigned long cabc_true_mode = 1;
+unsigned long cabc_mode = 0;
+unsigned long cabc_true_mode = 0;
 unsigned long cabc_sun_flag = 0;
-unsigned long cabc_back_flag = 1;
+unsigned long cabc_back_flag = 0;
 extern void disp_aal_set_dre_en(int enable);
 
 enum{
@@ -937,58 +950,60 @@ enum{
 static ssize_t oplus_display_get_CABC(struct kobject *kobj,
                 struct kobj_attribute *attr, char *buf)
 {
-	printk("%s CABC_mode=%ld\n", __func__, cabc_true_mode);
-	return sprintf(buf, "%ld\n", cabc_true_mode);
+	return sprintf(buf, "%lu\n", READ_ONCE(cabc_true_mode));
 }
 
 static ssize_t oplus_display_set_CABC(struct kobject *kobj,
         struct kobj_attribute *attr, const char *buf, size_t num)
 {
 	int ret = 0;
+	unsigned long new_mode = 0;
+	unsigned long target_mode;
+	unsigned long next_back = cabc_back_flag;
+	unsigned long next_sun = cabc_sun_flag;
 	struct drm_crtc *crtc;
 	struct drm_device *ddev = get_drm_device();
 
-	ret = kstrtoul(buf, 10, &cabc_mode);
-	cabc_true_mode = cabc_mode;
-	printk("%s,cabc mode is %d, cabc_back_flag is %d\n", __func__, cabc_mode, cabc_back_flag);
-	if(cabc_mode < 4)
-		cabc_back_flag = cabc_mode;
+	ret = kstrtoul(buf, 10, &new_mode);
+	if (ret < 0 || (new_mode > 3 &&
+			new_mode != CABC_EXIT_SPECIAL &&
+			new_mode != CABC_ENTER_SPECIAL))
+		return -EINVAL;
 
-	if (cabc_mode == CABC_ENTER_SPECIAL) {
-		cabc_sun_flag = 1;
-		cabc_true_mode = 0;
-	} else if (cabc_mode == CABC_EXIT_SPECIAL) {
-		cabc_sun_flag = 0;
-		cabc_true_mode = cabc_back_flag;
-	} else if (cabc_sun_flag == 1) {
-		if (cabc_back_flag == CABC_LEVEL_0) {
-			disp_aal_set_dre_en(1);
-			printk("%s sun enable dre\n", __func__);
-		} else {
-			disp_aal_set_dre_en(0);
-			printk("%s sun disable dre\n", __func__);
-		}
+	if (new_mode < 4)
+		next_back = new_mode;
+
+	if (new_mode == CABC_ENTER_SPECIAL) {
+		next_sun = 1;
+		target_mode = 0;
+	} else if (new_mode == CABC_EXIT_SPECIAL) {
+		next_sun = 0;
+		target_mode = next_back;
+	} else if (next_sun == 1) {
+		cabc_mode = new_mode;
+		cabc_back_flag = next_back;
 		return num;
+	} else {
+		target_mode = new_mode;
 	}
 
-	printk("%s,cabc mode is %d\n", __func__, cabc_true_mode);
+	if (!ddev || list_empty(&ddev->mode_config.crtc_list))
+		return -ENODEV;
 
 	/* this debug cmd only for crtc0 */
-	crtc = list_first_entry(&(ddev)->mode_config.crtc_list,
+	crtc = list_first_entry(&ddev->mode_config.crtc_list,
 				typeof(*crtc), head);
-	if (!crtc) {
-		printk(KERN_ERR "find crtc fail\n");
-		return 0;
-	}
-	if (cabc_true_mode == CABC_LEVEL_0 && cabc_back_flag == CABC_LEVEL_0) {
-		disp_aal_set_dre_en(1);
-		printk("%s enable dre\n", __func__);
-	} else {
-		disp_aal_set_dre_en(0);
-		printk("%s disable dre\n", __func__);
-	}
-	oplus_mtk_drm_setcabc(crtc, cabc_true_mode);
-	if (cabc_true_mode != cabc_back_flag) cabc_true_mode = cabc_back_flag;
+	if (!crtc)
+		return -ENODEV;
+
+	ret = oplus_mtk_drm_setcabc(crtc, (unsigned int)target_mode);
+	if (ret < 0)
+		return ret;
+
+	cabc_mode = new_mode;
+	cabc_back_flag = next_back;
+	cabc_sun_flag = next_sun;
+	WRITE_ONCE(cabc_true_mode, (next_sun == 1) ? next_back : target_mode);
 
 	return num;
 }

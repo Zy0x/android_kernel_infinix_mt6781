@@ -17,6 +17,7 @@
 /* extern symbols from led-core.c for leds_list iteration */
 extern struct list_head leds_list;
 extern struct rw_semaphore leds_list_lock;
+extern void oplus_display_reset_hbm_state(void);
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
@@ -48,8 +49,13 @@ struct lcm {
 
 	bool prepared;
 	bool enabled;
+	bool hbm_en;
+	unsigned int cabc_mode;
+	unsigned int last_bl_level;
 	int error;
 };
+
+static struct lcm *g_nt36672c_ctx;
 
 #define panel_to_lcm(p) container_of(p, struct lcm, panel)
 
@@ -447,6 +453,9 @@ static int lcm_disable(struct drm_panel *panel)
 	if (!ctx->enabled)
 		return 0;
 
+	ctx->hbm_en = false;
+	oplus_display_reset_hbm_state();
+
 	/* Send Display Off while DSI video clock is still active */
 	mipi_dsi_dcs_write_buffer(dsi, &dcs_display_off, 1);
 	msleep(20);
@@ -472,6 +481,19 @@ static int lcm_enable(struct drm_panel *panel)
 	/* Send Display On when video stream is actively running (guarantees 1st wake success) */
 	mipi_dsi_dcs_write_buffer(dsi, &dcs_display_on, 1);
 	msleep(20);
+
+	ctx->hbm_en = false;
+	if (ctx->cabc_mode > 0) {
+		u8 page10[] = { 0xFF, 0x10 };
+		u8 reload[] = { 0xFB, 0x01 };
+		u8 wrctrld[] = { 0x53, 0x2C };
+		u8 cabc[] = { 0x55, (u8)(ctx->cabc_mode & 0x03) };
+
+		mipi_dsi_dcs_write_buffer(dsi, page10, sizeof(page10));
+		mipi_dsi_dcs_write_buffer(dsi, reload, sizeof(reload));
+		mipi_dsi_dcs_write_buffer(dsi, wrctrld, sizeof(wrctrld));
+		mipi_dsi_dcs_write_buffer(dsi, cabc, sizeof(cabc));
+	}
 
 	if (ctx->backlight) {
 		ctx->backlight->props.power = FB_BLANK_UNBLANK;
@@ -744,11 +766,22 @@ static struct mtk_panel_params ext_params_60hz = {
 static int lcm_set_backlight_cmdq(void *dsi_drv, dcs_write_gce cb,
 				  void *handle, unsigned int level)
 {
+	struct lcm *ctx = g_nt36672c_ctx;
 	u8 dcs[3];
 	u32 val;
 
 	if (level > 255)
 		level = 255;
+
+	if (ctx) {
+		if (level == 0 && ctx->hbm_en) {
+			ctx->hbm_en = false;
+			oplus_display_reset_hbm_state();
+		}
+		ctx->last_bl_level = level;
+		if (ctx->hbm_en && level > 0)
+			level = 255;
+	}
 
 	val = (level * 4095) / 255;
 	dcs[0] = 0x51;
@@ -758,6 +791,95 @@ static int lcm_set_backlight_cmdq(void *dsi_drv, dcs_write_gce cb,
 	if (cb)
 		cb(dsi_drv, handle, dcs, sizeof(dcs));
 	return 0;
+}
+
+static void lcm_cabc_switch(void *dsi_drv, dcs_write_gce cb,
+			    void *handle, unsigned int cabc_mode)
+{
+	struct lcm *ctx = g_nt36672c_ctx;
+	u8 page10[] = { 0xFF, 0x10 };
+	u8 reload[] = { 0xFB, 0x01 };
+	u8 wrctrld[] = { 0x53, 0x24 };
+	u8 cabc[] = { 0x55, 0x00 };
+
+	if (cabc_mode > 3)
+		cabc_mode = 0;
+
+	if (ctx) {
+		ctx->cabc_mode = cabc_mode;
+		if (ctx->hbm_en) {
+			pr_info("[LCM] NT36672C deferred CABC=%u while HBM active\n",
+				cabc_mode);
+			return;
+		}
+	}
+
+	if (!cb)
+		return;
+
+	wrctrld[1] = cabc_mode ? 0x2C : 0x24;
+	cabc[1] = (u8)cabc_mode;
+
+	cb(dsi_drv, handle, page10, sizeof(page10));
+	cb(dsi_drv, handle, reload, sizeof(reload));
+	cb(dsi_drv, handle, wrctrld, sizeof(wrctrld));
+	cb(dsi_drv, handle, cabc, sizeof(cabc));
+
+	pr_info("[LCM] NT36672C CABC mode -> %u\n", cabc_mode);
+}
+
+static int lcm_set_hbm(void *dsi_drv, dcs_write_gce cb,
+		       void *handle, unsigned int mode)
+{
+	struct lcm *ctx = g_nt36672c_ctx;
+	u8 page10[] = { 0xFF, 0x10 };
+	u8 reload[] = { 0xFB, 0x01 };
+	u8 wrctrld[] = { 0x53, 0x24 };
+	u8 cabc[] = { 0x55, 0x00 };
+	u8 hbm_bl[] = { 0x51, 0x0F, 0xFF };
+	unsigned int saved_cabc = ctx ? ctx->cabc_mode : 0;
+
+	if (!cb)
+		return -EINVAL;
+
+	cb(dsi_drv, handle, page10, sizeof(page10));
+	cb(dsi_drv, handle, reload, sizeof(reload));
+
+	if (mode > 0) {
+		if (ctx)
+			ctx->hbm_en = true;
+		/* Disable dimming and suspend CABC during outdoor HBM peak */
+		cb(dsi_drv, handle, wrctrld, sizeof(wrctrld));
+		cb(dsi_drv, handle, cabc, sizeof(cabc));
+		cb(dsi_drv, handle, hbm_bl, sizeof(hbm_bl));
+	} else {
+		if (ctx)
+			ctx->hbm_en = false;
+		if (saved_cabc > 3)
+			saved_cabc = 0;
+		wrctrld[1] = saved_cabc ? 0x2C : 0x24;
+		cabc[1] = (u8)saved_cabc;
+		cb(dsi_drv, handle, wrctrld, sizeof(wrctrld));
+		cb(dsi_drv, handle, cabc, sizeof(cabc));
+		if (ctx) {
+			u32 val = (ctx->last_bl_level * 4095U) / 255U;
+
+			hbm_bl[1] = (val >> 8) & 0x0F;
+			hbm_bl[2] = val & 0xFF;
+			cb(dsi_drv, handle, hbm_bl, sizeof(hbm_bl));
+		}
+	}
+
+	pr_info("[LCM] NT36672C HBM=%u (restored_cabc=%u)\n", mode, saved_cabc);
+	return 0;
+}
+
+static void lcm_hbm_get_state(struct drm_panel *panel, bool *state)
+{
+	struct lcm *ctx = panel_to_lcm(panel);
+
+	if (state)
+		*state = ctx->hbm_en;
 }
 
 static int lcm_reset(struct drm_panel *panel, int on)
@@ -796,6 +918,9 @@ static int lcm_ext_param_set(struct drm_panel *panel, unsigned int mode)
 
 static struct mtk_panel_funcs lcm_ext_funcs = {
 	.set_backlight_cmdq = lcm_set_backlight_cmdq,
+	.set_hbm = lcm_set_hbm,
+	.hbm_get_state = lcm_hbm_get_state,
+	.cabc_switch = lcm_cabc_switch,
 	.reset = lcm_reset,
 	.ata_check = lcm_ata_check,
 	.ext_param_set = lcm_ext_param_set,
@@ -842,6 +967,10 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 	/* Continuous splash: LK bootloader already prepared and enabled panel */
 	ctx->prepared = true;
 	ctx->enabled = true;
+	ctx->hbm_en = false;
+	ctx->cabc_mode = 0;
+	ctx->last_bl_level = 255;
+	g_nt36672c_ctx = ctx;
 
 	drm_panel_init(&ctx->panel);
 	ctx->panel.dev = dev;
@@ -870,6 +999,8 @@ static int lcm_remove(struct mipi_dsi_device *dsi)
 {
 	struct lcm *ctx = mipi_dsi_get_drvdata(dsi);
 
+	if (g_nt36672c_ctx == ctx)
+		g_nt36672c_ctx = NULL;
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
 	return 0;

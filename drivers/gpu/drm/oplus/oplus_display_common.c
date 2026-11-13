@@ -48,6 +48,7 @@ enum {
 extern struct drm_device* get_drm_device(void);
 extern int mtk_drm_setbacklight(struct drm_crtc *crtc, unsigned int level);
 extern int oplus_mtk_drm_sethbm(struct drm_crtc *crtc, unsigned int hbm_mode);
+extern void lynx_arbiter_set_hbm(bool enable);
 extern int panel_serial_number_read(char cmd, int num);
 extern int oplus_mtk_drm_setcabc(struct drm_crtc *crtc, unsigned int hbm_mode);
 extern int oplus_mtk_drm_setseed(struct drm_crtc *crtc, unsigned int seed_mode);
@@ -128,16 +129,23 @@ int oplus_display_panel_set_hbm(void *buf)
 
 	printk("%s, %d to be %d\n", __func__, hbm_mode, *tmp);
 
-	/* this debug cmd only for crtc0 */
-	crtc = list_first_entry(&(ddev)->mode_config.crtc_list,
-				typeof(*crtc), head);
-	if (!crtc) {
-		printk(KERN_ERR "find crtc fail\n");
-		return -1;
-	}
+	if (*tmp > 2)
+		return -EINVAL;
 
-	oplus_mtk_drm_sethbm(crtc, *tmp);
-	hbm_mode = (*tmp);
+	if (!ddev || list_empty(&ddev->mode_config.crtc_list))
+		return -ENODEV;
+
+	/* this debug cmd only for crtc0 */
+	crtc = list_first_entry(&ddev->mode_config.crtc_list,
+				typeof(*crtc), head);
+	if (!crtc)
+		return -ENODEV;
+
+	if (oplus_mtk_drm_sethbm(crtc, *tmp) < 0)
+		return -EINVAL;
+
+	WRITE_ONCE(hbm_mode, *tmp);
+	lynx_arbiter_set_hbm(*tmp > 0);
 
 	if ((*tmp) == 1) {
 		usleep_range(30000, 31000);

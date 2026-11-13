@@ -1020,22 +1020,26 @@ int mtk_drm_setbacklight_grp(struct drm_crtc *crtc, unsigned int level)
 int oplus_mtk_drm_setcabc(struct drm_crtc *crtc, unsigned int cabc_mode)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+	struct mtk_crtc_state *crtc_state;
 	struct cmdq_pkt *cmdq_handle;
 	struct mtk_ddp_comp *comp = mtk_ddp_comp_request_output(mtk_crtc);
 
 	mutex_lock(&mtk_crtc->lock);
 
-	if (!mtk_crtc->enabled)
-		goto done;
+	crtc_state = crtc->state ? to_mtk_crtc_state(crtc->state) : NULL;
+	if (!mtk_crtc->enabled || (crtc_state && crtc_state->prop_val[CRTC_PROP_DOZE_ACTIVE])) {
+		mutex_unlock(&mtk_crtc->lock);
+		return -EINVAL;
+	}
+
+	if (!comp || !comp->funcs || !comp->funcs->io_cmd) {
+		mutex_unlock(&mtk_crtc->lock);
+		return -ENODEV;
+	}
 
 	mtk_drm_send_lcm_cmd_prepare(crtc, &cmdq_handle);
-
-	/* set hbm */
-	if (comp && comp->funcs && comp->funcs->io_cmd)
-		comp->funcs->io_cmd(comp, cmdq_handle, LCM_CABC, &cabc_mode);
-
+	comp->funcs->io_cmd(comp, cmdq_handle, LCM_CABC, &cabc_mode);
 	mtk_drm_send_lcm_cmd_flush(crtc, &cmdq_handle, 0);
-done:
 	mutex_unlock(&mtk_crtc->lock);
 
 	return 0;
@@ -1046,17 +1050,25 @@ done:
 int oplus_mtk_drm_sethbm(struct drm_crtc *crtc, unsigned int hbm_mode)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+	struct mtk_crtc_state *crtc_state;
 	struct cmdq_pkt *cmdq_handle;
 	struct mtk_ddp_comp *comp = mtk_ddp_comp_request_output(mtk_crtc);
 
 	mutex_lock(&mtk_crtc->lock);
 
+	crtc_state = crtc->state ? to_mtk_crtc_state(crtc->state) : NULL;
+	if (!mtk_crtc->enabled || (crtc_state && crtc_state->prop_val[CRTC_PROP_DOZE_ACTIVE])) {
+		mutex_unlock(&mtk_crtc->lock);
+		return -EINVAL;
+	}
+
+	if (!comp || !comp->funcs || !comp->funcs->io_cmd) {
+		mutex_unlock(&mtk_crtc->lock);
+		return -ENODEV;
+	}
+
 	mtk_drm_send_lcm_cmd_prepare(crtc, &cmdq_handle);
-
-	/* set hbm */
-	if (comp && comp->funcs && comp->funcs->io_cmd)
-		comp->funcs->io_cmd(comp, cmdq_handle, LCM_HBM, &hbm_mode);
-
+	comp->funcs->io_cmd(comp, cmdq_handle, LCM_HBM, &hbm_mode);
 	mtk_drm_send_lcm_cmd_flush(crtc, &cmdq_handle, 0);
 	mutex_unlock(&mtk_crtc->lock);
 

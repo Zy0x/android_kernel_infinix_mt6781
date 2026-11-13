@@ -917,6 +917,7 @@ out:
  * 5. Battery's temperature
  * 6. Divider charger's temperature
  */
+extern bool g_lynx_hyper_charge;
 static inline int __dv2_get_ita_lmt(struct dv2_algo_info *info)
 {
 	struct dv2_algo_data *data = info->data;
@@ -924,7 +925,7 @@ static inline int __dv2_get_ita_lmt(struct dv2_algo_info *info)
 	u32 ita = data->ita_lmt;
 
 	mutex_lock(&data->ext_lock);
-	if (data->thermal_throttling >= 0)
+	if (!g_lynx_hyper_charge && data->thermal_throttling >= 0)
 		ita = min_t(u32, ita, data->thermal_throttling);
 	if (data->ita_pwr_lmt > 0)
 		ita = min(ita, data->ita_pwr_lmt);
@@ -937,9 +938,9 @@ static inline int __dv2_get_ita_lmt(struct dv2_algo_info *info)
 		ita = min(ita, data->ita_lmt - desc->tbat_curlmt[data->tbat_level]);
 		ita = min(ita, data->ita_lmt - desc->tdvchg_curlmt[data->tdvchg_level]);
 	}
-	if (tran_game_mode == 2 && ita > 1200)
+	if (!g_lynx_hyper_charge && tran_game_mode == 2 && ita > 1200)
 		ita = 1200;
-	if (lcd_bl_level > 0 && ita > 2000)
+	if (!g_lynx_hyper_charge && lcd_bl_level > 0 && ita > 2000)
 		ita = 2000;
 	PCA_INFO("ita(org,tta,tbat,tdvchg,prlmt,throt)=%d(%d,%d,%d,%d,%d,%d)\n",
 		 ita, data->ita_lmt, desc->tta_curlmt[data->tta_level],
@@ -1370,7 +1371,8 @@ static int __dv2_stop(struct dv2_algo_info *info, struct dv2_stop_info *sinfo)
 						 DV2_ITA_INIT);
 		}
 	}
-	__dv2_set_hv_dvchg_protection(info, false);
+	if (data->pca_hv_dvchg)
+		__dv2_set_hv_dvchg_protection(info, false);
 	__dv2_send_notification(info, PCA_NOTIEVT_ALGO_STOP, &notify);
 	return 0;
 }
@@ -3113,22 +3115,21 @@ struct dv2_thermal_data {
 	int recovery_area;
 };
 
-extern bool g_lynx_hyper_charge;
 static bool __dv2_check_thermal_level(struct dv2_algo_info *info,
 				      struct dv2_thermal_data *tdata)
 {
 	if (g_lynx_hyper_charge) {
 		if (tdata->name) {
-			if (strcmp(tdata->name, "tbat") == 0 && tdata->temp < 45)
+			if ((strcmp(tdata->name, "tbat") == 0 && tdata->temp < 48) ||
+			    (strcmp(tdata->name, "tpcb") == 0 && tdata->temp < 58) ||
+			    (strncmp(tdata->name, "tdvchg", 6) == 0 && tdata->temp < 68) ||
+			    (strcmp(tdata->name, "tswchg") == 0 && tdata->temp < 65) ||
+			    (strcmp(tdata->name, "tusb") == 0 && tdata->temp < 65) ||
+			    (strcmp(tdata->name, "tta") == 0 && tdata->temp < 65)) {
+				if (tdata->temp_level)
+					*tdata->temp_level = DV2_THERMAL_NORMAL;
 				return true;
-			if (strcmp(tdata->name, "tpcb") == 0 && tdata->temp < 58)
-				return true;
-			if (strncmp(tdata->name, "tdvchg", 6) == 0 && tdata->temp < 68)
-				return true;
-			if (strcmp(tdata->name, "tswchg") == 0 && tdata->temp < 65)
-				return true;
-			if (strcmp(tdata->name, "tta") == 0 && tdata->temp < 65)
-				return true;
+			}
 		}
 	}
 	if (tdata->temp >= tdata->temp_level_def[DV2_THERMAL_VERY_HOT]) {

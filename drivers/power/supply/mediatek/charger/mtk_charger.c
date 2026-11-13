@@ -400,6 +400,18 @@ int charger_manager_enable_high_voltage_charging(
 
 	pr_debug("[%s] %s, %d\n", __func__, dev_name(consumer->dev), en);
 
+	if (g_lynx_hyper_charge && !g_lynx_bypass_active) {
+		mutex_lock(&consumer_mutex);
+		list_for_each(pos, phead) {
+			ptr = container_of(pos, struct charger_consumer, list);
+			ptr->hv_charging_disabled = false;
+		}
+		info->enable_hv_charging = true;
+		mutex_unlock(&consumer_mutex);
+		_wake_up_charger(info);
+		return 0;
+	}
+
 	if (!en && consumer->hv_charging_disabled == false)
 		consumer->hv_charging_disabled = true;
 	else if (en && consumer->hv_charging_disabled == true)
@@ -435,6 +447,42 @@ int charger_manager_enable_high_voltage_charging(
 	return 0;
 }
 EXPORT_SYMBOL(charger_manager_enable_high_voltage_charging);
+
+void lynx_sync_hyper_hv(bool en)
+{
+	struct list_head *pos = NULL;
+	struct charger_consumer *ptr = NULL;
+
+	if (!pinfo || !en || g_lynx_bypass_active)
+		return;
+
+	mutex_lock(&consumer_mutex);
+	list_for_each(pos, &consumer_head) {
+		ptr = container_of(pos, struct charger_consumer, list);
+		ptr->hv_charging_disabled = false;
+	}
+	pinfo->enable_hv_charging = true;
+	mutex_unlock(&consumer_mutex);
+
+	if (pinfo->chg1_data.thermal_input_current_limit >= 0 &&
+	    pinfo->chg1_data.thermal_input_current_limit < 3000000)
+		pinfo->chg1_data.thermal_input_current_limit = -1;
+	if (pinfo->chg2_data.thermal_input_current_limit >= 0 &&
+	    pinfo->chg2_data.thermal_input_current_limit < 3000000)
+		pinfo->chg2_data.thermal_input_current_limit = -1;
+	if (pinfo->chg1_data.thermal_charging_current_limit >= 0 &&
+	    pinfo->chg1_data.thermal_charging_current_limit < 3000000)
+		pinfo->chg1_data.thermal_charging_current_limit = -1;
+	if (pinfo->chg2_data.thermal_charging_current_limit >= 0 &&
+	    pinfo->chg2_data.thermal_charging_current_limit < 3000000)
+		pinfo->chg2_data.thermal_charging_current_limit = -1;
+	if (pinfo->dvchg1_data.thermal_input_current_limit >= 0 &&
+	    pinfo->dvchg1_data.thermal_input_current_limit < 3000000)
+		pinfo->dvchg1_data.thermal_input_current_limit = -1;
+	_mtk_charger_change_current_setting(pinfo);
+	_wake_up_charger(pinfo);
+}
+EXPORT_SYMBOL(lynx_sync_hyper_hv);
 
 int charger_manager_enable_power_path(struct charger_consumer *consumer,
 	int idx, bool en)
@@ -571,6 +619,10 @@ int charger_manager_set_input_current_limit(struct charger_consumer *consumer,
 	if (info != NULL) {
 		struct charger_data *pdata;
 
+		if (g_lynx_hyper_charge && !g_lynx_bypass_active &&
+		    input_current >= 0 && input_current < 3000000)
+			input_current = -1;
+
 		if (info->data.parallel_vbus) {
 			if (idx == TOTAL_CHARGER) {
 				info->chg1_data.thermal_input_current_limit =
@@ -619,7 +671,7 @@ int charger_manager_set_charging_current_limit(
 
 		if (g_lynx_bypass_active)
 			charging_current = 0;
-		else if (g_lynx_hyper_charge && charging_current > 0 && charging_current < 3000000)
+		else if (g_lynx_hyper_charge && charging_current >= 0 && charging_current < 3000000)
 			charging_current = -1;
 
 		pdata->thermal_charging_current_limit = charging_current;
@@ -2136,6 +2188,29 @@ static int charger_routine_thread(void *arg)
 		check_dynamic_mivr(info);
 		charger_check_status(info);
 		kpoc_power_off_check(info);
+
+		if (g_lynx_hyper_charge && !g_lynx_bypass_active &&
+		    !is_disable_charger()) {
+			if (!info->enable_hv_charging) {
+				struct list_head *pos;
+				struct charger_consumer *ptr;
+
+				mutex_lock(&consumer_mutex);
+				list_for_each(pos, &consumer_head) {
+					ptr = container_of(pos, struct charger_consumer, list);
+					ptr->hv_charging_disabled = false;
+				}
+				info->enable_hv_charging = true;
+				mutex_unlock(&consumer_mutex);
+				chr_err("lynx_hyper: restored enable_hv_charging=1\n");
+			}
+			if (info->chg1_data.thermal_input_current_limit >= 0 &&
+			    info->chg1_data.thermal_input_current_limit < 3000000)
+				info->chg1_data.thermal_input_current_limit = -1;
+			if (info->chg1_data.thermal_charging_current_limit >= 0 &&
+			    info->chg1_data.thermal_charging_current_limit < 3000000)
+				info->chg1_data.thermal_charging_current_limit = -1;
+		}
 
 		if (is_disable_charger() == false) {
 			if (is_charger_on == true) {

@@ -247,6 +247,7 @@ struct rt9471_chip {
 	struct completion pe_done;
 	bool is_primary;
 	bool hz_users[RT9471_HZU_MAX];
+	bool hz_pca_en;
 };
 
 static const u8 rt9471_reg_addr[] = {
@@ -747,12 +748,8 @@ static int __rt9471_get_ieoc(struct rt9471_chip *chip, u32 *ieoc)
 
 static inline int __rt9471_is_hz_enabled(struct rt9471_chip *chip, bool *en)
 {
-	if (chip->is_primary)
-		return rt9471_i2c_test_bit(chip, RT9471_REG_FUNCTION,
-					   RT9471_HZ_SHIFT, en);
-	else
-		return rt9471_i2c_test_bit(chip, RT9471_REG_HIDDEN_2,
-					   RT9471_FORCE_HZ_SHIFT, en);
+	return rt9471_i2c_test_bit(chip, RT9471_REG_HIDDEN_2,
+				   RT9471_FORCE_HZ_SHIFT, en);
 }
 
 static inline int __rt9471_is_chg_enabled(struct rt9471_chip *chip, bool *en)
@@ -818,19 +815,14 @@ static int __rt9471_enable_hz(struct rt9471_chip *chip, bool en)
 
 	dev_info(chip->dev, "%s en = %d\n", __func__, en);
 
-	if (chip->is_primary) {
-		ret = (en ? rt9471_set_bit : rt9471_clr_bit)
-			(chip, RT9471_REG_FUNCTION, RT9471_HZ_MASK);
-	} else {
-		ret = rt9471_enable_hidden_mode(chip, true);
-		if (ret < 0)
-			goto out;
+	ret = rt9471_enable_hidden_mode(chip, true);
+	if (ret < 0)
+		goto out;
 
-		ret = (en ? rt9471_set_bit : rt9471_clr_bit)
-			(chip, RT9471_REG_HIDDEN_2, RT9471_FORCE_HZ_MASK);
+	ret = (en ? rt9471_set_bit : rt9471_clr_bit)
+		(chip, RT9471_REG_HIDDEN_2, RT9471_FORCE_HZ_MASK);
 
-		rt9471_enable_hidden_mode(chip, false);
-	}
+	rt9471_enable_hidden_mode(chip, false);
 out:
 	return ret;
 }
@@ -847,6 +839,10 @@ static int rt9471_enable_hz(struct rt9471_chip *chip, bool en, u32 user)
 
 	mutex_lock(&chip->hz_lock);
 	chip->hz_users[user] = en;
+	if (chip->hz_pca_en && !en) {
+		mutex_unlock(&chip->hz_lock);
+		return 0;
+	}
 	for (i = 0, en = true; i < RT9471_HZU_MAX; i++)
 		en &= chip->hz_users[i];
 	ret = __rt9471_enable_hz(chip, en);
@@ -2289,6 +2285,7 @@ static int rt9471_reset_register(struct rt9471_chip *chip)
 	chip->hz_users[RT9471_HZU_BC12] = false;
 	chip->hz_users[RT9471_HZU_OTG] = true;
 	chip->hz_users[RT9471_HZU_VBUS_GD] = true;
+	chip->hz_pca_en = false;
 	ret = rt9471_set_bit(chip, RT9471_REG_INFO, RT9471_REGRST_MASK);
 	mutex_unlock(&chip->hz_lock);
 	if (ret < 0)
@@ -2370,6 +2367,13 @@ static int rt9471_plug_out(struct charger_device *chg_dev)
 
 	rt9471_hvdcp20_set_dp_dm_recover(chg_dev);
 	rt9471_tc30_gpio_enable(chg_dev, false);
+
+	mutex_lock(&chip->hz_lock);
+	if (chip->hz_pca_en) {
+		chip->hz_pca_en = false;
+		__rt9471_enable_hz(chip, false);
+	}
+	mutex_unlock(&chip->hz_lock);
 
 	return ret;
 }
@@ -2580,6 +2584,21 @@ static int rt9471_is_powerpath_enabled(struct charger_device *chg_dev, bool *en)
 
 	ret = __rt9471_is_hz_enabled(chip, en);
 	*en = !*en;
+
+	return ret;
+}
+
+static int rt9471_chg_enable_hz(struct charger_device *chg_dev, bool en)
+{
+	int ret = 0;
+	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
+
+	dev_info(chip->dev, "%s en = %d\n", __func__, en);
+
+	mutex_lock(&chip->hz_lock);
+	chip->hz_pca_en = en;
+	ret = __rt9471_enable_hz(chip, en);
+	mutex_unlock(&chip->hz_lock);
 
 	return ret;
 }
@@ -3237,6 +3256,7 @@ static struct charger_ops rt9471_chg_ops = {
 	.set_dp_dm_recover = rt9471_hvdcp20_set_dp_dm_recover,
 	.set_tc30_gpio_enable = rt9471_tc30_gpio_enable,
 	.get_boost_status = rt9471_get_boost_status,
+	.enable_hz = rt9471_chg_enable_hz,
 	.set_stat_pin_val = rt9471_set_stat_pin_val,
 };
 

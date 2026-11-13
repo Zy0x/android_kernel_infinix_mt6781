@@ -111,6 +111,7 @@ static ssize_t lynx_hyper_charge_write(struct file *file, const char __user *buf
 		return -EINVAL;
 
 	g_lynx_hyper_charge = (val != 0);
+	lynx_sync_hyper_hv(g_lynx_hyper_charge);
 	pr_info("LYNX_POWER: Hyper Charge %s\n", g_lynx_hyper_charge ? "ENABLED" : "DISABLED");
 
 	return count;

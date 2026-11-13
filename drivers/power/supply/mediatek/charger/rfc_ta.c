@@ -670,7 +670,7 @@ static void rfc_sha256_transform_auth(const u8 salt[16], u32 h_out[4])
 	for (i = 0; i < 8; i++)
 		w[4 + i] = rfc_auth_secret[i];
 	for (i = 0; i < 4; i++)
-		w[12 + i] = get_unaligned_be32(&salt[i * 4]);
+		w[12 + i] = get_unaligned_le32(&salt[i * 4]);
 
 	for (i = 16; i < 64; i++) {
 		u32 s0 = ror32(w[i - 15], 7) ^ ror32(w[i - 15], 18) ^

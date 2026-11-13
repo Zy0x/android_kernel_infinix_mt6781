@@ -373,28 +373,27 @@ static void chrlmt_set_limit_handler(struct work_struct *work)
 #if (CONFIG_MTK_GAUGE_VERSION == 30)
 		/* idx: 0 for main charger*/
 #ifndef OPLUS_FEATURE_CHG_BASIC
-		charger_manager_set_input_current_limit(pthermal_consumer, 0,
-				((chrlmt_chr_input_curr_limit != -1) ?
-				chrlmt_chr_input_curr_limit * 1000 : -1));
-
 		if (g_lynx_hyper_charge) {
-			if (chrlmt_bat_chr_curr_limit > 0 && chrlmt_bat_chr_curr_limit < 3000)
+			if (chrlmt_bat_chr_curr_limit >= 0 && chrlmt_bat_chr_curr_limit < 7000)
 				chrlmt_bat_chr_curr_limit = -1;
-			if (chrlmt_chr_input_curr_limit > 0 && chrlmt_chr_input_curr_limit < 3000)
+			if (chrlmt_chr_input_curr_limit >= 0 && chrlmt_chr_input_curr_limit < 7000)
 				chrlmt_chr_input_curr_limit = -1;
 			charger_manager_enable_high_voltage_charging(
 						pthermal_consumer, true);
 		}
+		charger_manager_set_input_current_limit(pthermal_consumer, 0,
+				((chrlmt_chr_input_curr_limit != -1) ?
+				chrlmt_chr_input_curr_limit * 1000 : -1));
 		charger_manager_set_charging_current_limit(pthermal_consumer, 0,
 				((chrlmt_bat_chr_curr_limit != -1) ?
 				chrlmt_bat_chr_curr_limit * 1000 : -1));
 
 		/* High Voltage (Vbus) control*/
-		if (chrlmt_bat_chr_curr_limit == 0)
+		if (chrlmt_bat_chr_curr_limit == 0 && !g_lynx_hyper_charge)
 			charger_manager_enable_high_voltage_charging(
 						pthermal_consumer, false);
 
-		if (chrlmt_bat_chr_curr_limit == -1)
+		if (chrlmt_bat_chr_curr_limit == -1 || g_lynx_hyper_charge)
 			charger_manager_enable_high_voltage_charging(
 						pthermal_consumer, true);
 #endif /*OPLUS_FEATURE_CHG_BASIC*/

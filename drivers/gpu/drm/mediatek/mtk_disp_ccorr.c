@@ -25,6 +25,8 @@
 #include "mtk_drm_drv.h"
 #include "mtk_disp_ccorr.h"
 #include "mtk_disp_color.h"
+#include "mtk_drm_lowpower.h"
+#include "mtk_kcal.h"
 #include "mtk_log.h"
 #include "mtk_dump.h"
 #include "mtk_drm_helper.h"
@@ -114,6 +116,16 @@ static bool need_offset;
 // It's a work around for no comp assigned in functions.
 static struct mtk_ddp_comp *default_comp;
 static struct mtk_ddp_comp *ccorr1_default_comp;
+
+static struct DRM_DISP_CCORR_COEF_T g_default_ccorr_coef = {
+	.hw_id = 0,
+	.coef = {
+		{1024, 0, 0},
+		{0, 1024, 0},
+		{0, 0, 1024}
+	},
+	.offset = {0, 0, 0}
+};
 
 static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 	struct cmdq_pkt *handle, int lock);
@@ -247,9 +259,7 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 
 	ccorr = g_disp_ccorr_coef[id];
 	if (ccorr == NULL) {
-		DDPINFO("%s: [%d] is not initialized\n", __func__, id);
-		ret = -EFAULT;
-		goto ccorr_write_coef_unlock;
+		ccorr = &g_default_ccorr_coef;
 	}
 
 	//if (id == 0) {
@@ -260,10 +270,26 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 			multiply_matrix->coef);
 		ccorr = multiply_matrix;
 
-		ccorr->offset[0] = g_disp_ccorr_coef[id]->offset[0];
-		ccorr->offset[1] = g_disp_ccorr_coef[id]->offset[1];
-		ccorr->offset[2] = g_disp_ccorr_coef[id]->offset[2];
+		ccorr->offset[0] = (g_disp_ccorr_coef[id] ? g_disp_ccorr_coef[id]->offset[0] : 0);
+		ccorr->offset[1] = (g_disp_ccorr_coef[id] ? g_disp_ccorr_coef[id]->offset[1] : 0);
+		ccorr->offset[2] = (g_disp_ccorr_coef[id] ? g_disp_ccorr_coef[id]->offset[2] : 0);
 	//}
+
+	if (mtk_kcal_is_enabled()) {
+		int kcal_mat[3][3];
+		int kcal_off[3];
+		unsigned int kcal_res[3][3];
+
+		mtk_kcal_get_matrix_and_offset(kcal_mat, kcal_off);
+		disp_ccorr_multiply_3x3(ccorr->coef, kcal_mat, kcal_res);
+
+		for (i = 0; i < 3; i++) {
+			for (j = 0; j < 3; j++)
+				ccorr->coef[i][j] = kcal_res[i][j];
+
+			ccorr->offset[i] = ((int)(ccorr->offset[i] & CCORR_COLOR_OFFSET_MASK) + kcal_off[i]) & CCORR_COLOR_OFFSET_MASK;
+		}
+	}
 
 #if defined(CONFIG_MACH_MT6885) || defined(CONFIG_MACH_MT6873) \
 	|| defined(CONFIG_MACH_MT6893) || defined(CONFIG_MACH_MT6853) \
@@ -280,6 +306,8 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 		writel(1, comp->regs + DISP_REG_CCORR_EN);
 		cfg_val = 0x2 | g_ccorr_relay_value[id] |
 			     (g_disp_ccorr_without_gamma << 2);
+		if (mtk_kcal_is_enabled())
+			cfg_val |= (0x1 << 2);
 		writel(cfg_val, comp->regs + DISP_REG_CCORR_CFG);
 		writel(((ccorr->coef[0][0] & CCORR_13BIT_MASK) << 16) |
 			(ccorr->coef[0][1] & CCORR_13BIT_MASK),
@@ -290,7 +318,7 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 		writel(((ccorr->coef[1][1] & CCORR_13BIT_MASK) << 16) |
 			(ccorr->coef[1][2] & CCORR_13BIT_MASK),
 			comp->regs + CCORR_REG(2));
-		writel(((ccorr->coef[2][0] & CCORR_12BIT_MASK) << 16) |
+		writel(((ccorr->coef[2][0] & CCORR_13BIT_MASK) << 16) |
 			(ccorr->coef[2][1] & CCORR_13BIT_MASK),
 			comp->regs + CCORR_REG(3));
 		writel(((ccorr->coef[2][2] & CCORR_13BIT_MASK) << 16),
@@ -308,6 +336,8 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 
 		cfg_val = 0x2 | g_ccorr_relay_value[index_of_ccorr(comp->id)] |
 			     (g_disp_ccorr_without_gamma << 2 | (0x1 << 10));
+		if (mtk_kcal_is_enabled())
+			cfg_val |= (0x1 << 2);
 
 		cmdq_pkt_write(handle, comp->cmdq_base,
 			comp->regs_pa + DISP_REG_CCORR_CFG, cfg_val, ~0);
@@ -345,7 +375,6 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 	}
 
 	DDPINFO("%s: finish\n", __func__);
-ccorr_write_coef_unlock:
 	if (lock)
 		mutex_unlock(&g_ccorr_global_lock);
 
@@ -1207,8 +1236,10 @@ static int mtk_disp_ccorr_probe(struct platform_device *pdev)
 		return comp_id;
 	}
 
-	if (!default_comp && comp_id == DDP_COMPONENT_CCORR0)
+	if (!default_comp && comp_id == DDP_COMPONENT_CCORR0) {
 		default_comp = &priv->ddp_comp;
+		mtk_kcal_init();
+	}
 
 	if (!ccorr1_default_comp && comp_id == DDP_COMPONENT_CCORR1)
 		ccorr1_default_comp = &priv->ddp_comp;
@@ -1240,6 +1271,13 @@ static int mtk_disp_ccorr_probe(struct platform_device *pdev)
 
 static int mtk_disp_ccorr_remove(struct platform_device *pdev)
 {
+	struct mtk_disp_ccorr *priv = platform_get_drvdata(pdev);
+
+	if (priv && default_comp == &priv->ddp_comp) {
+		mtk_kcal_exit();
+		default_comp = NULL;
+	}
+
 	component_del(&pdev->dev, &mtk_disp_ccorr_component_ops);
 
 	pm_runtime_disable(&pdev->dev);
@@ -1316,3 +1354,26 @@ void disp_ccorr_set_bypass(struct drm_crtc *crtc, int bypass)
 		ret = mtk_crtc_user_cmd(crtc, ccorr1_default_comp, BYPASS_CCORR, &bypass);
 	DDPFUNC("ret = %d", ret);
 }
+
+void mtk_disp_ccorr_refresh_kcal(void)
+{
+	int id;
+
+	if (!default_comp || !default_comp->regs)
+		return;
+
+	id = index_of_ccorr(default_comp->id);
+	if (atomic_read(&g_ccorr_is_clock_on[id]) != 1) {
+		DDPINFO("%s: CCORR clock is off, skip refresh\n", __func__);
+		return;
+	}
+
+	if (default_comp->mtk_crtc)
+		mtk_drm_idlemgr_kick(__func__, &default_comp->mtk_crtc->base, 0);
+
+	disp_ccorr_write_coef_reg(default_comp, NULL, 1);
+
+	if (default_comp->mtk_crtc)
+		mtk_crtc_check_trigger(default_comp->mtk_crtc, false, true);
+}
+EXPORT_SYMBOL(mtk_disp_ccorr_refresh_kcal);

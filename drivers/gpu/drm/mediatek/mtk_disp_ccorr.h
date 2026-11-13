@@ -16,6 +16,11 @@
 
 #include <drm/mediatek_drm.h>
 
+struct mtk_ddp_comp;
+struct cmdq_pkt;
+struct drm_device;
+struct drm_file;
+
 void ccorr_test(const char *cmd, char *debug_output);
 int ccorr_interface_for_color(unsigned int ccorr_idx,
 	unsigned int ccorr_coef[3][3], void *handle);
@@ -33,6 +38,8 @@ int mtk_drm_ioctl_ccorr_get_irq(struct drm_device *dev, void *data,
 	struct drm_file *file_priv);
 int mtk_drm_ioctl_support_color_matrix(struct drm_device *dev, void *data,
 	struct drm_file *file_priv);
+
+void mtk_disp_ccorr_refresh_kcal(void);
 
 #endif
 

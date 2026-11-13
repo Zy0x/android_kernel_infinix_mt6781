@@ -19,6 +19,11 @@
 #include <linux/platform_device.h>
 #include <linux/kthread.h>
 #include <linux/types.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <linux/spinlock.h>
+#include <linux/string.h>
+#include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
 #include <linux/sched/clock.h>
@@ -48,11 +53,65 @@
 #endif
 
 #define ESD_TRY_CNT 5
-//#ifndef OPLUS_FEATURE_ESD
-//#define ESD_CHECK_PERIOD 2000 /* ms */
-//#else
-#define ESD_CHECK_PERIOD 5000 /* ms */
+#define ESD_CHECK_PERIOD_DEFAULT 15000 /* ms */
+#define ESD_CHECK_PERIOD_MIN 2000 /* ms */
+#define ESD_CHECK_PERIOD_MAX 60000 /* ms */
 #define TIMEOUT_MS 20
+
+static atomic_t esd_check_period_ms = ATOMIC_INIT(ESD_CHECK_PERIOD_DEFAULT);
+static atomic_t esd_cfg_seq = ATOMIC_INIT(0);
+static DEFINE_SPINLOCK(g_esd_ctx_lock);
+static struct mtk_drm_esd_ctx *g_primary_esd_ctx;
+static struct proc_dir_entry *g_esd_proc_entry;
+
+static int mtk_esd_period_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%u\n", (unsigned int)atomic_read(&esd_check_period_ms));
+	return 0;
+}
+
+static int mtk_esd_period_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mtk_esd_period_show, NULL);
+}
+
+static ssize_t mtk_esd_period_write(struct file *file, const char __user *buf,
+				    size_t count, loff_t *ppos)
+{
+	char kbuf[16];
+	unsigned int val;
+	unsigned long flags;
+
+	if (count == 0 || count >= sizeof(kbuf))
+		return -EINVAL;
+	if (copy_from_user(kbuf, buf, count))
+		return -EFAULT;
+	kbuf[count] = '\0';
+
+	if (kstrtouint(strim(kbuf), 10, &val))
+		return -EINVAL;
+	if (val != 0 && (val < ESD_CHECK_PERIOD_MIN || val > ESD_CHECK_PERIOD_MAX))
+		return -EINVAL;
+
+	atomic_set(&esd_check_period_ms, (int)val);
+	atomic_inc(&esd_cfg_seq);
+
+	spin_lock_irqsave(&g_esd_ctx_lock, flags);
+	if (g_primary_esd_ctx)
+		wake_up_interruptible(&g_primary_esd_ctx->check_task_wq);
+	spin_unlock_irqrestore(&g_esd_ctx_lock, flags);
+
+	return (ssize_t)count;
+}
+
+static const struct file_operations mtk_esd_period_fops = {
+	.owner = THIS_MODULE,
+	.open = mtk_esd_period_open,
+	.read = seq_read,
+	.write = mtk_esd_period_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
 
 extern unsigned long esd_mode;
 extern unsigned int ffl_backlight_backup;
@@ -562,7 +621,38 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 	}
 
 	while (1) {
-		msleep(ESD_CHECK_PERIOD);
+		unsigned int period_ms;
+		int seq;
+
+		if (kthread_should_stop())
+			break;
+
+		period_ms = (unsigned int)atomic_read(&esd_check_period_ms);
+		if (!atomic_read(&esd_ctx->check_wakeup) || period_ms == 0) {
+			wait_event_interruptible(
+				esd_ctx->check_task_wq,
+				kthread_should_stop() ||
+				(atomic_read(&esd_ctx->check_wakeup) &&
+				 atomic_read(&esd_check_period_ms) > 0));
+			if (kthread_should_stop())
+				break;
+			continue;
+		}
+
+		seq = atomic_read(&esd_cfg_seq);
+		wait_event_interruptible_timeout(
+			esd_ctx->check_task_wq,
+			kthread_should_stop() ||
+			!atomic_read(&esd_ctx->check_wakeup) ||
+			atomic_read(&esd_cfg_seq) != seq,
+			msecs_to_jiffies(period_ms));
+		if (kthread_should_stop())
+			break;
+		if (!atomic_read(&esd_ctx->check_wakeup) ||
+		    atomic_read(&esd_cfg_seq) != seq ||
+		    atomic_read(&esd_check_period_ms) == 0)
+			continue;
+
 		//#ifndef OPLUS_FEATURE_ESD
 		/*ret = wait_event_interruptible(
 			esd_ctx->check_task_wq,
@@ -668,14 +758,14 @@ void mtk_disp_esd_check_switch(struct drm_crtc *crtc, bool enable)
 	}
 	esd_ctx->chk_active = enable;
 	atomic_set(&esd_ctx->check_wakeup, enable);
-	if (enable)
-		wake_up_interruptible(&esd_ctx->check_task_wq);
+	wake_up_interruptible(&esd_ctx->check_task_wq);
 }
 
 static void mtk_disp_esd_chk_deinit(struct drm_crtc *crtc)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	struct mtk_drm_esd_ctx *esd_ctx = mtk_crtc->esd_ctx;
+	unsigned long flags;
 
 	if (unlikely(!esd_ctx)) {
 		DDPPR_ERR("%s:invalid ESD context\n", __func__);
@@ -684,6 +774,16 @@ static void mtk_disp_esd_chk_deinit(struct drm_crtc *crtc)
 
 	/* Stop ESD task */
 	mtk_disp_esd_check_switch(crtc, false);
+
+	spin_lock_irqsave(&g_esd_ctx_lock, flags);
+	if (g_primary_esd_ctx == esd_ctx)
+		g_primary_esd_ctx = NULL;
+	spin_unlock_irqrestore(&g_esd_ctx_lock, flags);
+
+	if (g_esd_proc_entry) {
+		proc_remove(g_esd_proc_entry);
+		g_esd_proc_entry = NULL;
+	}
 
 	/* Stop ESD kthread */
 	kthread_stop(esd_ctx->disp_esd_chk_task);
@@ -728,6 +828,22 @@ static void mtk_disp_esd_chk_init(struct drm_crtc *crtc)
 	else
 		esd_ctx->chk_mode = READ_EINT;
 	mtk_drm_request_eint(crtc);
+
+	{
+		unsigned long flags;
+
+		spin_lock_irqsave(&g_esd_ctx_lock, flags);
+		g_primary_esd_ctx = esd_ctx;
+		spin_unlock_irqrestore(&g_esd_ctx_lock, flags);
+	}
+
+	if (!g_esd_proc_entry) {
+		g_esd_proc_entry = proc_create("mtk_esd_period_ms", 0664,
+						NULL, &mtk_esd_period_fops);
+		if (!g_esd_proc_entry)
+			DDPPR_ERR("%s: failed to create /proc/mtk_esd_period_ms\n",
+				  __func__);
+	}
 
 	wake_up_process(esd_ctx->disp_esd_chk_task);
 }

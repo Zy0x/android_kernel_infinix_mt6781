@@ -354,7 +354,7 @@ static int _mtk_charger_change_current_setting(struct charger_manager *info)
 
 static int _mtk_charger_do_charging(struct charger_manager *info, bool en)
 {
-	if (g_lynx_bypass_active)
+	if (lynx_is_bypass_effective())
 		en = false;
 
 	if (info != NULL && info->do_charging)
@@ -400,7 +400,7 @@ int charger_manager_enable_high_voltage_charging(
 
 	pr_debug("[%s] %s, %d\n", __func__, dev_name(consumer->dev), en);
 
-	if (g_lynx_hyper_charge && !g_lynx_bypass_active) {
+	if (g_lynx_hyper_charge && !lynx_is_bypass_effective()) {
 		mutex_lock(&consumer_mutex);
 		list_for_each(pos, phead) {
 			ptr = container_of(pos, struct charger_consumer, list);
@@ -432,7 +432,7 @@ int charger_manager_enable_high_voltage_charging(
 		if (list_is_last(pos, phead))
 			info->enable_hv_charging = true;
 	}
-	if (g_lynx_hyper_charge)
+	if (g_lynx_hyper_charge && !lynx_is_bypass_effective())
 		info->enable_hv_charging = true;
 	mutex_unlock(&consumer_mutex);
 
@@ -448,12 +448,39 @@ int charger_manager_enable_high_voltage_charging(
 }
 EXPORT_SYMBOL(charger_manager_enable_high_voltage_charging);
 
+void lynx_sync_bypass_charger(bool entering_bypass)
+{
+	struct power_supply *bat_psy;
+
+	if (!pinfo)
+		return;
+
+	if (entering_bypass) {
+		if (mtk_pe50_is_running(pinfo) || mtk_pe50_get_is_connect(pinfo))
+			mtk_pe50_stop_algo(pinfo, true);
+		charger_manager_notifier(pinfo, CHARGER_NOTIFY_NORMAL);
+	} else if (!lynx_is_bypass_effective()) {
+		pinfo->cmd_discharging = false;
+		if (mt_get_charger_type() != CHARGER_UNKNOWN)
+			charger_manager_notifier(pinfo, CHARGER_NOTIFY_START_CHARGING);
+	}
+
+	_wake_up_charger(pinfo);
+
+	bat_psy = power_supply_get_by_name("battery");
+	if (bat_psy) {
+		power_supply_changed(bat_psy);
+		power_supply_put(bat_psy);
+	}
+}
+EXPORT_SYMBOL(lynx_sync_bypass_charger);
+
 void lynx_sync_hyper_hv(bool en)
 {
 	struct list_head *pos = NULL;
 	struct charger_consumer *ptr = NULL;
 
-	if (!pinfo || !en || g_lynx_bypass_active)
+	if (!pinfo || !en || lynx_is_bypass_effective())
 		return;
 
 	mutex_lock(&consumer_mutex);
@@ -494,6 +521,11 @@ int charger_manager_enable_power_path(struct charger_consumer *consumer,
 
 	if (!info)
 		return -EINVAL;
+
+	if (!en && lynx_is_bypass_effective()) {
+		chr_err("%s: blocked disable power path during lynx bypass\n", __func__);
+		return -EBUSY;
+	}
 
 	switch (idx) {
 	case MAIN_CHARGER:
@@ -619,7 +651,7 @@ int charger_manager_set_input_current_limit(struct charger_consumer *consumer,
 	if (info != NULL) {
 		struct charger_data *pdata;
 
-		if (g_lynx_hyper_charge && !g_lynx_bypass_active &&
+		if (g_lynx_hyper_charge && !lynx_is_bypass_effective() &&
 		    input_current >= 0 && input_current < 3000000)
 			input_current = -1;
 
@@ -669,7 +701,7 @@ int charger_manager_set_charging_current_limit(
 		else
 			return -ENOTSUPP;
 
-		if (g_lynx_bypass_active)
+		if (lynx_is_bypass_effective())
 			charging_current = 0;
 		else if (g_lynx_hyper_charge && charging_current >= 0 && charging_current < 3000000)
 			charging_current = -1;
@@ -1626,6 +1658,8 @@ static int mtk_charger_plug_out(struct charger_manager *info)
 	struct charger_data *pdata2 = &info->chg2_data;
 
 	chr_err("%s\n", __func__);
+	lynx_bypass_on_plug_out();
+	info->cmd_discharging = false;
 	info->chr_type = CHARGER_UNKNOWN;
 	info->charger_thread_polling = false;
 	info->pd_reset = false;
@@ -2180,6 +2214,29 @@ static int charger_routine_thread(void *arg)
 
 		is_charger_on = mtk_is_charger_on(info);
 
+		if (lynx_is_manual_bypass_active()) {
+			int uisoc = battery_get_uisoc();
+			int vbat = battery_get_bat_voltage();
+
+			if (uisoc >= 0 && uisoc <= 3 && vbat > 0 && vbat < 3450) {
+				chr_err("lynx_bypass: emergency auto-disarm on critical low battery (uisoc=%d%%, vbat=%dmV)\n",
+					uisoc, vbat);
+				lynx_bypass_clear_manual_emergency();
+				if (!lynx_is_bypass_effective()) {
+					rt9471_set_bypass_mode(false);
+					info->cmd_discharging = false;
+					if (mt_get_charger_type() != CHARGER_UNKNOWN)
+						charger_manager_notifier(info, CHARGER_NOTIFY_START_CHARGING);
+				}
+			}
+		}
+
+		if (is_charger_on && lynx_is_bypass_effective() && info->chg1_dev) {
+			charger_dev_enable_powerpath(info->chg1_dev, true);
+			if (mtk_pe50_is_running(info) || mtk_pe50_get_is_connect(info))
+				mtk_pe50_stop_algo(info, true);
+		}
+
 		if (info->charger_thread_polling == true)
 			mtk_charger_start_timer(info);
 
@@ -2189,7 +2246,7 @@ static int charger_routine_thread(void *arg)
 		charger_check_status(info);
 		kpoc_power_off_check(info);
 
-		if (g_lynx_hyper_charge && !g_lynx_bypass_active &&
+		if (g_lynx_hyper_charge && !lynx_is_bypass_effective() &&
 		    !is_disable_charger()) {
 			if (!info->enable_hv_charging) {
 				struct list_head *pos;
@@ -3397,13 +3454,16 @@ static ssize_t mtk_chg_current_cmd_write(struct file *file,
 		if (cmd_discharging == 1) {
 			info->cmd_discharging = true;
 			charger_dev_enable(info->chg1_dev, false);
-			charger_manager_notifier(info,
-						CHARGER_NOTIFY_STOP_CHARGING);
+			if (!lynx_is_bypass_effective())
+				charger_manager_notifier(info,
+							CHARGER_NOTIFY_STOP_CHARGING);
 		} else if (cmd_discharging == 0) {
 			info->cmd_discharging = false;
-			charger_dev_enable(info->chg1_dev, true);
-			charger_manager_notifier(info,
-						CHARGER_NOTIFY_START_CHARGING);
+			if (!lynx_is_bypass_effective()) {
+				charger_dev_enable(info->chg1_dev, true);
+				charger_manager_notifier(info,
+							CHARGER_NOTIFY_START_CHARGING);
+			}
 		}
 
 		pr_debug("%s current_unlimited=%d, cmd_discharging=%d\n",
@@ -3447,6 +3507,10 @@ static ssize_t mtk_chg_en_power_path_write(struct file *file,
 
 	ret = kstrtou32(desc, 10, &enable);
 	if (ret == 0) {
+		if (!enable && lynx_is_bypass_effective()) {
+			pr_warn("lynx_bypass: refuse disabling powerpath via en_power_path\n");
+			return -EBUSY;
+		}
 		charger_dev_enable_powerpath(info->chg1_dev, enable);
 		pr_debug("%s: enable power path = %d\n", __func__, enable);
 		return count;

@@ -63,11 +63,13 @@
 
 #include <mt-plat/mtk_boot.h>
 /* #include <musb_core.h> */ /* FIXME */
+#include <mt-plat/mtk_battery.h>
 #include "mtk_charger_intf.h"
 #include "mtk_switch_charging.h"
 #include "tran_chg_fun.h"
 #include "mtk_hvdcp_intf.h"
 #include "mtk_tc30_intf.h"
+#include "lynx_power.h"
 
 static int _uA_to_mA(int uA)
 {
@@ -147,6 +149,42 @@ static void _disable_all_charging(struct charger_manager *info)
 		mtk_pdc_reset(info);
 }
 
+static void mtk_switch_enter_hw_bypass(struct charger_manager *info)
+{
+	struct switch_charging_alg_data *swchgalg = info->algorithm_data;
+	u32 min_aicr = (info->chr_type == STANDARD_HOST) ? 500000 : 2500000;
+
+	rt9471_set_bypass_mode(true);
+	charger_dev_enable_powerpath(info->chg1_dev, true);
+	charger_dev_enable_safety_timer(info->chg1_dev, false);
+
+	if (mtk_pe50_is_running(info) || mtk_pe50_get_is_connect(info) || info->pe5.online)
+		mtk_pe50_stop_algo(info, true);
+	info->pe5.online = false;
+	tran_pe50_running = 0;
+
+	if (mtk_pe40_get_is_enable(info)) {
+		if (mtk_pe40_get_is_connect(info))
+			mtk_pe40_end(info, 3, true);
+		mtk_pe40_set_is_enable(info, false);
+	}
+	info->pe4.is_connect = false;
+
+	_disable_all_charging(info);
+
+	mutex_lock(&swchgalg->ichg_aicr_access_mutex);
+	if (info->chg1_data.input_current_limit < min_aicr)
+		info->chg1_data.input_current_limit = min_aicr;
+	info->chg1_data.charging_current_limit = 0;
+	charger_dev_set_input_current(info->chg1_dev,
+				      info->chg1_data.input_current_limit);
+	charger_dev_set_charging_current(info->chg1_dev, 0);
+	mutex_unlock(&swchgalg->ichg_aicr_access_mutex);
+
+	swchgalg->total_charging_time = 0;
+	get_monotonic_boottime(&swchgalg->charging_begin_time);
+}
+
 static void swchg_select_charging_current_limit(struct charger_manager *info)
 {
 	struct charger_data *pdata = NULL;
@@ -156,6 +194,22 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 
 	if (info->pe5.online) {
 		chr_err("In PE5.0\n");
+		return;
+	}
+
+	if (lynx_is_bypass_effective()) {
+		u32 min_aicr = (info->chr_type == STANDARD_HOST) ? 500000 : 2500000;
+
+		pdata = &info->chg1_data;
+		mutex_lock(&swchgalg->ichg_aicr_access_mutex);
+		if (pdata->input_current_limit < min_aicr)
+			pdata->input_current_limit = min_aicr;
+		pdata->charging_current_limit = 0;
+		charger_dev_set_input_current(info->chg1_dev,
+					      pdata->input_current_limit);
+		charger_dev_set_charging_current(info->chg1_dev, 0);
+		charger_dev_enable(info->chg1_dev, false);
+		mutex_unlock(&swchgalg->ichg_aicr_access_mutex);
 		return;
 	}
 
@@ -461,6 +515,11 @@ static void swchg_turn_on_charging(struct charger_manager *info)
 	struct switch_charging_alg_data *swchgalg = info->algorithm_data;
 	bool charging_enable = true;
 
+	if (lynx_is_bypass_effective()) {
+		mtk_switch_enter_hw_bypass(info);
+		return;
+	}
+
 	if (swchgalg->state == CHR_ERROR) {
 		charging_enable = false;
 		chr_err("[charger]Charger Error, turn OFF charging !\n");
@@ -645,6 +704,11 @@ static int mtk_switch_chr_cc(struct charger_manager *info)
 
 	swchgalg->total_charging_time = charging_time.tv_sec;
 
+	if (lynx_is_bypass_effective()) {
+		mtk_switch_enter_hw_bypass(info);
+		return 0;
+	}
+
 	if (mtk_pe50_is_ready(info)) {
 		chr_err("enter PE5.0\n");
 		swchgalg->state = CHR_PE50_READY;
@@ -688,6 +752,11 @@ static int mtk_switch_chr_cc(struct charger_manager *info)
 		swchgalg->state = CHR_BATFULL;
 		charger_dev_do_event(info->chg1_dev, EVENT_EOC, 0);
 		chr_err("battery full!\n");
+		if (lynx_is_full_bypass_enabled() && !lynx_is_manual_bypass_active()) {
+			lynx_bypass_set_full_latch(true);
+			mtk_switch_enter_hw_bypass(info);
+			info->polling_interval = CHARGING_FULL_INTERVAL;
+		}
 	}
 
 	/* If it is not disabled by throttling,
@@ -737,8 +806,47 @@ int mtk_switch_chr_full(struct charger_manager *info)
 {
 	bool chg_done = false;
 	struct switch_charging_alg_data *swchgalg = info->algorithm_data;
+	int uisoc = battery_get_uisoc();
+	int vbat = battery_get_bat_voltage();
 
 	swchgalg->total_charging_time = 0;
+
+	if (lynx_is_full_bypass_enabled() && !lynx_is_manual_bypass_active()) {
+		if (!lynx_is_full_bypass_active()) {
+			lynx_bypass_set_full_latch(true);
+			chr_err("lynx_full_bypass: LATCHED hardware bypass (uisoc=%d%%, vbat=%dmV)\n",
+				uisoc, vbat);
+		}
+		mtk_switch_enter_hw_bypass(info);
+		info->polling_interval = CHARGING_FULL_INTERVAL;
+
+		if (uisoc >= 0 && uisoc < 98 && vbat > 0 && vbat < 4180) {
+			chr_err("lynx_full_bypass: UNLATCHED on genuine drop (uisoc=%d%%, vbat=%dmV)\n",
+				uisoc, vbat);
+			lynx_bypass_set_full_latch(false);
+			if (!lynx_is_bypass_effective())
+				rt9471_set_bypass_mode(false);
+			swchgalg->state = CHR_CC;
+			charger_dev_do_event(info->chg1_dev, EVENT_RECHARGE, 0);
+			tran_pe50_full = 1;
+			mtk_pe20_set_to_check_chr_type(info, true);
+			mtk_pe_set_to_check_chr_type(info, true);
+			mtk_hvdcp20_set_to_check_chr_type(info, 1);
+			mtk_tc30_set_to_check_chr_type(info, 1);
+			mtk_pe40_set_is_enable(info, true);
+			mtk_pe50_set_is_enable(info, true);
+			info->enable_dynamic_cv = true;
+			get_monotonic_boottime(&swchgalg->charging_begin_time);
+			info->polling_interval = CHARGING_INTERVAL;
+		}
+		return 0;
+	}
+
+	if (lynx_is_manual_bypass_active()) {
+		mtk_switch_enter_hw_bypass(info);
+		info->polling_interval = CHARGING_FULL_INTERVAL;
+		return 0;
+	}
 
 	/* turn off LED */
 
@@ -782,6 +890,16 @@ static int mtk_switch_charging_run(struct charger_manager *info)
 	chr_err("%s [%d %d], timer=%d\n", __func__, swchgalg->state,
 		info->pd_type,
 		swchgalg->total_charging_time);
+
+	if (lynx_is_bypass_effective()) {
+		if (swchgalg->state != CHR_BATFULL && swchgalg->state != CHR_ERROR)
+			swchgalg->state = CHR_CC;
+		mtk_switch_enter_hw_bypass(info);
+		if (swchgalg->state == CHR_BATFULL)
+			mtk_switch_chr_full(info);
+		charger_dev_dump_registers(info->chg1_dev);
+		return 0;
+	}
 
 	if (mtk_pdc_check_charger(info) == false &&
 	    mtk_is_TA_support_pd_pps(info) == false &&

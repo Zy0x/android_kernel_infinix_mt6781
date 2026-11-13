@@ -63,6 +63,7 @@
 #include <mt-plat/charger_type.h>
 #include <mt-plat/mtk_charger.h>
 #include <mt-plat/mtk_battery.h>
+#include "../charger/lynx_power.h"
 
 /* Infinix Board Compatibility Prototypes */
 unsigned int get_PCB_Version(void);
@@ -550,7 +551,16 @@ static int battery_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		val->intval = data->BAT_STATUS;
+		if (mt_get_charger_type() != CHARGER_UNKNOWN) {
+			if (lynx_is_full_bypass_active())
+				val->intval = POWER_SUPPLY_STATUS_FULL;
+			else if (lynx_is_manual_bypass_active())
+				val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+			else
+				val->intval = data->BAT_STATUS;
+		} else {
+			val->intval = data->BAT_STATUS;
+		}
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = data->BAT_HEALTH;/* do not change before*/
@@ -4343,6 +4353,12 @@ static int battery_callback(
 		{
 /* CHARGING FULL */
 			notify_fg_chr_full();
+#ifndef OPLUS_FEATURE_CHG_BASIC
+			if (lynx_is_full_bypass_active()) {
+				battery_main.BAT_STATUS = POWER_SUPPLY_STATUS_FULL;
+				battery_update(&battery_main);
+			}
+#endif /* OPLUS_FEATURE_CHG_BASIC */
 		}
 		break;
 	case CHARGER_NOTIFY_START_CHARGING:
@@ -4350,7 +4366,13 @@ static int battery_callback(
 /* START CHARGING */
 			fg_sw_bat_cycle_accu();
 #ifndef OPLUS_FEATURE_CHG_BASIC
-			battery_main.BAT_STATUS = POWER_SUPPLY_STATUS_CHARGING;
+			if (mt_get_charger_type() != CHARGER_UNKNOWN && lynx_is_bypass_effective()) {
+				battery_main.BAT_STATUS = lynx_is_full_bypass_active()
+					? POWER_SUPPLY_STATUS_FULL
+					: POWER_SUPPLY_STATUS_NOT_CHARGING;
+			} else {
+				battery_main.BAT_STATUS = POWER_SUPPLY_STATUS_CHARGING;
+			}
 			battery_update(&battery_main);
 #endif /* OPLUS_FEATURE_CHG_BASIC */
 		}
@@ -4360,8 +4382,13 @@ static int battery_callback(
 /* STOP CHARGING */
 			fg_sw_bat_cycle_accu();
 #ifndef OPLUS_FEATURE_CHG_BASIC
-			battery_main.BAT_STATUS =
-			POWER_SUPPLY_STATUS_DISCHARGING;
+			if (mt_get_charger_type() != CHARGER_UNKNOWN && lynx_is_bypass_effective()) {
+				battery_main.BAT_STATUS = lynx_is_full_bypass_active()
+					? POWER_SUPPLY_STATUS_FULL
+					: POWER_SUPPLY_STATUS_NOT_CHARGING;
+			} else {
+				battery_main.BAT_STATUS = POWER_SUPPLY_STATUS_DISCHARGING;
+			}
 			battery_update(&battery_main);
 #endif /* OPLUS_FEATURE_CHG_BASIC */
 		}
@@ -4379,7 +4406,13 @@ static int battery_callback(
 		{
 /* charging leave error state */
 #ifndef OPLUS_FEATURE_CHG_BASIC
-		battery_main.BAT_STATUS = POWER_SUPPLY_STATUS_CHARGING;
+		if (mt_get_charger_type() != CHARGER_UNKNOWN && lynx_is_bypass_effective()) {
+			battery_main.BAT_STATUS = lynx_is_full_bypass_active()
+				? POWER_SUPPLY_STATUS_FULL
+				: POWER_SUPPLY_STATUS_NOT_CHARGING;
+		} else {
+			battery_main.BAT_STATUS = POWER_SUPPLY_STATUS_CHARGING;
+		}
 		battery_update(&battery_main);
 #endif /* OPLUS_FEATURE_CHG_BASIC */
 		}

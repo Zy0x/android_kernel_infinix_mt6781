@@ -2355,6 +2355,12 @@ static int rt9471_plug_out(struct charger_device *chg_dev)
 
 	dev_info(chip->dev, "%s\n", __func__);
 
+	lynx_bypass_on_plug_out();
+
+	ret = __rt9471_enable_safe_tmr(chip, chip->desc->en_safe_tmr);
+	if (ret < 0)
+		dev_notice(chip->dev, "%s restore safe tmr fail(%d)\n", __func__, ret);
+
 	ret = __rt9471_enable_chg(chip, true);
 	if (ret < 0) {
 		dev_notice(chip->dev, "%s en chg fail(%d)\n", __func__, ret);
@@ -2369,10 +2375,9 @@ static int rt9471_plug_out(struct charger_device *chg_dev)
 	rt9471_tc30_gpio_enable(chg_dev, false);
 
 	mutex_lock(&chip->hz_lock);
-	if (chip->hz_pca_en) {
-		chip->hz_pca_en = false;
-		__rt9471_enable_hz(chip, false);
-	}
+	chip->hz_users[RT9471_HZU_PP] = false;
+	chip->hz_pca_en = false;
+	__rt9471_enable_hz(chip, false);
 	mutex_unlock(&chip->hz_lock);
 
 	return ret;
@@ -2381,17 +2386,80 @@ static int rt9471_plug_out(struct charger_device *chg_dev)
 struct rt9471_chip *g_rt9471_chip = NULL;
 EXPORT_SYMBOL(g_rt9471_chip);
 
+int rt9471_lynx_get_hw_info(bool *hz, bool *chg_en, bool *chg_done,
+			    bool *vbus_gd, u32 *aicr_ua)
+{
+	struct rt9471_chip *chip = g_rt9471_chip;
+	enum rt9471_ic_stat ic_stat = RT9471_ICSTAT_SLEEP;
+	bool tmp_bool = false;
+	u32 tmp_u32 = 0;
+
+	if (!chip)
+		return -ENODEV;
+
+	if (hz) {
+		__rt9471_is_hz_enabled(chip, &tmp_bool);
+		*hz = tmp_bool;
+	}
+	if (chg_en) {
+		__rt9471_is_chg_enabled(chip, &tmp_bool);
+		*chg_en = tmp_bool;
+	}
+	if (chg_done) {
+		if (__rt9471_get_ic_stat(chip, &ic_stat) >= 0)
+			*chg_done = (ic_stat == RT9471_ICSTAT_CHGDONE);
+		else
+			*chg_done = false;
+	}
+	if (vbus_gd)
+		*vbus_gd = rt9471_is_vbus_gd(chip);
+	if (aicr_ua) {
+		if (__rt9471_get_aicr(chip, &tmp_u32) >= 0)
+			*aicr_ua = tmp_u32;
+		else
+			*aicr_ua = 0;
+	}
+	return 0;
+}
+EXPORT_SYMBOL(rt9471_lynx_get_hw_info);
+
 int rt9471_set_bypass_mode(bool enable)
 {
-	if (!g_rt9471_chip) {
+	struct rt9471_chip *chip = g_rt9471_chip;
+
+	if (!chip) {
 		pr_warn("rt9471: g_rt9471_chip is NULL\n");
 		return -ENODEV;
 	}
-	pr_info("rt9471: set bypass mode: %d\n", enable);
-	if (enable)
-		__rt9471_enable_chg(g_rt9471_chip, false);
-	else
-		__rt9471_enable_chg(g_rt9471_chip, true);
+
+	pr_info("rt9471: set bypass mode: %d (effective=%d)\n",
+		enable ? 1 : 0, lynx_is_bypass_effective() ? 1 : 0);
+
+	if (enable) {
+		u32 aicr = 0, mivr = 0;
+		u32 min_aicr = (mt_get_charger_type() == STANDARD_HOST) ? 500000 : 2500000;
+
+		mutex_lock(&chip->hz_lock);
+		chip->hz_pca_en = false;
+		chip->hz_users[RT9471_HZU_PP] = false;
+		chip->hz_users[RT9471_HZU_VBUS_GD] = false;
+		__rt9471_enable_hz(chip, false);
+		mutex_unlock(&chip->hz_lock);
+
+		rt9471_clr_bit(chip, RT9471_REG_FUNCTION,
+			       RT9471_HZ_MASK | RT9471_BATFETDIS_MASK);
+		__rt9471_enable_chg(chip, false);
+		__rt9471_enable_safe_tmr(chip, false);
+
+		if (__rt9471_get_aicr(chip, &aicr) >= 0 && aicr < min_aicr)
+			__rt9471_set_aicr(chip, min_aicr);
+		if (__rt9471_get_mivr(chip, &mivr) >= 0 && mivr > 4500000)
+			__rt9471_set_mivr(chip, 4500000);
+	} else if (!lynx_is_bypass_effective()) {
+		__rt9471_enable_safe_tmr(chip, chip->desc->en_safe_tmr);
+		__rt9471_enable_chg(chip, true);
+	}
+
 	return 0;
 }
 EXPORT_SYMBOL(rt9471_set_bypass_mode);
@@ -2402,7 +2470,7 @@ static int rt9471_enable_charging(struct charger_device *chg_dev, bool en)
 	int ret = 0;
 	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
 
-	if (g_lynx_bypass_active)
+	if (lynx_is_bypass_effective())
 		en = false;
 
 	dev_info(chip->dev, "%s en = %d\n", __func__, en);
@@ -2572,6 +2640,11 @@ static int rt9471_enable_powerpath(struct charger_device *chg_dev, bool en)
 {
 	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
 
+	if (!en && lynx_is_bypass_effective()) {
+		dev_info(chip->dev, "%s: blocked disabling powerpath during lynx bypass\n", __func__);
+		return rt9471_enable_hz(chip, false, RT9471_HZU_PP);
+	}
+
 	dev_info(chip->dev, "%s en = %d\n", __func__, en);
 
 	return rt9471_enable_hz(chip, !en, RT9471_HZU_PP);
@@ -2593,6 +2666,11 @@ static int rt9471_chg_enable_hz(struct charger_device *chg_dev, bool en)
 	int ret = 0;
 	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
 
+	if (en && lynx_is_bypass_effective()) {
+		dev_info(chip->dev, "%s: clamped HZ=0 during lynx bypass\n", __func__);
+		en = false;
+	}
+
 	dev_info(chip->dev, "%s en = %d\n", __func__, en);
 
 	mutex_lock(&chip->hz_lock);
@@ -2606,6 +2684,9 @@ static int rt9471_chg_enable_hz(struct charger_device *chg_dev, bool en)
 static int rt9471_enable_safety_timer(struct charger_device *chg_dev, bool en)
 {
 	struct rt9471_chip *chip = dev_get_drvdata(&chg_dev->dev);
+
+	if (en && lynx_is_bypass_effective())
+		en = false;
 
 	return __rt9471_enable_safe_tmr(chip, en);
 }

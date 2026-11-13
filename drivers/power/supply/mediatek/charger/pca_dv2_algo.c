@@ -24,6 +24,7 @@
 #include <mt-plat/prop_chgalgo_class.h>
 #include <mt-plat/mtk_battery.h>
 #include "tran_chg_fun.h"
+#include "lynx_power.h"
 
 #define PCA_DV2_ALGO_VERSION	"2.0.2_G"
 #define MS_TO_NS(msec)		((msec) * 1000 * 1000)
@@ -1171,6 +1172,11 @@ static int __dv2_set_dvchg_charging(struct dv2_algo_info *info, bool en)
 
 	PCA_INFO("en = %d\n", en);
 
+	if (en && lynx_is_bypass_effective()) {
+		PCA_INFO("lynx bypass active, blocking dvchg enable\n");
+		return -EBUSY;
+	}
+
 	if (en) {
 		ret = prop_chgalgo_enable_hz(data->pca_swchg, true);
 		if (ret < 0) {
@@ -1209,6 +1215,12 @@ static int __dv2_enable_swchg_charging(struct dv2_algo_info *info, bool en)
 	struct dv2_algo_desc *desc = info->desc;
 
 	PCA_INFO("en = %d\n", en);
+	if (lynx_is_bypass_effective()) {
+		prop_chgalgo_enable_hz(data->pca_swchg, false);
+		prop_chgalgo_enable_charging(data->pca_swchg, false);
+		data->is_swchg_en = false;
+		return 0;
+	}
 	if (en) {
 		ret = prop_chgalgo_enable_charging(data->pca_swchg, true);
 		if (ret < 0) {
@@ -3752,7 +3764,7 @@ static int __dv2_algo_threadfn(void *param)
 		atomic_set(&data->wakeup_thread, 0);
 		mutex_lock(&data->lock);
 		PCA_INFO("state = %s\n", __dv2_algo_state_name[data->state]);
-		if (atomic_read(&data->stop_algo))
+		if (atomic_read(&data->stop_algo) || lynx_is_bypass_effective())
 			__dv2_stop(info, &sinfo);
 		__dv2_pre_handle_notify_evt(info);
 		if (data->state != DV2_ALGO_STOP) {
@@ -3890,7 +3902,7 @@ static bool dv2_is_algo_ready(struct prop_chgalgo_device *pca)
 	mutex_lock(&data->lock);
 	PCA_DBG("++\n");
 
-	if (!data->inited) {
+	if (!data->inited || lynx_is_bypass_effective()) {
 		rdy = false;
 		goto out;
 	}

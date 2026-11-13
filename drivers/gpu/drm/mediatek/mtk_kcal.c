@@ -62,7 +62,6 @@ static void mtk_kcal_recalculate_locked(void)
 	int msat[3][3];
 	int mhue[3][3];
 	int msat_hue[3][3];
-	int off_base;
 	int i, j, k;
 
 	/* Rec.709 weights scaled to 1024: 0.2126 -> 218, 0.7152 -> 732, 0.0722 -> 74 */
@@ -125,16 +124,15 @@ static void mtk_kcal_recalculate_locked(void)
 		}
 	}
 
-	off_base = (1024 - c) / 2;
-	s_kcal_offset[0] = (int)((((s64)gr * v) / (1024LL * 1024LL) * off_base) << 15);
-	s_kcal_offset[1] = (int)((((s64)gg * v) / (1024LL * 1024LL) * off_base) << 15);
-	s_kcal_offset[2] = (int)((((s64)gb * v) / (1024LL * 1024LL) * off_base) << 15);
+	/* Strict zero offset for MediaTek CCORR scanout safety */
+	s_kcal_offset[0] = 0;
+	s_kcal_offset[1] = 0;
+	s_kcal_offset[2] = 0;
 
 	if (s_invert) {
 		for (i = 0; i < 3; i++) {
 			for (j = 0; j < 3; j++)
 				s_kcal_matrix[i][j] = -s_kcal_matrix[i][j];
-			s_kcal_offset[i] += (1024 << 15);
 		}
 	}
 }

@@ -287,7 +287,6 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 			for (j = 0; j < 3; j++)
 				ccorr->coef[i][j] = kcal_res[i][j];
 
-			ccorr->offset[i] = ((int)(ccorr->offset[i] & CCORR_COLOR_OFFSET_MASK) + kcal_off[i]) & CCORR_COLOR_OFFSET_MASK;
 		}
 	}
 
@@ -304,10 +303,8 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 	if (handle == NULL) {
 		/* use CPU to write */
 		writel(1, comp->regs + DISP_REG_CCORR_EN);
-		cfg_val = 0x2 | g_ccorr_relay_value[id] |
+		cfg_val = 0x2 | (mtk_kcal_is_enabled() ? 0 : g_ccorr_relay_value[id]) |
 			     (g_disp_ccorr_without_gamma << 2);
-		if (mtk_kcal_is_enabled())
-			cfg_val |= (0x1 << 2);
 		writel(cfg_val, comp->regs + DISP_REG_CCORR_CFG);
 		writel(((ccorr->coef[0][0] & CCORR_13BIT_MASK) << 16) |
 			(ccorr->coef[0][1] & CCORR_13BIT_MASK),
@@ -334,10 +331,8 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 	} else {
 		/* use CMDQ to write */
 
-		cfg_val = 0x2 | g_ccorr_relay_value[index_of_ccorr(comp->id)] |
+		cfg_val = 0x2 | (mtk_kcal_is_enabled() ? 0 : g_ccorr_relay_value[index_of_ccorr(comp->id)]) |
 			     (g_disp_ccorr_without_gamma << 2 | (0x1 << 10));
-		if (mtk_kcal_is_enabled())
-			cfg_val |= (0x1 << 2);
 
 		cmdq_pkt_write(handle, comp->cmdq_base,
 			comp->regs_pa + DISP_REG_CCORR_CFG, cfg_val, ~0);

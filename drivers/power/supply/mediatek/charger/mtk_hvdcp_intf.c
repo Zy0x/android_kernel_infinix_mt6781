@@ -204,9 +204,9 @@ static int hvdcp20_detect_ta(struct charger_manager *pinfo)
 int mtk_hvdcp20_set_charging_current(struct charger_manager *pinfo,
 				     unsigned int *ichg, unsigned int *aicr)
 {
-	*aicr = 2000000;
-	*ichg = pinfo->data.ta_ac_charger_current;
-	chr_debug("%s: aicr = %u, ichg = %u\n", __func__, *aicr, *ichg);
+	*aicr = 3200000;
+	*ichg = 3150000;
+	chr_info("%s: HVDCP20 active! aicr = %u, ichg = %u\n", __func__, *aicr, *ichg);
 	return 0;
 }
 

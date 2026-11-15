@@ -83,11 +83,11 @@ static int flag_tc30 = 0;
 static int tran_otg_ctl = 0;
 static int en_lcd_on_tml = 0;
 static int enable_pcb_tml = 1;
-static int pcb_temp_step_one = 43000;
+static int pcb_temp_step_one = 48000;
 static int pcb_cur_step_one = 200;
-static int pcb_temp_step_two = 43000;
+static int pcb_temp_step_two = 54000;
 static int pcb_cur_step_two = 200;
-static int pcb_min_chg_cur = 1000000;
+static int pcb_min_chg_cur = 2000000;
 
 static int Tpcb_store_ok = 0;
 static int Tstep1 = 0, Tcur1 = 0, Tstep2 = 0, Tcur2 = 0, Tmin_curr = 0;

@@ -187,9 +187,9 @@ static int tc30_detect_ta(struct charger_manager *pinfo)
 int mtk_tc30_set_charging_current(struct charger_manager *pinfo,
 				  unsigned int *ichg, unsigned int *aicr)
 {
-	*aicr = 2000000;
-	*ichg = pinfo->data.ta_ac_charger_current;
-	chr_info("%s:tc30 input = %u, current = %u\n", __func__, *aicr, *ichg);
+	*aicr = 3200000;
+	*ichg = 3150000;
+	chr_info("%s: TC30 active! input = %u, current = %u\n", __func__, *aicr, *ichg);
 	return 0;
 }
 

@@ -2386,6 +2386,8 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 		info->data.max_dmivr_charger_current =
 					MAX_DMIVR_CHARGER_CURRENT;
 	}
+	/* Lynx Universal: Uncap max_dmivr_charger_current to 3200mA */
+	info->data.max_dmivr_charger_current = 3200000;
 
 	/* charging current */
 	if (of_property_read_u32(np, "usb_charger_current_suspend", &val) >= 0)
@@ -2506,15 +2508,16 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 					USB_UNLIMITED_CURRENT;
 	}
 
-	/* Lynx Universal: Uncap ALL charger current limits to 3000mA (15W-27W) */
-	info->data.ac_charger_input_current = 3000000;
-	info->data.ac_charger_current = 3000000;
-	info->data.charging_host_charger_current = 3000000;
-	info->data.non_std_ac_charger_current = 3000000;
-	info->data.apple_1_0a_charger_current = 3000000;
-	info->data.apple_2_1a_charger_current = 3000000;
-	info->data.ta_ac_charger_current = 3000000;
-	info->data.usb_unlimited_current = 3000000;
+	/* Lynx Universal: Uncap ALL charger current limits to 3150mA/3200mA (15W-33W) */
+	info->data.max_dmivr_charger_current = 3200000;
+	info->data.ac_charger_input_current = 3200000;
+	info->data.ac_charger_current = 3150000;
+	info->data.charging_host_charger_current = 3150000;
+	info->data.non_std_ac_charger_current = 3150000;
+	info->data.apple_1_0a_charger_current = 3150000;
+	info->data.apple_2_1a_charger_current = 3150000;
+	info->data.ta_ac_charger_current = 3150000;
+	info->data.usb_unlimited_current = 3200000;
 
 	/* sw jeita */
 	if (of_property_read_u32(np, "jeita_temp_above_t4_cv", &val) >= 0)
@@ -3089,11 +3092,11 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 	if (of_property_read_u32(np, "termination_current", &val) >= 0)
 		info->data.termination_current = val;
 
-	info->data.enable_hvdcp20 = of_property_read_bool(np, "enable_hvdcp20");
-	info->enable_hvdcp20 = info->data.enable_hvdcp20;
-	info->data.enable_tc30 = of_property_read_bool(np, "enable_tc30");
-	info->enable_tc30 = info->data.enable_tc30;
-	info->data.enable_18w_flash = of_property_read_bool(np, "enable_18w_flash");
+	info->data.enable_hvdcp20 = true;
+	info->enable_hvdcp20 = true;
+	info->data.enable_tc30 = true;
+	info->enable_tc30 = true;
+	info->data.enable_18w_flash = true;
 
 	if (of_property_read_u32(np, "comp_ir", &val) >= 0)
 		info->data.comp_ir = val;

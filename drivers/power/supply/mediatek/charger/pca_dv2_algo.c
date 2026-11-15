@@ -3917,9 +3917,12 @@ static bool dv2_is_algo_ready(struct prop_chgalgo_device *pca)
 		goto out;
 	}
 
+	int vbat_mv = 0;
+	int vbat_ret = __dv2_get_adc(info, PCA_ADCCHAN_VBAT, &vbat_mv);
+
 	PCA_DBG("run once(%d)\n", data->run_once);
 	if (data->run_once) {
-		if (soc < 85 && data->ta_ready) {
+		if ((soc < 95 || (vbat_ret == 0 && vbat_mv < 4450)) && data->ta_ready) {
 			data->run_once = false;
 		} else if (!(data->notify & DV2_RESET_NOTIFY)) {
 			rdy = false;
@@ -3934,10 +3937,15 @@ static bool dv2_is_algo_ready(struct prop_chgalgo_device *pca)
 		}
 	}
 	if (monkey_flag != 6 && (soc < desc->start_soc_min || soc > desc->start_soc_max)) {
-		PCA_INFO("soc(%d) not in range(%d~%d)\n", soc,
-			 desc->start_soc_min, desc->start_soc_max);
-		rdy = false;
-		goto out;
+		if (g_lynx_hyper_charge && (vbat_ret == 0 && vbat_mv < 4450) && soc <= 98) {
+			PCA_INFO("hyper charge: bypassing start_soc_max(%d) with soc=%d, vbat=%dmV\n",
+				desc->start_soc_max, soc, vbat_mv);
+		} else {
+			PCA_INFO("soc(%d) not in range(%d~%d)\n", soc,
+				 desc->start_soc_min, desc->start_soc_max);
+			rdy = false;
+			goto out;
+		}
 	}
 
 	if (!__dv2_is_ta_rdy(info))

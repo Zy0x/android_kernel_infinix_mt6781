@@ -137,22 +137,6 @@ static FORCE_INLINE void LZ4_writeLE16(void *memPtr, U16 value)
 	return put_unaligned_le16(value, memPtr);
 }
 
-/*
- * Fast inlining memcpy & memmove for LZ4
- */
-#define LZ4_memcpy(dst, src, size) __builtin_memcpy(dst, src, size)
-#define LZ4_memmove(dst, src, size) __builtin_memmove(dst, src, size)
-
-#if defined(__aarch64__)
-static FORCE_INLINE void LZ4_copy16(void *dst, const void *src)
-{
-	struct lz4_u128 {
-		uint64_t v[2];
-	} __packed;
-	*(struct lz4_u128 *)dst = *(const struct lz4_u128 *)src;
-}
-#endif
-
 static FORCE_INLINE void LZ4_copy8(void *dst, const void *src)
 {
 #if LZ4_ARCH64
@@ -170,8 +154,7 @@ static FORCE_INLINE void LZ4_copy8(void *dst, const void *src)
 
 /*
  * customized variant of memcpy,
- * which can overwrite up to 7 bytes beyond dstEnd.
- * On ARM64, utilizes 128-bit pair load/store (LDP/STP) for 2x memory throughput.
+ * which can overwrite up to 7 bytes beyond dstEnd
  */
 static FORCE_INLINE void LZ4_wildCopy(void *dstPtr,
 	const void *srcPtr, void *dstEnd)
@@ -180,18 +163,11 @@ static FORCE_INLINE void LZ4_wildCopy(void *dstPtr,
 	const BYTE *s = (const BYTE *)srcPtr;
 	BYTE *const e = (BYTE *)dstEnd;
 
-#if defined(__aarch64__)
-	while (d < e - 8) {
-		LZ4_copy16(d, s);
-		d += 16;
-		s += 16;
-	}
-#endif
-	while (d < e) {
+	do {
 		LZ4_copy8(d, s);
 		d += 8;
 		s += 8;
-	}
+	} while (d < e);
 }
 
 static FORCE_INLINE unsigned int LZ4_NbCommonBytes(register size_t val)

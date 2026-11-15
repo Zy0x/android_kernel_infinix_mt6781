@@ -206,7 +206,7 @@ static void aw8624_interrupt_clear(struct aw8624 *aw8624)
 	unsigned char reg_val = 0;
 
 	aw8624_i2c_read(aw8624, AW8624_REG_SYSINT, &reg_val);
-	pr_info("%s: reg SYSINT=0x%x\n", __func__, reg_val);
+	pr_debug("%s: reg SYSINT=0x%x\n", __func__, reg_val);
 }
 
 static void aw8624_init_extra(struct aw8624 *aw8624)
@@ -255,7 +255,7 @@ static void aw8624_rtp_loaded(const struct firmware *cont, void *context)
 
 static int aw8624_rtp_update(struct aw8624 *aw8624)
 {
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 
 	return request_firmware_nowait(THIS_MODULE,
 					FW_ACTION_HOTPLUG,
@@ -1047,7 +1047,7 @@ static int aw8624_haptic_rtp_init(struct aw8624 *aw8624)
 	unsigned int buf_len = 0;
 	unsigned char glb_st = 0;
 
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 	aw8624->rtp_cnt = 0;
 	mutex_lock(&aw8624->rtp_lock);
 	while ((!aw8624_haptic_rtp_get_fifo_afs(aw8624)) &&
@@ -1104,7 +1104,7 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 	struct aw8624 *aw8624 = container_of(work, struct aw8624, rtp_work);
 
 	/* fw loaded */
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 	mutex_lock(&aw8624->rtp_lock);
 	ret = request_firmware(&rtp_file,
 	aw8624_rtp_name[aw8624->rtp_file_num], aw8624->dev);
@@ -1334,12 +1334,12 @@ static void aw8624_haptic_upload_lra(struct aw8624 *aw8624, unsigned int flag)
 {
 	switch (flag) {
 	case AW8624_HAPTIC_F0_CALI_LRA:
-		printk("%s f0_cali_lra=%d\n", __func__, aw8624->f0_calib_data);
+		pr_debug("%s f0_cali_lra=%d\n", __func__, aw8624->f0_calib_data);
 		aw8624_i2c_write(aw8624, AW8624_REG_TRIM_LRA,
 				 (char)aw8624->f0_calib_data);
 		break;
 	case AW8624_HAPTIC_RTP_CALI_LRA:
-		printk("%s rtp_cali_lra=%d\n", __func__, aw8624->lra_calib_data);
+		pr_debug("%s rtp_cali_lra=%d\n", __func__, aw8624->lra_calib_data);
 		aw8624_i2c_write(aw8624, AW8624_REG_TRIM_LRA,
 				 (char)aw8624->lra_calib_data);
 		break;
@@ -1362,7 +1362,7 @@ static int aw8624_haptic_get_f0(struct aw8624 *aw8624)
 	unsigned int f0_cali_cnt = 50;
 
 
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 
 	aw8624->f0 = aw8624->f0_pre;
 	/* f0 calibrate work mode */
@@ -2015,7 +2015,7 @@ static ssize_t aw8624_activate_store(struct device *dev,
 	if (val != 0 && val != 1)
 		return count;
 
-	pr_info("%s: value=%d\n", __func__, val);
+	pr_debug("%s: value=%d\n", __func__, val);
 
 	mutex_lock(&aw8624->lock);
 	hrtimer_cancel(&aw8624->timer);
@@ -2106,7 +2106,7 @@ static ssize_t aw8624_index_store(struct device *dev,
 	if (rc < 0)
 		return rc;
 
-	pr_info("%s: value=%d\n", __func__, val);
+	pr_debug("%s: value=%d\n", __func__, val);
 
 	mutex_lock(&aw8624->lock);
 	aw8624->index = val;
@@ -2146,7 +2146,7 @@ static ssize_t aw8624_gain_store(struct device *dev,
 	if (rc < 0)
 		return rc;
 
-	pr_info("%s: value=%d\n", __func__, val);
+	pr_debug("%s: value=%d\n", __func__, val);
 
 	mutex_lock(&aw8624->lock);
 	aw8624->gain = val;
@@ -3051,7 +3051,7 @@ static int aw8624_clock_OSC_trim_calibration
 	unsigned int DFT_LRA_TRIM_CODE = 0;
 	unsigned int Not_need_cali_threshold = 10;/*0.1 percent not need cali*/
 
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 	if (theory_time == real_time) {
 		pr_info("aw_osctheory_time == real_time:%ld,", real_time);
 		pr_info("theory_time = %ld not need to cali\n", theory_time);
@@ -3106,7 +3106,7 @@ static int aw8624_rtp_trim_lra_calibration(struct aw8624 *aw8624)
 	unsigned int theory_time = 0;
 	unsigned int lra_rtim_code = 0;
 
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 	aw8624_i2c_read(aw8624, AW8624_REG_PWMDBG, &reg_val);
 	fre_val = (reg_val & 0x006f) >> 5;
 
@@ -3148,7 +3148,7 @@ static int aw8624_rtp_osc_calibration(struct aw8624 *aw8624)
 	aw8624->timeval_flags = 1;
 	aw8624->osc_cali_flag = 1;
 
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 	/* fw loaded */
 	ret = request_firmware(&rtp_file,
 				aw8624_rtp_name[0],/*aw8624->rtp_file_num */
@@ -3378,7 +3378,7 @@ static enum hrtimer_restart aw8624_vibrator_timer_func(struct hrtimer *timer)
 {
 	struct aw8624 *aw8624 = container_of(timer, struct aw8624, timer);
 
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 	aw8624->state = 0;
 	schedule_work(&aw8624->vibrator_work);
 
@@ -3392,9 +3392,9 @@ static irqreturn_t aw8624_irq(int irq, void *data)
 	unsigned char glb_st = 0;
 	unsigned int buf_len = 0;
 
-	/*pr_info("%s enter\n", __func__);*/
+	/*pr_debug("%s enter\n", __func__);*/
 	aw8624_i2c_read(aw8624, AW8624_REG_SYSINT, &reg_val);
-	/*pr_info("%s: reg SYSINT=0x%x\n", __func__, reg_val);*/
+	/*pr_debug("%s: reg SYSINT=0x%x\n", __func__, reg_val);*/
 	/*if (reg_val & AW8624_BIT_SYSINT_UVLI)*/
 		/*pr_err("%s chip uvlo int error\n", __func__);*/
 	/*if (reg_val & AW8624_BIT_SYSINT_OCDI)*/
@@ -3470,7 +3470,7 @@ static void aw8624_vibrator_work_routine(struct work_struct *work)
 	struct aw8624 *aw8624 =
 	container_of(work, struct aw8624, vibrator_work);
 
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 
 	mutex_lock(&aw8624->lock);
 
@@ -3510,7 +3510,7 @@ static int aw8624_vibrator_init(struct aw8624 *aw8624)
 {
 	int ret = 0;
 
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 
 #ifdef TIMED_OUTPUT
 	aw8624->to_dev.name = "vibrator";
@@ -3573,7 +3573,7 @@ static void aw8624_interrupt_setup(struct aw8624 *aw8624)
 	unsigned char reg_val = 0;
 
 	aw8624_i2c_read(aw8624, AW8624_REG_SYSINT, &reg_val);
-	pr_info("%s: reg SYSINT=0x%x\n", __func__, reg_val);
+	pr_debug("%s: reg SYSINT=0x%x\n", __func__, reg_val);
 
 	aw8624_i2c_write_bits(aw8624, AW8624_REG_DBGCTRL,
 		AW8624_BIT_DBGCTRL_INT_MODE_MASK,
@@ -3798,7 +3798,7 @@ static int aw8624_parse_dt(struct device *dev, struct aw8624 *aw8624,
 
 static int aw8624_hw_reset(struct aw8624 *aw8624)
 {
-	pr_info("%s enter\n", __func__);
+	pr_debug("%s enter\n", __func__);
 
 	if (aw8624 && gpio_is_valid(aw8624->reset_gpio)) {
 		gpio_set_value_cansleep(aw8624->reset_gpio, 0);
@@ -3911,7 +3911,7 @@ aw8624_i2c_ram_store(struct device *dev, struct device_attribute *attr,
 		pr_err("%s format not match!", __func__);
 		return count;
 	}
-	pr_info("%s: value=%d\n", __func__, val);
+	pr_debug("%s: value=%d\n", __func__, val);
 	if (val == 1)
 		aw8624_ram_update(aw8624);
 

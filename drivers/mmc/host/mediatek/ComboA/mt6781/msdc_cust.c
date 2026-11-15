@@ -275,8 +275,8 @@ void msdc_sd_power(struct msdc_host *host, u32 on)
 		msdc_set_driving(host, &host->hw->driving);
 		msdc_set_tdsel(host, MSDC_TDRDSEL_CUST, 0);
 		msdc_set_rdsel(host, MSDC_TDRDSEL_CUST, 0);
-		if (host->hw->flags & MSDC_SD_NEED_POWER)
-			card_on = 1;
+		/* Always keep MicroSD powered during runtime to eliminate 224ms LDO re-init latency */
+		card_on = 1;
 
 		/* soft start, when power on */
 		if (card_on) {
@@ -311,12 +311,12 @@ void msdc_sd_power(struct msdc_host *host, u32 on)
 		msdc_ldo_power(card_on, host->mmc->supply.vmmc, VOL_3000,
 			&host->power_flash);
 
-		/* VMC VOLSEL */
+		/* VMC VOLSEL - maintain I/O line power on active MicroSD */
 #ifdef NMCARD_SUPPORT
-		msdc_ldo_power(on, host->mmc->supply.vqmmc, VOL_1800,
+		msdc_ldo_power(1, host->mmc->supply.vqmmc, VOL_1800,
 			&host->power_io);
 #else
-		msdc_ldo_power(on, host->mmc->supply.vqmmc, VOL_3000,
+		msdc_ldo_power(1, host->mmc->supply.vqmmc, VOL_3000,
 			&host->power_io);
 #endif
 

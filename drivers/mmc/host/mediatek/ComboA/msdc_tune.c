@@ -413,31 +413,12 @@ int sdcard_reset_tuning(struct mmc_host *mmc)
 	}
 
 	if (mmc_card_uhs(mmc->card)) {
-		if (mmc->card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR104) {
-			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR104;
-			remove_cap = "UHS_SDR104";
-		} else if (mmc->card->sw_caps.sd3_bus_mode
-			& SD_MODE_UHS_DDR50) {
-			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_DDR50;
-			remove_cap = "UHS_DDR50";
-		} else if (mmc->card->sw_caps.sd3_bus_mode
-			& SD_MODE_UHS_SDR50) {
-			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR50;
-			remove_cap = "UHS_SDR50";
-		} else if (mmc->card->sw_caps.sd3_bus_mode
-			& SD_MODE_UHS_SDR25) {
-			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR25;
-			remove_cap = "UHS_SDR25";
-		} else {
-			remove_cap = "none";
-		}
-		pr_notice("msdc%d: remove %s mode then reinit card\n", host->id,
-			remove_cap);
+		/* Preserve full SDR104 capability - do not strip bus modes on tuning retries */
+		remove_cap = "none (preserved)";
+		pr_notice("msdc%d: reset tuning preserving UHS bus modes then reinit card\n", host->id);
 	} else if (mmc_card_hs(mmc->card)) {
-		if (mmc->card->sw_caps.hs_max_dtr >= HIGH_SPEED_MAX_DTR / 4)
-			mmc->card->sw_caps.hs_max_dtr /= 2;
-		pr_notice("msdc%d: set hs speed %dhz then reinit card\n",
-			host->id, mmc->card->sw_caps.hs_max_dtr);
+		/* Preserve full HS speed - do not divide frequency */
+		pr_notice("msdc%d: reset tuning preserving hs speed %dhz then reinit card\n", host->id, mmc->card->sw_caps.hs_max_dtr);
 	} else {
 		pr_notice("msdc%d: ds card just reinit card\n", host->id);
 	}

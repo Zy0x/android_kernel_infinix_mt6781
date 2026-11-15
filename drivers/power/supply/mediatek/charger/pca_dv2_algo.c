@@ -2860,8 +2860,7 @@ static int __dv2_algo_cc_cv_with_ta_cv(struct dv2_algo_info *info)
 
 	ret = prop_chgalgo_get_adc(data->pca_swchg, PCA_ADCCHAN_VSYS,
 				   &vsys, &vsys);
-	if (ret < 0) {
-		PCA_INFO("get vsys fail(%d), fallback to vbat\n", ret);
+	if (ret < 0 || vsys > 5000) {
 		vsys = vbat;
 	}
 

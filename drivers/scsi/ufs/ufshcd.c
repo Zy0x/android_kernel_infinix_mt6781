@@ -5334,6 +5334,7 @@ static int ufshcd_slave_configure(struct scsi_device *sdev)
 
 	blk_queue_update_dma_pad(q, PRDT_DATA_BYTE_COUNT_PAD - 1);
 	blk_queue_max_segment_size(q, PRDT_DATA_BYTE_COUNT_MAX);
+	q->backing_dev_info->ra_pages = 128;
 
 	/*
 	 * MTK PATCH: invoke vendor specific callback if existed.

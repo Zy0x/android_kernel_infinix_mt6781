@@ -843,7 +843,7 @@ int mtk_switch_chr_full(struct charger_manager *info)
 		mtk_switch_enter_hw_bypass(info);
 		info->polling_interval = CHARGING_FULL_INTERVAL;
 
-		if (uisoc >= 0 && uisoc < 98 && vbat > 0 && vbat < 4180) {
+		if ((uisoc >= 0 && uisoc < 99) || (vbat > 0 && vbat < 4350)) {
 			chr_err("lynx_full_bypass: UNLATCHED on genuine drop (uisoc=%d%%, vbat=%dmV)\n",
 				uisoc, vbat);
 			lynx_bypass_set_full_latch(false);
@@ -918,7 +918,7 @@ static int mtk_switch_charging_run(struct charger_manager *info)
 		if (swchgalg->state != CHR_BATFULL && swchgalg->state != CHR_ERROR)
 			swchgalg->state = CHR_CC;
 		mtk_switch_enter_hw_bypass(info);
-		if (swchgalg->state == CHR_BATFULL)
+		if (swchgalg->state == CHR_BATFULL && lynx_is_full_bypass_active())
 			mtk_switch_chr_full(info);
 		charger_dev_dump_registers(info->chg1_dev);
 		return 0;

@@ -54,6 +54,10 @@ EXPORT_SYMBOL(lynx_bypass_on_plug_out);
 void lynx_bypass_set_full_latch(bool latch)
 {
 	WRITE_ONCE(g_lynx_full_bypass_latched, latch);
+	if (!latch && !lynx_is_manual_bypass_active()) {
+		rt9471_set_bypass_mode(false);
+		lynx_sync_bypass_charger(false);
+	}
 }
 EXPORT_SYMBOL(lynx_bypass_set_full_latch);
 
@@ -119,15 +123,11 @@ static ssize_t lynx_bypass_write(struct file *file, const char __user *buffer,
 		pr_info("LYNX_POWER: Manual Hardware Bypass ACTIVATED (CHG_EN=0, HZ=0, VSYS pass-through)\n");
 	} else {
 		WRITE_ONCE(g_lynx_bypass_active, false);
-		if (lynx_is_bypass_effective()) {
-			rt9471_set_bypass_mode(true);
-			lynx_sync_bypass_charger(true);
-			pr_info("LYNX_POWER: Manual Bypass DEACTIVATED (holding Full-Charge Bypass)\n");
-		} else {
-			rt9471_set_bypass_mode(false);
-			lynx_sync_bypass_charger(false);
-			pr_info("LYNX_POWER: Hardware Bypass DEACTIVATED (normal charging resumed)\n");
-		}
+		/* User explicitly turned OFF bypass: unlatch full bypass so charging resumes immediately */
+		WRITE_ONCE(g_lynx_full_bypass_latched, false);
+		rt9471_set_bypass_mode(false);
+		lynx_sync_bypass_charger(false);
+		pr_info("LYNX_POWER: Hardware Bypass DEACTIVATED (normal charging resumed)\n");
 	}
 	mutex_unlock(&lynx_proc_mutex);
 
@@ -249,6 +249,13 @@ static ssize_t lynx_hyper_charge_write(struct file *file, const char __user *buf
 		return -EINVAL;
 
 	g_lynx_hyper_charge = (val != 0);
+	if (g_lynx_hyper_charge) {
+		/* Explicit command to enter Hyper Charge: clear any bypass latch! */
+		WRITE_ONCE(g_lynx_bypass_active, false);
+		WRITE_ONCE(g_lynx_full_bypass_latched, false);
+		rt9471_set_bypass_mode(false);
+		lynx_sync_bypass_charger(false);
+	}
 	lynx_sync_hyper_hv(g_lynx_hyper_charge);
 	pr_info("LYNX_POWER: Hyper Charge %s\n", g_lynx_hyper_charge ? "ENABLED" : "DISABLED");
 

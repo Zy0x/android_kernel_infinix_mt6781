@@ -539,25 +539,31 @@ static int mtk_battery_get_ui_capacity(struct battery_data *data)
 		uisoc = data->BAT_CAPACITY;
 
 	/*
-	 * IR-Compensated True Saturation Protection:
-	 * During active fast charging (charger connected, not in bypass),
-	 * prevent premature UI 100% jumping when terminal voltage is artificially
-	 * elevated by IR drop (V = I * R).
-	 * If true chemical cell voltage < 4425 mV and charging current > 450 mA,
-	 * clamp reported UI capacity to 98% until cell reaches true saturation!
+	 * IR-Compensated & Hardware Bypass True Saturation Protection:
+	 * 1. During active fast charging: clamp to 98% until charging current
+	 *    naturally tapers below 300mA AND cell voltage >= 4430mV.
+	 * 2. In Hardware Bypass mode (manual or AutoCut):
+	 *    If true physical cell voltage < 4430mV, the cell is NOT 100% full!
+	 *    Clamp to 98% to prevent premature jumping from 98% -> 100% when entering bypass!
 	 */
-	if (uisoc >= 99 && mt_get_charger_type() != CHARGER_UNKNOWN &&
-	    !lynx_is_bypass_effective()) {
+	if (uisoc >= 99 && mt_get_charger_type() != CHARGER_UNKNOWN) {
 		int ibat = battery_get_bat_current() / 10; /* mA */
+		int vbat = battery_get_bat_voltage();
 
-		/*
-		 * True Chemical Saturation Protection (Anti-Anjlok):
-		 * During active charging, clamp UI SOC to 98% until charging
-		 * current naturally tapers below 300mA (near termination).
-		 * Eliminates premature 100% jumping and post-unplug voltage collapse!
-		 */
-		if (ibat > 300)
-			uisoc = 98;
+		if (lynx_is_manual_bypass_active()) {
+			/* In Manual Bypass, cell is floating (ibat ~0).
+			 * If vbat < 4430mV, cell never reached true saturation: hold 98%! */
+			if (vbat < 4430)
+				uisoc = 98;
+		} else if (lynx_is_full_bypass_active()) {
+			/* In Full-Charge Bypass AutoCut: only permit 100% if vbat >= 4410mV */
+			if (vbat < 4410)
+				uisoc = 98;
+		} else {
+			/* Active charging: require current to taper below 300mA AND vbat >= 4430mV */
+			if (ibat > 300 || vbat < 4430)
+				uisoc = 98;
+		}
 	}
 
 	return uisoc;
@@ -577,10 +583,10 @@ static int battery_get_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		if (mt_get_charger_type() != CHARGER_UNKNOWN) {
-			if (lynx_is_full_bypass_active())
-				val->intval = POWER_SUPPLY_STATUS_FULL;
-			else if (lynx_is_manual_bypass_active())
+			if (lynx_is_manual_bypass_active())
 				val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+			else if (lynx_is_full_bypass_active())
+				val->intval = POWER_SUPPLY_STATUS_FULL;
 			else
 				val->intval = data->BAT_STATUS;
 		} else {

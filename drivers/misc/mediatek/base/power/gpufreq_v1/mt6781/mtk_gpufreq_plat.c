@@ -2589,6 +2589,14 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 			dds,
 			pll);
 	}
+
+	if (freq_new > 950000) {
+		gpufreq_pr_info(
+			"@%s: req=%u posdiv=%d->%d park=%d dds=0x%x pll=0x%08x reg=0x%08x con0=0x%08x\n",
+			__func__, freq_new, real_posdiv_power, posdiv_power,
+			parking, dds, pll, DRV_Reg32(MFGPLL_CON1),
+			DRV_Reg32(MFGPLL_CON0));
+	}
 }
 
 /*
@@ -3558,6 +3566,8 @@ int mt_gpufreq_lynx_set_oc_khz(unsigned int max_khz)
 	}
 	g_lynx_oc_max_khz = g_opp_table[target_idx].gpufreq_khz;
 	mt_gpufreq_update_limit_idx(KIR_LYNX_OC, target_idx, LIMIT_IDX_DEFAULT);
+	if (!g_fixed_freq_volt_state && g_cur_opp_idx < target_idx)
+		mt_gpufreq_target(target_idx, KIR_LYNX_OC);
 	gpufreq_pr_info("@%s: req=%u applied=%u idx=%d\n",
 		__func__, max_khz, g_lynx_oc_max_khz, target_idx);
 	return 0;

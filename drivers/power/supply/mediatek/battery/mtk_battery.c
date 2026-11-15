@@ -527,15 +527,38 @@ void battery_update_psd(struct battery_data *bat_data)
 #ifndef OPLUS_FEATURE_CHG_BASIC
 static int mtk_battery_get_ui_capacity(struct battery_data *data)
 {
+	int uisoc = -1;
+
 	if (gm.fixed_uisoc != 0xffff)
 		return gm.fixed_uisoc;
 	if (gm.ui_soc >= 0 && gm.ui_soc <= 100)
-		return gm.ui_soc;
-	if (gm.soc > 0 && gm.soc <= 10000)
-		return (gm.soc + 50) / 100;
-	if (data && data->BAT_CAPACITY >= 0 && data->BAT_CAPACITY <= 100)
-		return data->BAT_CAPACITY;
-	return -1;
+		uisoc = gm.ui_soc;
+	else if (gm.soc > 0 && gm.soc <= 10000)
+		uisoc = (gm.soc + 50) / 100;
+	else if (data && data->BAT_CAPACITY >= 0 && data->BAT_CAPACITY <= 100)
+		uisoc = data->BAT_CAPACITY;
+
+	/*
+	 * IR-Compensated True Saturation Protection:
+	 * During active fast charging (charger connected, not in bypass),
+	 * prevent premature UI 100% jumping when terminal voltage is artificially
+	 * elevated by IR drop (V = I * R).
+	 * If true chemical cell voltage < 4425 mV and charging current > 450 mA,
+	 * clamp reported UI capacity to 98% until cell reaches true saturation!
+	 */
+	if (uisoc >= 100 && mt_get_charger_type() != CHARGER_UNKNOWN &&
+	    !lynx_is_bypass_effective()) {
+		int vbat = battery_get_bat_voltage(); /* mV */
+		int ibat = battery_get_bat_current() / 10; /* mA */
+		/* Battery internal resistance ~38 mOhm */
+		int v_ir_drop = (ibat > 0) ? (ibat * 38) / 1000 : 0;
+		int v_cell_true = vbat - v_ir_drop;
+
+		if (v_cell_true < 4425 && ibat > 450)
+			uisoc = 98;
+	}
+
+	return uisoc;
 }
 
 static int battery_get_property(struct power_supply *psy,

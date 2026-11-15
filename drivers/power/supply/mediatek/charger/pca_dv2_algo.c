@@ -4020,7 +4020,7 @@ static int dv2_stop_algo(struct prop_chgalgo_device *pca, bool rerun)
 	struct dv2_algo_info *info = prop_chgalgo_get_drvdata(pca);
 	struct dv2_algo_data *data = info->data;
 	struct dv2_stop_info sinfo = {
-		.reset_ta = true,
+		.reset_ta = !lynx_is_bypass_effective(),
 		.hardreset_ta = false,
 	};
 

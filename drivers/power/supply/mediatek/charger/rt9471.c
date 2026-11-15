@@ -878,6 +878,10 @@ static int __rt9471_enable_chg(struct rt9471_chip *chip, bool en)
 	int ret = 0;
 	struct rt9471_desc *desc = chip->desc;
 
+	/* Kunci Mutlak Anti-Naik: selama bypass aktif, CHG_EN dipaksa selalu false */
+	if (lynx_is_bypass_effective())
+		en = false;
+
 	dev_info(chip->dev, "%s en = %d, chip_rev = %d\n",
 			    __func__, en, chip->chip_rev);
 
@@ -2437,7 +2441,7 @@ int rt9471_set_bypass_mode(bool enable)
 
 	if (enable) {
 		u32 aicr = 0, mivr = 0;
-		u32 min_aicr = (mt_get_charger_type() == STANDARD_HOST) ? 500000 : 2500000;
+		u32 min_aicr = (mt_get_charger_type() == STANDARD_HOST) ? 500000 : 3000000;
 
 		mutex_lock(&chip->hz_lock);
 		chip->hz_pca_en = false;

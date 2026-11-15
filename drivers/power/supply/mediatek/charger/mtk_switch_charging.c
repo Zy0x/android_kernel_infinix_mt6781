@@ -152,25 +152,32 @@ static void _disable_all_charging(struct charger_manager *info)
 static void mtk_switch_enter_hw_bypass(struct charger_manager *info)
 {
 	struct switch_charging_alg_data *swchgalg = info->algorithm_data;
-	u32 min_aicr = (info->chr_type == STANDARD_HOST) ? 500000 : 2500000;
+	u32 min_aicr = (info->chr_type == STANDARD_HOST) ? 500000 : 3000000;
 
 	rt9471_set_bypass_mode(true);
 	charger_dev_enable_powerpath(info->chg1_dev, true);
 	charger_dev_enable_safety_timer(info->chg1_dev, false);
 
 	if (mtk_pe50_is_running(info) || mtk_pe50_get_is_connect(info) || info->pe5.online)
-		mtk_pe50_stop_algo(info, true);
+		mtk_pe50_stop_algo(info, false);
 	info->pe5.online = false;
 	tran_pe50_running = 0;
 
 	if (mtk_pe40_get_is_enable(info)) {
 		if (mtk_pe40_get_is_connect(info))
-			mtk_pe40_end(info, 3, true);
+			mtk_pe40_end(info, 3, false);
 		mtk_pe40_set_is_enable(info, false);
 	}
 	info->pe4.is_connect = false;
 
-	_disable_all_charging(info);
+	/*
+	 * Kunci Anti-Turun: Dilarang memanggil _disable_all_charging(info) saat bypass,
+	 * karena akan mereset tegangan Travel Adapter (TA) kembali ke 5.0V!
+	 * Dengan mempertahankan tegangan tinggi VBUS (9V / 10V), daya masukan sebesar 18W-25W
+	 * tersedia langsung ke jalur VSYS sehingga baterai TIDAK PERNAH masuk mode supplement
+	 * saat bermain game berat seperti Genshin Impact!
+	 */
+	charger_dev_enable(info->chg1_dev, false);
 
 	mutex_lock(&swchgalg->ichg_aicr_access_mutex);
 	if (info->chg1_data.input_current_limit < min_aicr)
@@ -752,6 +759,18 @@ static int mtk_switch_chr_cc(struct charger_manager *info)
 	swchg_turn_on_charging(info);
 
 	charger_dev_is_charging_done(info->chg1_dev, &chg_done);
+
+	/* Tahap 2 AutoCut: Jika baterai >= 4440mV dan arus serap <= 250mA, picu EOC & AutoCut */
+	if (!chg_done) {
+		int vbat = battery_get_bat_voltage();
+		int ibat = battery_get_bat_current() / 10;
+		if (vbat >= 4440 && ibat > 0 && ibat <= 250) {
+			chr_err("lynx_autocut: saturation threshold reached (vbat=%dmV, ibat=%dmA), triggering EOC!\n",
+				vbat, ibat);
+			chg_done = true;
+		}
+	}
+
 	if (chg_done) {
 		swchgalg->state = CHR_BATFULL;
 		charger_dev_do_event(info->chg1_dev, EVENT_EOC, 0);

@@ -3085,12 +3085,14 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 		info->data.r_bat_comp = val;
 	if (of_property_read_u32(np, "v_comp_max", &val) >= 0)
 		info->data.v_comp_max = val;
+	info->data.dv2_chg_eoc = 250000;
+	info->data.termination_current = 250000;
 	if (of_property_read_u32(np, "dv2_chg_cv", &val) >= 0)
 		info->data.dv2_chg_cv = val;
 	if (of_property_read_u32(np, "dv2_chg_eoc", &val) >= 0)
-		info->data.dv2_chg_eoc = val;
+		info->data.dv2_chg_eoc = min_t(u32, val, 250000);
 	if (of_property_read_u32(np, "termination_current", &val) >= 0)
-		info->data.termination_current = val;
+		info->data.termination_current = min_t(u32, val, 250000);
 
 	info->data.enable_hvdcp20 = true;
 	info->enable_hvdcp20 = true;

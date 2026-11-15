@@ -760,16 +760,6 @@ static int mtk_switch_chr_cc(struct charger_manager *info)
 
 	charger_dev_is_charging_done(info->chg1_dev, &chg_done);
 
-	/* Tahap 2 AutoCut: Jika baterai >= 4440mV dan arus serap <= 250mA, picu EOC & AutoCut */
-	if (!chg_done) {
-		int vbat = battery_get_bat_voltage();
-		int ibat = battery_get_bat_current() / 10;
-		if (vbat >= 4430 && ibat > 0 && ibat <= 300) {
-			chr_err("lynx_autocut: saturation threshold reached (vbat=%dmV, ibat=%dmA), triggering EOC!\n",
-				vbat, ibat);
-			chg_done = true;
-		}
-	}
 
 	if (chg_done) {
 		swchgalg->state = CHR_BATFULL;
@@ -847,7 +837,7 @@ int mtk_switch_chr_full(struct charger_manager *info)
 		mtk_switch_enter_hw_bypass(info);
 		info->polling_interval = CHARGING_FULL_INTERVAL;
 
-		if ((uisoc >= 0 && uisoc < 99) || (vbat > 0 && vbat < 4350)) {
+		if (uisoc >= 0 && uisoc < 95 && vbat > 0 && vbat < 4200) {
 			chr_err("lynx_full_bypass: UNLATCHED on genuine drop (uisoc=%d%%, vbat=%dmV)\n",
 				uisoc, vbat);
 			lynx_bypass_set_full_latch(false);

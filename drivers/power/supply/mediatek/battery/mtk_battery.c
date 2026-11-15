@@ -527,46 +527,15 @@ void battery_update_psd(struct battery_data *bat_data)
 #ifndef OPLUS_FEATURE_CHG_BASIC
 static int mtk_battery_get_ui_capacity(struct battery_data *data)
 {
-	int uisoc = -1;
-
 	if (gm.fixed_uisoc != 0xffff)
 		return gm.fixed_uisoc;
 	if (gm.ui_soc >= 0 && gm.ui_soc <= 100)
-		uisoc = gm.ui_soc;
-	else if (gm.soc > 0 && gm.soc <= 10000)
-		uisoc = (gm.soc + 50) / 100;
-	else if (data && data->BAT_CAPACITY >= 0 && data->BAT_CAPACITY <= 100)
-		uisoc = data->BAT_CAPACITY;
-
-	/*
-	 * IR-Compensated & Hardware Bypass True Saturation Protection:
-	 * 1. During active fast charging: clamp to 98% until charging current
-	 *    naturally tapers below 300mA AND cell voltage >= 4430mV.
-	 * 2. In Hardware Bypass mode (manual or AutoCut):
-	 *    If true physical cell voltage < 4430mV, the cell is NOT 100% full!
-	 *    Clamp to 98% to prevent premature jumping from 98% -> 100% when entering bypass!
-	 */
-	if (uisoc >= 99 && mt_get_charger_type() != CHARGER_UNKNOWN) {
-		int ibat = battery_get_bat_current() / 10; /* mA */
-		int vbat = battery_get_bat_voltage();
-
-		if (lynx_is_manual_bypass_active()) {
-			/* In Manual Bypass, cell is floating (ibat ~0).
-			 * If vbat < 4430mV, cell never reached true saturation: hold 98%! */
-			if (vbat < 4430)
-				uisoc = 98;
-		} else if (lynx_is_full_bypass_active()) {
-			/* In Full-Charge Bypass AutoCut: only permit 100% if vbat >= 4410mV */
-			if (vbat < 4410)
-				uisoc = 98;
-		} else {
-			/* Active charging: require current to taper below 300mA AND vbat >= 4430mV */
-			if (ibat > 300 || vbat < 4430)
-				uisoc = 98;
-		}
-	}
-
-	return uisoc;
+		return gm.ui_soc;
+	if (gm.soc > 0 && gm.soc <= 10000)
+		return (gm.soc + 50) / 100;
+	if (data && data->BAT_CAPACITY >= 0 && data->BAT_CAPACITY <= 100)
+		return data->BAT_CAPACITY;
+	return -1;
 }
 
 static int battery_get_property(struct power_supply *psy,

@@ -118,7 +118,7 @@ static struct workqueue_struct *wq_init;
 #define msdc_use_async_dma(x)   (msdc_use_async(x) && (!(x & MSDC_COOKIE_PIO)))
 #define msdc_use_async_pio(x)   (msdc_use_async(x) && ((x & MSDC_COOKIE_PIO)))
 
-#define MSDC_AUTOSUSPEND_DELAY_MS 10
+#define MSDC_AUTOSUSPEND_DELAY_MS 30000
 
 u8 g_emmc_id;
 unsigned int cd_gpio;

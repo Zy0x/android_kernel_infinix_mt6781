@@ -583,12 +583,15 @@ static int battery_get_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		if (mt_get_charger_type() != CHARGER_UNKNOWN) {
-			if (lynx_is_manual_bypass_active())
-				val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
-			else if (lynx_is_full_bypass_active())
-				val->intval = POWER_SUPPLY_STATUS_FULL;
-			else
+			if (lynx_is_bypass_effective()) {
+				int cap = mtk_battery_get_ui_capacity(data);
+				if (cap >= 100)
+					val->intval = POWER_SUPPLY_STATUS_FULL;
+				else
+					val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+			} else {
 				val->intval = data->BAT_STATUS;
+			}
 		} else {
 			val->intval = data->BAT_STATUS;
 		}

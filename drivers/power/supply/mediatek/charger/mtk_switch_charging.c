@@ -836,9 +836,13 @@ int mtk_switch_chr_full(struct charger_manager *info)
 
 	if (lynx_is_full_bypass_enabled() && !lynx_is_manual_bypass_active()) {
 		if (!lynx_is_full_bypass_active()) {
-			lynx_bypass_set_full_latch(true);
-			chr_err("lynx_full_bypass: LATCHED hardware bypass (uisoc=%d%%, vbat=%dmV)\n",
-				uisoc, vbat);
+			/* Unlatched by user or drop: resume CC charging immediately */
+			swchgalg->state = CHR_CC;
+			charger_dev_do_event(info->chg1_dev, EVENT_RECHARGE, 0);
+			mtk_pe20_set_to_check_chr_type(info, true);
+			mtk_pe_set_to_check_chr_type(info, true);
+			info->polling_interval = CHARGING_INTERVAL;
+			return 0;
 		}
 		mtk_switch_enter_hw_bypass(info);
 		info->polling_interval = CHARGING_FULL_INTERVAL;
@@ -922,6 +926,10 @@ static int mtk_switch_charging_run(struct charger_manager *info)
 			mtk_switch_chr_full(info);
 		charger_dev_dump_registers(info->chg1_dev);
 		return 0;
+	} else if (swchgalg->state == CHR_BATFULL && !lynx_is_full_bypass_active()) {
+		/* Deactivated from bypass or unlatched: reset to CHR_CC charging! */
+		swchgalg->state = CHR_CC;
+		charger_dev_do_event(info->chg1_dev, EVENT_RECHARGE, 0);
 	}
 
 	if (mtk_pdc_check_charger(info) == false &&

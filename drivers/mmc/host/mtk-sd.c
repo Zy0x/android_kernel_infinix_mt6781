@@ -297,7 +297,7 @@
 #define MSDC_ASYNC_FLAG (0x1 << 1)
 #define MSDC_MMAP_FLAG (0x1 << 2)
 
-#define MTK_MMC_AUTOSUSPEND_DELAY	50
+#define MTK_MMC_AUTOSUSPEND_DELAY	30000
 #define CMD_TIMEOUT         (HZ/10 * 5)	/* 100ms x5 */
 #define DAT_TIMEOUT         (HZ    * 5)	/* 1000ms x5 */
 

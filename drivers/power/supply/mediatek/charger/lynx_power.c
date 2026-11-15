@@ -33,7 +33,7 @@ EXPORT_SYMBOL(g_lynx_full_bypass_enabled);
 bool g_lynx_full_bypass_latched = false;
 EXPORT_SYMBOL(g_lynx_full_bypass_latched);
 
-bool g_lynx_hyper_charge = false;
+bool g_lynx_hyper_charge = true;
 EXPORT_SYMBOL(g_lynx_hyper_charge);
 
 bool g_lynx_thermal_silencer = false;

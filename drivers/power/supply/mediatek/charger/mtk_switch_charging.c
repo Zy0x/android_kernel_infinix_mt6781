@@ -433,6 +433,10 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 	if (pdata->input_current_limit_by_aicl != -1 &&
 	    !mtk_pe20_get_is_connect(info) && !mtk_pe_get_is_connect(info) &&
 	    !mtk_is_TA_support_pd_pps(info)) {
+		if (pdata->input_current_limit_by_aicl < 2000000 &&
+		    (info->chr_type == STANDARD_CHARGER || info->chr_type == CHARGING_HOST)) {
+			pdata->input_current_limit_by_aicl = 2000000;
+		}
 		if (pdata->input_current_limit_by_aicl <
 		    pdata->input_current_limit)
 			pdata->input_current_limit =

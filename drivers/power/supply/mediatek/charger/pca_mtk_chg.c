@@ -243,6 +243,13 @@ static int pca_mtk_chg_get_adc(struct prop_chgalgo_device *pca,
 		*max = *min = battery_get_bat_temperature();
 		return 0;
 	}
+	if (_chan == ADC_CHANNEL_VSYS) {
+		ret = charger_dev_get_adc(info->chgdev[chgtyp], _chan, min, max);
+		if (ret < 0) {
+			*max = *min = battery_get_bat_voltage() * 1000;
+			return 0;
+		}
+	}
 	ret = charger_dev_get_adc(info->chgdev[chgtyp], _chan, min, max);
 	if (ret == -ENOTSUPP) {
 		/* Temporary solution */

@@ -1489,8 +1489,13 @@ static inline int __dv2_start(struct dv2_algo_info *info)
 	PCA_DBG("++\n");
 
 	if (data->run_once) {
-		PCA_ERR("already run dv2 algo once\n");
-		return -EINVAL;
+		if (battery_get_soc() < 85) {
+			PCA_INFO("dv2 retry allowed under 85%% soc\n");
+			data->run_once = false;
+		} else {
+			PCA_ERR("already run dv2 algo once\n");
+			return -EINVAL;
+		}
 	}
 
 	if (data->pca_hv_dvchg) {
@@ -2856,8 +2861,8 @@ static int __dv2_algo_cc_cv_with_ta_cv(struct dv2_algo_info *info)
 	ret = prop_chgalgo_get_adc(data->pca_swchg, PCA_ADCCHAN_VSYS,
 				   &vsys, &vsys);
 	if (ret < 0) {
-		PCA_ERR("get vsys fail(%d)\n", ret);
-		goto out;
+		PCA_INFO("get vsys fail(%d), fallback to vbat\n", ret);
+		vsys = vbat;
 	}
 
 	ret = __dv2_get_ta_cap_by_supportive(info, &data->vta_measure,
@@ -3907,24 +3912,27 @@ static bool dv2_is_algo_ready(struct prop_chgalgo_device *pca)
 		goto out;
 	}
 
-	PCA_DBG("run once(%d)\n", data->run_once);
-	if (data->run_once) {
-		if (!(data->notify & DV2_RESET_NOTIFY)) {
-			rdy = false;
-			goto out;
-		}
-		mutex_lock(&data->notify_lock);
-		PCA_INFO("run once but detach/hardreset happened\n");
-		data->notify &= ~DV2_RESET_NOTIFY;
-		data->run_once = false;
-		data->ta_ready = false;
-		mutex_unlock(&data->notify_lock);
-	}
-
 	ret = prop_chgalgo_get_soc(data->pca_swchg, &soc);
 	if (ret < 0) {
 		rdy = false;
 		goto out;
+	}
+
+	PCA_DBG("run once(%d)\n", data->run_once);
+	if (data->run_once) {
+		if (soc < 85 && data->ta_ready) {
+			data->run_once = false;
+		} else if (!(data->notify & DV2_RESET_NOTIFY)) {
+			rdy = false;
+			goto out;
+		} else {
+			mutex_lock(&data->notify_lock);
+			PCA_INFO("run once but detach/hardreset happened\n");
+			data->notify &= ~DV2_RESET_NOTIFY;
+			data->run_once = false;
+			data->ta_ready = false;
+			mutex_unlock(&data->notify_lock);
+		}
 	}
 	if (monkey_flag != 6 && (soc < desc->start_soc_min || soc > desc->start_soc_max)) {
 		PCA_INFO("soc(%d) not in range(%d~%d)\n", soc,

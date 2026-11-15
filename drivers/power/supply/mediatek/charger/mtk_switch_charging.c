@@ -764,7 +764,7 @@ static int mtk_switch_chr_cc(struct charger_manager *info)
 	if (!chg_done) {
 		int vbat = battery_get_bat_voltage();
 		int ibat = battery_get_bat_current() / 10;
-		if (vbat >= 4440 && ibat > 0 && ibat <= 250) {
+		if (vbat >= 4430 && ibat > 0 && ibat <= 300) {
 			chr_err("lynx_autocut: saturation threshold reached (vbat=%dmV, ibat=%dmA), triggering EOC!\n",
 				vbat, ibat);
 			chg_done = true;

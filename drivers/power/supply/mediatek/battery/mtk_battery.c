@@ -546,15 +546,17 @@ static int mtk_battery_get_ui_capacity(struct battery_data *data)
 	 * If true chemical cell voltage < 4425 mV and charging current > 450 mA,
 	 * clamp reported UI capacity to 98% until cell reaches true saturation!
 	 */
-	if (uisoc >= 100 && mt_get_charger_type() != CHARGER_UNKNOWN &&
+	if (uisoc >= 99 && mt_get_charger_type() != CHARGER_UNKNOWN &&
 	    !lynx_is_bypass_effective()) {
-		int vbat = battery_get_bat_voltage(); /* mV */
 		int ibat = battery_get_bat_current() / 10; /* mA */
-		/* Battery internal resistance ~38 mOhm */
-		int v_ir_drop = (ibat > 0) ? (ibat * 38) / 1000 : 0;
-		int v_cell_true = vbat - v_ir_drop;
 
-		if (v_cell_true < 4425 && ibat > 450)
+		/*
+		 * True Chemical Saturation Protection (Anti-Anjlok):
+		 * During active charging, clamp UI SOC to 98% until charging
+		 * current naturally tapers below 300mA (near termination).
+		 * Eliminates premature 100% jumping and post-unplug voltage collapse!
+		 */
+		if (ibat > 300)
 			uisoc = 98;
 	}
 

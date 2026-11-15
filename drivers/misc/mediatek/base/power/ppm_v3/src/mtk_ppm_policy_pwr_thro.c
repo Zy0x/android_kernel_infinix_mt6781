@@ -20,6 +20,8 @@
 #include "mtk_ppm_internal.h"
 #include "mach/mtk_pmic.h"
 
+extern bool g_lynx_thermal_silencer;
+
 #if defined(LOW_BATTERY_PT_SETTING_V2) || defined(LBAT_LIMIT_BCPU_OPP)
 #define ENABLE_OPP_LIMIT
 #endif
@@ -187,6 +189,9 @@ static void ppm_pwrthro_bat_per_protect(BATTERY_PERCENT_LEVEL level)
 		goto end;
 	}
 
+	if (g_lynx_thermal_silencer)
+		level = 0;
+
 	switch (level) {
 	case BATTERY_PERCENT_LEVEL_1:
 		limited_power = PWRTHRO_BAT_PER_MW;
@@ -227,6 +232,9 @@ static void ppm_pwrthro_bat_oc_protect(BATTERY_OC_LEVEL level)
 		ppm_unlock(&pwrthro_policy.lock);
 		goto end;
 	}
+
+	if (g_lynx_thermal_silencer)
+		level = 0;
 
 	switch (level) {
 	case BATTERY_OC_LEVEL_1:
@@ -270,6 +278,9 @@ void ppm_pwrthro_low_bat_protect(LOW_BATTERY_LEVEL level)
 		ppm_unlock(&pwrthro_policy.lock);
 		goto end;
 	}
+
+	if (g_lynx_thermal_silencer)
+		level = 0;
 
 	switch (level) {
 	case LOW_BATTERY_LEVEL_1:
@@ -331,6 +342,9 @@ void ppm_pwrthro_low_bat_protect_ext(LOW_BATTERY_LEVEL level)
 		goto end;
 	}
 
+	if (g_lynx_thermal_silencer)
+		level = 0;
+
 	switch (level) {
 	case LOW_BATTERY_LEVEL_1:
 		mt_ppm_pwrthro_set_freq_limit(1, -1, PWRTHRO_LOW_BAT_LV1_OPP);
@@ -352,6 +366,29 @@ end:
 }
 #endif /* LBAT_LIMIT_BCPU_OPP */
 #endif /* DISABLE_LOW_BATTERY_PROTECT */
+
+
+void mt_ppm_pwrthro_lynx_release(void)
+{
+	ppm_lock(&pwrthro_policy.lock);
+#if defined(ENABLE_OPP_LIMIT)
+	{
+		int i;
+		for (i = 0; i < pwrthro_policy.req.cluster_num; i++) {
+			pwrthro_policy.req.limit[i].min_cpu_core = -1;
+			pwrthro_policy.req.limit[i].max_cpu_core = -1;
+			pwrthro_policy.req.limit[i].min_cpufreq_idx = -1;
+			pwrthro_policy.req.limit[i].max_cpufreq_idx = -1;
+		}
+	}
+#else
+	pwrthro_policy.req.power_budget = 0;
+#endif
+	pwrthro_policy.is_activated = false;
+	ppm_unlock(&pwrthro_policy.lock);
+	mt_ppm_main();
+}
+EXPORT_SYMBOL(mt_ppm_pwrthro_lynx_release);
 
 static int __init ppm_pwrthro_policy_init(void)
 {

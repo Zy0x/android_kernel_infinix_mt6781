@@ -52,6 +52,7 @@ static int cfp_curr_loading;
 
 static int **freq_tbl;
 DEFINE_MUTEX(cfp_mlock);
+extern bool g_lynx_thermal_silencer;
 
 static inline void cfp_lock(const char *tag)
 {
@@ -89,7 +90,9 @@ static void set_cfp_ppm(struct ppm_limit_data *desired_freq, int headroom_opp)
 	for_each_perfmgr_clusters(clu_idx) {
 		cfp_freq[clu_idx].min = desired_freq[clu_idx].min;
 
-		if (headroom_opp > 0) {
+		if (g_lynx_thermal_silencer) {
+			cfp_freq[clu_idx].max = -1;
+		} else if (headroom_opp > 0) {
 			cfp_ceiling_opp =
 				MAX(cfp_get_idx_by_freq(clu_idx,
 					desired_freq[clu_idx].max)
@@ -396,6 +399,29 @@ PROC_FOPS_RW(cfp_down_time);
 PROC_FOPS_RW(cfp_up_loading);
 PROC_FOPS_RW(cfp_down_loading);
 PROC_FOPS_RO(cfp_curr_stat);
+
+
+void cfp_lynx_sync_silencer(bool silencer)
+{
+	int clu_idx;
+
+	cfp_lock(__func__);
+	if (silencer) {
+		stop_cfp();
+		for_each_perfmgr_clusters(clu_idx) {
+			cfp_freq[clu_idx].min = cc_freq[clu_idx].min;
+			cfp_freq[clu_idx].max = -1;
+		}
+#ifndef CONFIG_FPGA_EARLY_PORTING
+		if (mt_ppm_userlimit_cpu_freq)
+			mt_ppm_userlimit_cpu_freq(perfmgr_clusters, cfp_freq);
+		else
+			perfmgr_common_userlimit_cpu_freq(perfmgr_clusters, cfp_freq);
+#endif
+	}
+	cfp_unlock(__func__);
+}
+EXPORT_SYMBOL(cfp_lynx_sync_silencer);
 
 #ifdef CONFIG_MTK_CPU_CTRL_CFP
 int cpu_ctrl_cfp_init(struct proc_dir_entry *parent)

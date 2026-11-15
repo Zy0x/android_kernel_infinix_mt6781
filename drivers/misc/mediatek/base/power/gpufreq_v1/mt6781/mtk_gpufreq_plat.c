@@ -135,6 +135,7 @@ static inline void gpu_dvfs_power_count_reset_footprint(void)
  * SECTION : Local functions declaration
  * ===============================================
  */
+
 static int __mt_gpufreq_pdrv_probe(struct platform_device *pdev);
 static void __mt_gpufreq_set(
 		unsigned int idx_old,
@@ -241,6 +242,9 @@ static int g_opp_sb_idx_up[NUM_OF_OPP_IDX] = { 0 };
 static int g_opp_sb_idx_down[NUM_OF_OPP_IDX] = { 0 };
 
 static DEFINE_MUTEX(mt_gpufreq_lock);
+
+extern bool g_lynx_thermal_silencer;
+static unsigned int g_lynx_oc_max_khz = 950000;
 static DEFINE_MUTEX(mt_gpufreq_power_lock);
 static DEFINE_MUTEX(mt_gpufreq_limit_table_lock);
 
@@ -1525,6 +1529,10 @@ void mt_gpufreq_batt_oc_callback(BATTERY_OC_LEVEL battery_oc_level)
 {
 	unsigned int batt_oc_limited_idx = LIMIT_IDX_DEFAULT;
 
+	if (g_lynx_thermal_silencer) {
+		mt_gpufreq_update_limit_idx(KIR_BATT_OC, LIMIT_IDX_DEFAULT, LIMIT_IDX_DEFAULT);
+		return;
+	}
 	if (battery_oc_level == BATTERY_OC_LEVEL_1) {
 		batt_oc_limited_idx =
 			mt_gpufreq_get_limited_idx_by_freq(
@@ -1556,6 +1564,10 @@ void mt_gpufreq_batt_percent_callback(
 {
 	unsigned int batt_percent_limited_idx = LIMIT_IDX_DEFAULT;
 
+	if (g_lynx_thermal_silencer) {
+		mt_gpufreq_update_limit_idx(KIR_BATT_PERCENT, LIMIT_IDX_DEFAULT, LIMIT_IDX_DEFAULT);
+		return;
+	}
 	if (battery_percent_level == BATTERY_PERCENT_LEVEL_1) {
 		batt_percent_limited_idx =
 			mt_gpufreq_get_limited_idx_by_freq(
@@ -1588,6 +1600,10 @@ void mt_gpufreq_low_batt_callback(LOW_BATTERY_LEVEL low_battery_level)
 {
 	unsigned int low_batt_limited_idx = LIMIT_IDX_DEFAULT;
 
+	if (g_lynx_thermal_silencer) {
+		mt_gpufreq_update_limit_idx(KIR_BATT_LOW, LIMIT_IDX_DEFAULT, LIMIT_IDX_DEFAULT);
+		return;
+	}
 	if (low_battery_level == LOW_BATTERY_LEVEL_2) {
 		low_batt_limited_idx =
 			mt_gpufreq_get_limited_idx_by_freq(
@@ -1614,7 +1630,6 @@ void mt_gpufreq_low_batt_callback(LOW_BATTERY_LEVEL low_battery_level)
 /*
  * API : set limited OPP table index for Thermal protection
  */
-extern bool g_lynx_thermal_silencer;
 void mt_gpufreq_thermal_protect(unsigned int limited_power)
 {
 	unsigned int thermal_limited_idx = LIMIT_IDX_DEFAULT;
@@ -1655,6 +1670,10 @@ void mt_gpufreq_set_power_limit_by_pbm(unsigned int limited_power)
 {
 	unsigned int pbm_limited_idx = LIMIT_IDX_DEFAULT;
 
+	if (g_lynx_thermal_silencer) {
+		mt_gpufreq_update_limit_idx(KIR_PBM, LIMIT_IDX_DEFAULT, LIMIT_IDX_DEFAULT);
+		return;
+	}
 	mutex_lock(&mt_gpufreq_power_lock);
 
 	if (limited_power == 0) {
@@ -2447,7 +2466,9 @@ static enum g_posdiv_power_enum __mt_gpufreq_get_posdiv_power(unsigned int freq)
 	 * only use posdiv 4 or 8
 	 * sub-clksrc is MAINPLL_D5(218.4MHz), please make sure don't overclock
 	 */
-	if (freq < POSDIV_4_MIN_FREQ)
+	if (freq > POSDIV_4_MAX_FREQ)
+		posdiv_power = POSDIV_POWER_2;
+	else if (freq < POSDIV_4_MIN_FREQ)
 		posdiv_power = POSDIV_POWER_8;
 
 	return posdiv_power;
@@ -2487,7 +2508,7 @@ static unsigned int __mt_gpufreq_calculate_dds(
 
 	/* only use posdiv 4 or 8 */
 	if ((freq_khz >= POSDIV_8_MIN_FREQ) &&
-		(freq_khz <= POSDIV_4_MAX_FREQ)) {
+		(freq_khz <= POSDIV_2_MAX_FREQ)) {
 		dds = (((freq_khz / TO_MHZ_HEAD *
 				(1 << posdiv_power)) << DDS_SHIFT) /
 				MFGPLL_FIN + ROUNDING_VALUE) / TO_MHZ_TAIL;
@@ -2581,6 +2602,8 @@ static void __mt_gpufreq_volt_switch_without_vsram_gpu(
 	vgpu_new = VOLT_NORMALIZATION(vgpu_new);
 
 	vsram_gpu_new = __mt_gpufreq_get_vsram_gpu_by_vgpu(vgpu_new);
+	if (vsram_gpu_new > VSRAM_GPU_MAX_VOLT)
+		vsram_gpu_new = VSRAM_GPU_MAX_VOLT;
 	vsram_gpu_old = __mt_gpufreq_get_vsram_gpu_by_vgpu(vgpu_old);
 
 	__mt_gpufreq_volt_switch(
@@ -3503,6 +3526,50 @@ static void __mt_gpufreq_dump_bringup_status(void)
 /*
  * gpufreq driver probe
  */
+
+void mt_gpufreq_lynx_release_limits(void)
+{
+	if (!g_probe_done)
+		return;
+	mt_gpufreq_update_limit_idx(KIR_THERMAL, LIMIT_IDX_DEFAULT, LIMIT_IDX_DEFAULT);
+	mt_gpufreq_update_limit_idx(KIR_BATT_OC, LIMIT_IDX_DEFAULT, LIMIT_IDX_DEFAULT);
+	mt_gpufreq_update_limit_idx(KIR_BATT_LOW, LIMIT_IDX_DEFAULT, LIMIT_IDX_DEFAULT);
+	mt_gpufreq_update_limit_idx(KIR_BATT_PERCENT, LIMIT_IDX_DEFAULT, LIMIT_IDX_DEFAULT);
+	mt_gpufreq_update_limit_idx(KIR_PBM, LIMIT_IDX_DEFAULT, LIMIT_IDX_DEFAULT);
+}
+EXPORT_SYMBOL(mt_gpufreq_lynx_release_limits);
+
+int mt_gpufreq_lynx_set_oc_khz(unsigned int max_khz)
+{
+	int i, target_idx = 5;
+
+	if (!g_probe_done || !g_opp_table || g_max_opp_idx_num <= 5)
+		return -EAGAIN;
+
+	if (max_khz == 0)
+		max_khz = 950000;
+
+	target_idx = g_max_opp_idx_num - 1;
+	for (i = 0; i < g_max_opp_idx_num; i++) {
+		if (g_opp_table[i].gpufreq_khz <= max_khz) {
+			target_idx = i;
+			break;
+		}
+	}
+	g_lynx_oc_max_khz = g_opp_table[target_idx].gpufreq_khz;
+	mt_gpufreq_update_limit_idx(KIR_LYNX_OC, target_idx, LIMIT_IDX_DEFAULT);
+	gpufreq_pr_info("@%s: req=%u applied=%u idx=%d\n",
+		__func__, max_khz, g_lynx_oc_max_khz, target_idx);
+	return 0;
+}
+EXPORT_SYMBOL(mt_gpufreq_lynx_set_oc_khz);
+
+unsigned int mt_gpufreq_lynx_get_oc_khz(void)
+{
+	return g_lynx_oc_max_khz;
+}
+EXPORT_SYMBOL(mt_gpufreq_lynx_get_oc_khz);
+
 static int __mt_gpufreq_pdrv_probe(struct platform_device *pdev)
 {
 	struct device_node *node;
@@ -3552,6 +3619,10 @@ static int __mt_gpufreq_pdrv_probe(struct platform_device *pdev)
 	// for debug only. simulate gpu dfd trigger state
 	//__mt_gpufreq_gpu_dfd_trigger_simulate();
 #endif
+
+	mt_gpufreq_update_limit_idx(KIR_LYNX_OC, 5, LIMIT_IDX_DEFAULT);
+	g_lynx_oc_max_khz = (g_opp_table && g_max_opp_idx_num > 5) ?
+		g_opp_table[5].gpufreq_khz : 950000;
 
 	g_probe_done = true;
 	gpufreq_pr_info("@%s: driver init is finished\n", __func__);

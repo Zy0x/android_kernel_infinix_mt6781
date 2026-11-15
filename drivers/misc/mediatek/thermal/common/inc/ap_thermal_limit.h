@@ -104,4 +104,7 @@ unsigned int apthermolmt_get_mdla_power_limit(void);
 extern
 unsigned int apthermolmt_get_mdla_min_power(void);
 
+
+extern void apthermolmt_lynx_release_limits(void);
+
 #endif	/* __AP_THERMAL_LIMIT_H__ */

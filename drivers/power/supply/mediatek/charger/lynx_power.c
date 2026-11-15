@@ -37,6 +37,11 @@ bool g_lynx_hyper_charge = true;
 EXPORT_SYMBOL(g_lynx_hyper_charge);
 
 bool g_lynx_thermal_silencer = false;
+
+void __weak thrm_aware_lynx_release(void)
+{
+}
+
 EXPORT_SYMBOL(g_lynx_thermal_silencer);
 
 extern int dcp_get_ta_status(void);
@@ -299,6 +304,19 @@ static ssize_t lynx_thermal_silencer_write(struct file *file, const char __user 
 		return -EINVAL;
 
 	g_lynx_thermal_silencer = (val != 0);
+	smp_wmb();
+	if (g_lynx_thermal_silencer) {
+		mt_ppm_cpu_thermal_protect(0);
+		mt_ppm_pwrthro_lynx_release();
+		apthermolmt_lynx_release_limits();
+		mt_gpufreq_lynx_release_limits();
+		cpuhvfs_update_imax_state(0);
+		cpuhvfs_update_imax_thermal_state(0);
+		cfp_lynx_sync_silencer(true);
+		thrm_aware_lynx_release();
+	} else {
+		cfp_lynx_sync_silencer(false);
+	}
 	pr_info("LYNX_POWER: Thermal Silencer %s\n", g_lynx_thermal_silencer ? "ENABLED" : "DISABLED");
 
 	return count;
@@ -366,6 +384,7 @@ static int lynx_status_show(struct seq_file *m, void *v)
 		   vbat, vbus, ibat_ma, uisoc);
 	seq_printf(m, "Hyper Charge (Unthrottle): %s\n", g_lynx_hyper_charge ? "ENABLED" : "DISABLED");
 	seq_printf(m, "Thermal Silencer (CPU/GPU): %s\n", g_lynx_thermal_silencer ? "ENABLED" : "DISABLED");
+	seq_printf(m, "GPU Max Cap (kHz): %u\n", mt_gpufreq_lynx_get_oc_khz());
 	seq_printf(m, "Charger Type Detected    : %d [%s]\n", type, lynx_chr_type_str(type));
 	seq_printf(m, "Transsion RFC Fast TA    : %d\n", dcp_get_ta_status());
 	return 0;
@@ -384,6 +403,40 @@ static const struct file_operations lynx_status_fops = {
 	.release = single_release,
 };
 
+
+static int lynx_gpu_max_khz_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%u\n", mt_gpufreq_lynx_get_oc_khz());
+	return 0;
+}
+static int lynx_gpu_max_khz_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, lynx_gpu_max_khz_show, NULL);
+}
+static ssize_t lynx_gpu_max_khz_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	unsigned int val = 0;
+	char kbuf[32];
+	int ret;
+
+	if (count >= sizeof(kbuf))
+		return -EINVAL;
+	if (copy_from_user(kbuf, buf, count))
+		return -EFAULT;
+	kbuf[count] = '\0';
+	if (kstrtouint(strim(kbuf), 10, &val))
+		return -EINVAL;
+	ret = mt_gpufreq_lynx_set_oc_khz(val);
+	return ret ? ret : count;
+}
+static const struct file_operations lynx_gpu_max_khz_fops = {
+	.open = lynx_gpu_max_khz_open,
+	.read = seq_read,
+	.write = lynx_gpu_max_khz_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 static int __init lynx_power_init(void)
 {
 	lynx_proc_dir = proc_mkdir("lynx", NULL);
@@ -397,6 +450,7 @@ static int __init lynx_power_init(void)
 	proc_create("bypass_active", 0444, lynx_proc_dir, &lynx_bypass_active_fops);
 	proc_create("hyper_charge", 0666, lynx_proc_dir, &lynx_hyper_charge_fops);
 	proc_create("thermal_silencer", 0666, lynx_proc_dir, &lynx_thermal_silencer_fops);
+	proc_create("gpu_max_khz", 0664, lynx_proc_dir, &lynx_gpu_max_khz_fops);
 	proc_create("status", 0444, lynx_proc_dir, &lynx_status_fops);
 
 	pr_info("LYNX_POWER: Native kernel power management initialized successfully (/proc/lynx/*)\n");

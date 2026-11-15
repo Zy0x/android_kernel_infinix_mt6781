@@ -1267,13 +1267,17 @@ void lvts_ipi_send_efuse_data(void)
 {
 	struct thermal_ipi_data thermal_data;
 
+	int retry = 0;
 	lvts_printk("%s\n", __func__);
 
 	thermal_data.u.data.arg[0] = g_golden_temp;
 	thermal_data.u.data.arg[1] = 0;
 	thermal_data.u.data.arg[2] = 0;
-	while (thermal_to_sspm(THERMAL_IPI_LVTS_INIT_GRP1, &thermal_data) != 0)
+	retry = 0;
+	while ((thermal_to_sspm(THERMAL_IPI_LVTS_INIT_GRP1, &thermal_data) != 0) && (retry++ < 100))
 		udelay(100);
+	if (retry >= 100)
+		lvts_printk("%s: IPI retry timeout (%d)\n", __func__, retry);
 }
 #endif
 
@@ -1289,9 +1293,13 @@ void lvts_ipi_send_sspm_thermal_thtottle(void)
 	thermal_data.u.data.arg[0] = tscpu_sspm_thermal_throttle;
 	thermal_data.u.data.arg[1] = 0;
 	thermal_data.u.data.arg[2] = 0;
-	while (thermal_to_sspm(THERMAL_IPI_SET_DIS_THERMAL_THROTTLE,
-		&thermal_data) != 0)
-		udelay(100);
+	{
+		int __lynx_retry = 0;
+		while ((thermal_to_sspm(THERMAL_IPI_SET_DIS_THERMAL_THROTTLE, &thermal_data) != 0) && (__lynx_retry++ < 100))
+			udelay(100);
+		if (__lynx_retry >= 100)
+			lvts_printk("%s: thermal_to_sspm retry timeout\n", __func__);
+	}
 }
 #endif
 
@@ -1305,9 +1313,13 @@ void lvts_ipi_send_sspm_thermal_suspend_resume(int is_suspend)
 	thermal_data.u.data.arg[0] = is_suspend;
 	thermal_data.u.data.arg[1] = 0;
 	thermal_data.u.data.arg[2] = 0;
-	while (thermal_to_sspm(THERMAL_IPI_SUSPEND_RESUME_NOTIFY,
-		&thermal_data) != 0)
-		udelay(100);
+	{
+		int __lynx_retry = 0;
+		while ((thermal_to_sspm(THERMAL_IPI_SUSPEND_RESUME_NOTIFY, &thermal_data) != 0) && (__lynx_retry++ < 100))
+			udelay(100);
+		if (__lynx_retry >= 100)
+			lvts_printk("%s: thermal_to_sspm retry timeout\n", __func__);
+	}
 }
 #endif
 #endif

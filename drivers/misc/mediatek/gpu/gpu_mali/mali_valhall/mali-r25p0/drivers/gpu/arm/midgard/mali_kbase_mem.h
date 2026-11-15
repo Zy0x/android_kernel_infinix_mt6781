@@ -653,7 +653,7 @@ static inline int kbase_reg_prepare_native(struct kbase_va_region *reg,
 /*
  * Max size for kbdev memory pool (in pages)
  */
-#define KBASE_MEM_POOL_MAX_SIZE_KBDEV (SZ_64M >> PAGE_SHIFT)
+#define KBASE_MEM_POOL_MAX_SIZE_KBDEV (SZ_128M >> PAGE_SHIFT)
 
 /*
  * Max size for kctx memory pool (in pages)

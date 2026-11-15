@@ -103,6 +103,7 @@ static unsigned int gp_prev_gpu_pwr_limit;
 static unsigned int gp_curr_gpu_pwr_limit;
 
 static DEFINE_MUTEX(apthermolmt_cpu_mutex);
+extern bool g_lynx_thermal_silencer;
 
 /*=============================================================
  * Weak functions
@@ -186,6 +187,9 @@ void apthermolmt_set_cpu_power_limit(
 struct apthermolmt_user *handle, unsigned int limit)
 {
 	unsigned int final_limit;
+
+	if (g_lynx_thermal_silencer)
+		limit = 0x7FFFFFFF;
 
 	if (!handle || !(handle->ptr))
 		return;
@@ -337,6 +341,9 @@ struct apthermolmt_user *handle, unsigned int limit)
 {
 	unsigned int final_limit;
 
+	if (g_lynx_thermal_silencer)
+		limit = 0x7FFFFFFF;
+
 	if (!handle || !(handle->ptr))
 		return;
 
@@ -368,6 +375,9 @@ EXPORT_SYMBOL(apthermolmt_set_gpu_power_limit);
 
 void apthermolmt_set_general_cpu_power_limit(unsigned int limit)
 {
+	if (g_lynx_thermal_silencer)
+		limit = 0x7FFFFFFF;
+
 	gp_prev_cpu_pwr_limit = gp_curr_cpu_pwr_limit;
 	gp_curr_cpu_pwr_limit = (limit != 0) ? limit : 0x7FFFFFFF;
 
@@ -381,6 +391,9 @@ EXPORT_SYMBOL(apthermolmt_set_general_cpu_power_limit);
 
 void apthermolmt_set_general_gpu_power_limit(unsigned int limit)
 {
+	if (g_lynx_thermal_silencer)
+		limit = 0x7FFFFFFF;
+
 	gp_prev_gpu_pwr_limit = gp_curr_gpu_pwr_limit;
 	gp_curr_gpu_pwr_limit = (limit != 0) ? limit : 0x7FFFFFFF;
 
@@ -443,4 +456,21 @@ unsigned int apthermolmt_get_mdla_min_power(void)
 }
 EXPORT_SYMBOL(apthermolmt_get_mdla_min_power);
 #endif
+
+void apthermolmt_lynx_release_limits(void)
+{
+	int i;
+
+	for (i = 0; i < AP_THERMO_LMT_MAX_USERS; i++) {
+		if (_users[i]) {
+			_users[i]->cpu_limit = 0x7FFFFFFF;
+			_users[i]->gpu_limit = 0x7FFFFFFF;
+		}
+	}
+	apthermolmt_set_general_cpu_power_limit(0x7FFFFFFF);
+	apthermolmt_set_general_gpu_power_limit(0x7FFFFFFF);
+	apthermolmt_set_cpu_power_limit(&_gp, 0x7FFFFFFF);
+	apthermolmt_set_gpu_power_limit(&_gp, 0x7FFFFFFF);
+}
+EXPORT_SYMBOL(apthermolmt_lynx_release_limits);
 

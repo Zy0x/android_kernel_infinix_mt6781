@@ -37,6 +37,7 @@ static int activate_fps;
 static int iso_pcbtemp_th;
 
 static struct kobject *thrm_aware_kobj;
+extern bool g_lynx_thermal_silencer;
 static struct hrtimer hrt;
 static struct workqueue_struct *wq;
 
@@ -189,6 +190,9 @@ void thrm_aware_frame_start(int perf_hint, int target_fps)
 
 	mutex_lock(&thrm_aware_lock);
 
+	if (g_lynx_thermal_silencer)
+		goto EXIT;
+
 	if (!thrm_aware_enable)
 		goto EXIT;
 
@@ -228,6 +232,9 @@ void thrm_aware_switch(int enable)
 	if (enable == thrm_aware_enable)
 		goto EXIT;
 
+	if (g_lynx_thermal_silencer)
+		goto EXIT;
+
 	temp = thrm_get_pcb_temp();
 
 	if (!enable && temp < iso_pcbtemp_th) {
@@ -254,6 +261,20 @@ void thrm_aware_switch(int enable)
 EXIT:
 	mutex_unlock(&thrm_aware_lock);
 }
+
+
+void thrm_aware_lynx_release(void)
+{
+	mutex_lock(&thrm_aware_lock);
+	thrm_aware_enable = 1;
+	if (limit_cpu != -1)
+		thrm_set_isolation(THRM_AWARE_CORE_RESET, limit_cpu);
+	if (sub_cpu != -1)
+		thrm_set_isolation(THRM_AWARE_CORE_RESET, sub_cpu);
+	cur_state = THRM_AWARE_STATE_INACTIVE;
+	mutex_unlock(&thrm_aware_lock);
+}
+EXPORT_SYMBOL(thrm_aware_lynx_release);
 
 static ssize_t thrm_temp_th_show(struct kobject *kobj,
 		struct kobj_attribute *attr,

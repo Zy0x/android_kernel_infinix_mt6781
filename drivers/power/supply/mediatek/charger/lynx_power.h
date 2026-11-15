@@ -43,4 +43,16 @@ int rt9471_lynx_get_hw_info(bool *hz, bool *chg_en, bool *chg_done,
 void lynx_sync_bypass_charger(bool entering_bypass);
 void lynx_sync_hyper_hv(bool en);
 
+
+extern int mt_gpufreq_lynx_set_oc_khz(unsigned int max_khz);
+extern unsigned int mt_gpufreq_lynx_get_oc_khz(void);
+extern void mt_gpufreq_lynx_release_limits(void);
+extern void mt_ppm_cpu_thermal_protect(unsigned int limited_power);
+extern void mt_ppm_pwrthro_lynx_release(void);
+extern void apthermolmt_lynx_release_limits(void);
+extern void cpuhvfs_update_imax_state(unsigned int state);
+extern void cpuhvfs_update_imax_thermal_state(unsigned int state);
+extern void cfp_lynx_sync_silencer(bool silencer);
+extern void thrm_aware_lynx_release(void);
+
 #endif /* _LYNX_POWER_H_ */

@@ -84,6 +84,7 @@ enum mt_gpufreq_kicker {
 	KIR_BATT_PERCENT,
 	KIR_PBM,
 	KIR_POLICY,
+	KIR_LYNX_OC,
 	NUM_OF_KIR
 };
 
@@ -179,5 +180,10 @@ extern void mt_gpufreq_input_boost_notify_registerCB(
  * GED_SKI_SUPPORT
  */
 extern int mt_gpufreq_get_immed_gpu_temp(void);
+
+
+extern void mt_gpufreq_lynx_release_limits(void);
+extern int mt_gpufreq_lynx_set_oc_khz(unsigned int max_khz);
+extern unsigned int mt_gpufreq_lynx_get_oc_khz(void);
 
 #endif /* ___MT_GPUFREQ_PLAT_H___ */

@@ -61,6 +61,7 @@ unsigned int thermal_to_sspm(
 
 	mutex_lock(&thermo_sspm_mutex);
 
+	ack_data = -1;
 	if (!is_thermal_ipi_registered) {
 		if (register_thermal_ipi() != 0)
 			goto end;
@@ -91,10 +92,10 @@ unsigned int thermal_to_sspm(
 		tscpu_printk("cmd(%d) lvts efuse to SSPM (%d)\n",
 				cmd, ack_data);
 
-		ackData = ack_data;
 
 		ret = mtk_ipi_send_compl(&sspm_ipidev, IPIS_C_THERMAL,
 			IPI_SEND_POLLING, thermal_data, THERMAL_SLOT_NUM, 2000);
+		ackData = ack_data;
 
 
 		if (ret != 0)
@@ -125,6 +126,7 @@ unsigned int thermal_to_sspm(
 
 		ret = mtk_ipi_send_compl(&sspm_ipidev, IPIS_C_THERMAL,
 			IPI_SEND_POLLING, thermal_data, THERMAL_SLOT_NUM, 2000);
+		ackData = ack_data;
 
 		if (ret != 0)
 			tscpu_printk("mtk_ipi_send_compl error ret:%d - %d\n",
@@ -139,10 +141,10 @@ unsigned int thermal_to_sspm(
 		tscpu_printk("cmd(%d) disable SSPM thermal throttle(%d)\n",
 				cmd, ack_data);
 
-		ackData = ack_data;
 
 		ret = mtk_ipi_send_compl(&sspm_ipidev, IPIS_C_THERMAL,
 			IPI_SEND_POLLING, thermal_data, THERMAL_SLOT_NUM, 2000);
+		ackData = ack_data;
 
 		if (ret != 0)
 			tscpu_printk("sspm_ipi_send err cmd %d,ret:%d - %d\n",
@@ -156,10 +158,10 @@ unsigned int thermal_to_sspm(
 		//tscpu_printk("cmd(%d) kernel suspend/resume(%d)\n",
 		//		cmd, ack_data);
 
-		ackData = ack_data;
 
 		ret = mtk_ipi_send_compl(&sspm_ipidev, IPIS_C_THERMAL,
 			IPI_SEND_POLLING, thermal_data, THERMAL_SLOT_NUM, 2000);
+		ackData = ack_data;
 
 		if (ret != 0)
 			tscpu_printk("sspm_ipi_send err cmd %d,ret:%d - %d\n",
@@ -201,6 +203,8 @@ struct thermal_ipi_data *thermal_data, int *ackData)
 
 	mutex_lock(&thermo_sspm_mutex);
 
+	ack_data = -1;
+	*ackData = -1;
 	if (!is_thermal_ipi_registered) {
 		if (register_thermal_ipi() != 0)
 			goto end;
@@ -249,8 +253,13 @@ static int get_sspm_tz_temp_read(struct seq_file *m, void *v)
 	thermal_data.u.data.arg[1] = 0;
 	thermal_data.u.data.arg[2] = 0;
 
-	while (thermal_to_sspm(THERMAL_IPI_GET_TEMP, &thermal_data) != 0)
-		udelay(500);
+	{
+		int __lynx_retry = 0;
+		while ((thermal_to_sspm(THERMAL_IPI_GET_TEMP, &thermal_data) != 0) && (__lynx_retry++ < 100))
+			udelay(500);
+		if (__lynx_retry >= 100)
+			tscpu_printk("%s: thermal_to_sspm retry timeout\n", __func__);
+	}
 
 	seq_puts(m, "Show current temperature in SSPM UART log\n");
 
@@ -298,9 +307,13 @@ static ssize_t set_sspm_big_limit_threshold_write
 		thermal_data.u.data.arg[1] = bigCoreTj;
 		thermal_data.u.data.arg[2] = bigCoreFreqUpperBound;
 
-		while (thermal_to_sspm(THERMAL_IPI_SET_BIG_FREQ_THRESHOLD,
-			&thermal_data) != 0)
-			udelay(500);
+		{
+			int __lynx_retry = 0;
+			while ((thermal_to_sspm(THERMAL_IPI_SET_BIG_FREQ_THRESHOLD, &thermal_data) != 0) && (__lynx_retry++ < 100))
+				udelay(500);
+			if (__lynx_retry >= 100)
+				tscpu_printk("%s: thermal_to_sspm retry timeout\n", __func__);
+		}
 
 		return count;
 	} else if (sscanf(desc, "%d %d", &arrayIndex, &bigCoreExitTj) == 2) {
@@ -315,9 +328,13 @@ static ssize_t set_sspm_big_limit_threshold_write
 		thermal_data.u.data.arg[1] = bigCoreExitTj;
 		thermal_data.u.data.arg[2] = 0;
 
-		while (thermal_to_sspm(THERMAL_IPI_SET_BIG_FREQ_THRESHOLD,
-			&thermal_data) != 0)
-			udelay(500);
+		{
+			int __lynx_retry = 0;
+			while ((thermal_to_sspm(THERMAL_IPI_SET_BIG_FREQ_THRESHOLD, &thermal_data) != 0) && (__lynx_retry++ < 100))
+				udelay(500);
+			if (__lynx_retry >= 100)
+				tscpu_printk("%s: thermal_to_sspm retry timeout\n", __func__);
+		}
 
 		return count;
 	}
@@ -350,9 +367,13 @@ static int set_sspm_big_limit_threshold_read(struct seq_file *m, void *v)
 	thermal_data.u.data.arg[1] = 0;
 	thermal_data.u.data.arg[2] = 0;
 
-	while (thermal_to_sspm(THERMAL_IPI_GET_BIG_FREQ_THRESHOLD,
-		&thermal_data) != 0)
-		udelay(500);
+	{
+		int __lynx_retry = 0;
+		while ((thermal_to_sspm(THERMAL_IPI_GET_BIG_FREQ_THRESHOLD, &thermal_data) != 0) && (__lynx_retry++ < 100))
+			udelay(500);
+		if (__lynx_retry >= 100)
+			tscpu_printk("%s: thermal_to_sspm retry timeout\n", __func__);
+	}
 
 	seq_puts(m, "Show big core frequency thresholds in SSPM UART log\n");
 

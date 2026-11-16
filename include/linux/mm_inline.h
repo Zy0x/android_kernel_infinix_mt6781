@@ -152,7 +152,7 @@ static inline bool lru_gen_add_page(struct lruvec *lruvec, struct page *page,
 	unsigned long old_flags, new_flags;
 	struct lru_gen_struct *lrugen = &lruvec->lrugen;
 
-	if (!lru_gen_enabled())
+	if (!lru_gen_enabled() || !READ_ONCE(lruvec->lrugen.enabled))
 		return false;
 
 	if (PageUnevictable(page))

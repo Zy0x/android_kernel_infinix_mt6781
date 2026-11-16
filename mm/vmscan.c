@@ -79,7 +79,7 @@
 
 #ifdef CONFIG_LRU_GEN
 DEFINE_STATIC_KEY_ARRAY_FALSE(lru_gen_caps, NR_LRU_GEN_CAPS);
-unsigned long lru_gen_min_ttl __read_mostly;
+unsigned long lru_gen_min_ttl __read_mostly = 1000;
 #endif
 
 struct scan_control {
@@ -3347,6 +3347,287 @@ static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct mem_cgroup *memc
 	blk_finish_plug(&plug);
 	sc->nr_reclaimed += reclaimed;
 }
+
+static DEFINE_MUTEX(lru_gen_state_lock);
+
+static void lru_gen_migrate_pages_on(struct lruvec *lruvec)
+{
+	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
+	enum lru_list lru;
+	int moved = 0;
+
+	spin_lock_irq(&pgdat->lru_lock);
+	WRITE_ONCE(lruvec->lrugen.enabled, true);
+
+	for (lru = 0; lru < LRU_UNEVICTABLE; lru++) {
+		while (!list_empty(&lruvec->lists[lru])) {
+			struct page *page = lru_to_page(&lruvec->lists[lru]);
+			int type = page_is_file_cache(page);
+			int zone = page_zonenum(page);
+			int delta = hpage_nr_pages(page);
+			bool active = is_active_lru(lru);
+			int gen = active ? lru_gen_from_seq(lruvec->lrugen.max_seq)
+					 : lru_gen_from_seq(lruvec->lrugen.min_seq[type]);
+			unsigned long old_flags, new_flags;
+
+			list_del(&page->lru);
+			update_lru_size(lruvec, lru, zone, -delta);
+			if (active)
+				__ClearPageActive(page);
+
+			do {
+				old_flags = new_flags = READ_ONCE(page->flags);
+				new_flags &= ~(LRU_GEN_MASK << LRU_GEN_PGSHIFT);
+				new_flags |= (unsigned long)(gen + 1) << LRU_GEN_PGSHIFT;
+			} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
+
+			lru_gen_update_size(lruvec, page, -1, gen);
+			list_add(&page->lru, &lruvec->lrugen.lists[gen][type][zone]);
+
+			if (++moved >= MAX_LRU_BATCH) {
+				spin_unlock_irq(&pgdat->lru_lock);
+				cond_resched();
+				spin_lock_irq(&pgdat->lru_lock);
+				moved = 0;
+			}
+		}
+	}
+	spin_unlock_irq(&pgdat->lru_lock);
+}
+
+static void lru_gen_migrate_pages_off(struct lruvec *lruvec)
+{
+	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
+	int gen, type, zone;
+	int moved = 0;
+
+	spin_lock_irq(&pgdat->lru_lock);
+	WRITE_ONCE(lruvec->lrugen.enabled, false);
+
+	for_each_gen_type_zone(gen, type, zone) {
+		struct list_head *head = &lruvec->lrugen.lists[gen][type][zone];
+
+		while (!list_empty(head)) {
+			struct page *page = lru_to_page(head);
+			bool active = lru_gen_is_active(lruvec, gen);
+			enum lru_list lru = type * LRU_FILE + (active ? LRU_ACTIVE : 0);
+			int delta = hpage_nr_pages(page);
+			unsigned long old_flags, new_flags;
+
+			do {
+				old_flags = new_flags = READ_ONCE(page->flags);
+				new_flags &= ~PAGE_FLAGS_LRU_GEN;
+			} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
+
+			list_del(&page->lru);
+			lru_gen_update_size(lruvec, page, gen, -1);
+
+			if (active)
+				SetPageActive(page);
+			else
+				__ClearPageActive(page);
+
+			update_lru_size(lruvec, lru, zone, delta);
+			list_add(&page->lru, &lruvec->lists[lru]);
+
+			if (++moved >= MAX_LRU_BATCH) {
+				spin_unlock_irq(&pgdat->lru_lock);
+				cond_resched();
+				spin_lock_irq(&pgdat->lru_lock);
+				moved = 0;
+			}
+		}
+	}
+	spin_unlock_irq(&pgdat->lru_lock);
+}
+
+static void lru_gen_change_state(unsigned long flags)
+{
+	bool was_core, want_core;
+	int nid, i;
+
+	flags &= BIT(NR_LRU_GEN_CAPS) - 1;
+	if (!(flags & BIT(LRU_GEN_CORE)))
+		flags = 0;
+
+	mutex_lock(&lru_gen_state_lock);
+
+	was_core = static_key_enabled(&lru_gen_caps[LRU_GEN_CORE].key);
+	want_core = !!(flags & BIT(LRU_GEN_CORE));
+
+	for (i = 1; i < NR_LRU_GEN_CAPS; i++) {
+		bool cur = static_key_enabled(&lru_gen_caps[i].key);
+		bool want = !!(flags & BIT(i));
+
+		if (want && !cur)
+			static_branch_enable(&lru_gen_caps[i]);
+		else if (!want && cur)
+			static_branch_disable(&lru_gen_caps[i]);
+	}
+
+	if (want_core != was_core) {
+		if (want_core) {
+			lru_add_drain_all();
+			static_branch_enable(&lru_gen_caps[LRU_GEN_CORE]);
+			for_each_online_node(nid) {
+				struct pglist_data *pgdat = NODE_DATA(nid);
+				struct mem_cgroup *memcg = mem_cgroup_iter(NULL, NULL, NULL);
+
+				do {
+					lru_gen_migrate_pages_on(mem_cgroup_lruvec(pgdat, memcg));
+				} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
+			}
+		} else {
+			for_each_online_node(nid) {
+				struct pglist_data *pgdat = NODE_DATA(nid);
+				struct mem_cgroup *memcg = mem_cgroup_iter(NULL, NULL, NULL);
+
+				do {
+					WRITE_ONCE(mem_cgroup_lruvec(pgdat, memcg)->lrugen.enabled, false);
+				} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
+			}
+			lru_add_drain_all();
+			for_each_online_node(nid) {
+				struct pglist_data *pgdat = NODE_DATA(nid);
+				struct mem_cgroup *memcg = mem_cgroup_iter(NULL, NULL, NULL);
+
+				do {
+					lru_gen_migrate_pages_off(mem_cgroup_lruvec(pgdat, memcg));
+				} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
+			}
+			static_branch_disable(&lru_gen_caps[LRU_GEN_CORE]);
+		}
+	}
+
+	mutex_unlock(&lru_gen_state_lock);
+}
+
+static ssize_t enabled_show(struct kobject *kobj, struct kobj_attribute *attr,
+			    char *buf)
+{
+	unsigned long caps = 0;
+	int i;
+
+	for (i = 0; i < NR_LRU_GEN_CAPS; i++) {
+		if (static_key_enabled(&lru_gen_caps[i].key))
+			caps |= BIT(i);
+	}
+
+	return snprintf(buf, PAGE_SIZE, "0x%04lx\n", caps);
+}
+
+static ssize_t enabled_store(struct kobject *kobj, struct kobj_attribute *attr,
+			     const char *buf, size_t len)
+{
+	unsigned long val;
+	int err;
+
+	err = kstrtoul(buf, 0, &val);
+	if (err)
+		return err;
+
+	lru_gen_change_state(val);
+	return len;
+}
+static struct kobj_attribute enabled_attr = __ATTR_RW(enabled);
+
+static ssize_t min_ttl_ms_show(struct kobject *kobj, struct kobj_attribute *attr,
+			       char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%lu\n", READ_ONCE(lru_gen_min_ttl));
+}
+
+static ssize_t min_ttl_ms_store(struct kobject *kobj, struct kobj_attribute *attr,
+				const char *buf, size_t len)
+{
+	unsigned long val;
+	int err;
+
+	err = kstrtoul(buf, 0, &val);
+	if (err)
+		return err;
+
+	WRITE_ONCE(lru_gen_min_ttl, val);
+	return len;
+}
+static struct kobj_attribute min_ttl_ms_attr = __ATTR_RW(min_ttl_ms);
+
+static ssize_t stats_show(struct kobject *kobj, struct kobj_attribute *attr,
+			  char *buf)
+{
+	ssize_t n = 0;
+	int nid;
+
+	for_each_online_node(nid) {
+		struct pglist_data *pgdat = NODE_DATA(nid);
+		struct mem_cgroup *memcg = mem_cgroup_iter(NULL, NULL, NULL);
+
+		do {
+			struct lruvec *lruvec = mem_cgroup_lruvec(pgdat, memcg);
+			struct lru_gen_struct *lrugen = &lruvec->lrugen;
+			int gen;
+
+			n += scnprintf(buf + n, PAGE_SIZE - n,
+				       "node %d memcg %hu enabled %d max_seq %lu min_seq %lu %lu\n",
+				       nid, memcg ? mem_cgroup_id(memcg) : 0,
+				       READ_ONCE(lrugen->enabled),
+				       READ_ONCE(lrugen->max_seq),
+				       READ_ONCE(lrugen->min_seq[0]),
+				       READ_ONCE(lrugen->min_seq[1]));
+
+			for (gen = 0; gen < MAX_NR_GENS && n < PAGE_SIZE - 128; gen++) {
+				unsigned long a = 0, f = 0;
+				int z;
+
+				for (z = 0; z < MAX_NR_ZONES; z++) {
+					a += max(0L, READ_ONCE(lrugen->nr_pages[gen][0][z]));
+					f += max(0L, READ_ONCE(lrugen->nr_pages[gen][1][z]));
+				}
+				n += scnprintf(buf + n, PAGE_SIZE - n,
+					       "  gen %d: time_ms=%u anon=%lu file=%lu\n",
+					       gen, jiffies_to_msecs(jiffies - READ_ONCE(lrugen->timestamps[gen])),
+					       a, f);
+			}
+
+			if (n >= PAGE_SIZE - 256) {
+				mem_cgroup_iter_break(NULL, memcg);
+				break;
+			}
+		} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
+	}
+
+	return n;
+}
+static struct kobj_attribute stats_attr = __ATTR_RO(stats);
+
+static struct attribute *lru_gen_attrs[] = {
+	&enabled_attr.attr,
+	&min_ttl_ms_attr.attr,
+	&stats_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group lru_gen_attr_group = {
+	.name = "lru_gen",
+	.attrs = lru_gen_attrs,
+};
+
+static int __init init_lru_gen(void)
+{
+	int err;
+
+	err = sysfs_create_group(mm_kobj, &lru_gen_attr_group);
+	if (err) {
+		pr_err("lru_gen: failed to register sysfs\n");
+		return err;
+	}
+
+	if (IS_ENABLED(CONFIG_LRU_GEN_ENABLED))
+		lru_gen_change_state(BIT(NR_LRU_GEN_CAPS) - 1);
+
+	return 0;
+}
+late_initcall(init_lru_gen);
 #endif
 
 static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memcg,
@@ -3363,7 +3644,7 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	bool scan_adjusted;
 
 #ifdef CONFIG_LRU_GEN
-	if (lru_gen_enabled()) {
+	if (lru_gen_enabled() && READ_ONCE(lruvec->lrugen.enabled)) {
 		lru_gen_shrink_lruvec(lruvec, memcg, sc);
 		*lru_pages = lru_gen_lruvec_size(lruvec, sc->reclaim_idx);
 		return;

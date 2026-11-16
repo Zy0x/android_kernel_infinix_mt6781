@@ -9,6 +9,7 @@
 #include <linux/stddef.h>
 #include <linux/mm.h>
 #include <linux/mmzone.h>
+#include <linux/mm_inline.h>
 
 struct pglist_data *first_online_pgdat(void)
 {
@@ -94,7 +95,35 @@ void lruvec_init(struct lruvec *lruvec)
 
 	for_each_lru(lru)
 		INIT_LIST_HEAD(&lruvec->lists[lru]);
+
+	lru_gen_init_lruvec(lruvec);
 }
+
+#ifdef CONFIG_LRU_GEN
+void lru_gen_init_lruvec(struct lruvec *lruvec)
+{
+	int i;
+	int gen, type, zone;
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+
+	lrugen->max_seq = MIN_NR_GENS + 1;
+	lrugen->enabled = lru_gen_enabled();
+
+	for (i = 0; i < MAX_NR_GENS; i++)
+		lrugen->timestamps[i] = jiffies;
+
+	for_each_gen_type_zone(gen, type, zone)
+		INIT_LIST_HEAD(&lrugen->lists[gen][type][zone]);
+
+	init_waitqueue_head(&lruvec->mm_state.wait);
+}
+
+void lru_gen_init_pgdat(struct pglist_data *pgdat)
+{
+	INIT_LIST_HEAD(&pgdat->mm_list.fifo);
+	spin_lock_init(&pgdat->mm_list.lock);
+}
+#endif /* CONFIG_LRU_GEN */
 
 #if defined(CONFIG_NUMA_BALANCING) && !defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS)
 int page_cpupid_xchg_last(struct page *page, int cpupid)

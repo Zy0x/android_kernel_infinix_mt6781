@@ -791,6 +791,8 @@ int finish_mkwrite_fault(struct vm_fault *vmf);
 #define ZONES_PGOFF		(NODES_PGOFF - ZONES_WIDTH)
 #define LAST_CPUPID_PGOFF	(ZONES_PGOFF - LAST_CPUPID_WIDTH)
 #define KASAN_TAG_PGOFF		(LAST_CPUPID_PGOFF - KASAN_TAG_WIDTH)
+#define LRU_REFS_PGOFF		(KASAN_TAG_PGOFF - LRU_REFS_WIDTH)
+#define LRU_GEN_PGOFF		(LRU_REFS_PGOFF - LRU_GEN_WIDTH)
 
 /*
  * Define the bit shifts to access each section.  For non-existent
@@ -802,6 +804,8 @@ int finish_mkwrite_fault(struct vm_fault *vmf);
 #define ZONES_PGSHIFT		(ZONES_PGOFF * (ZONES_WIDTH != 0))
 #define LAST_CPUPID_PGSHIFT	(LAST_CPUPID_PGOFF * (LAST_CPUPID_WIDTH != 0))
 #define KASAN_TAG_PGSHIFT	(KASAN_TAG_PGOFF * (KASAN_TAG_WIDTH != 0))
+#define LRU_REFS_PGSHIFT	(LRU_REFS_PGOFF * (LRU_REFS_WIDTH != 0))
+#define LRU_GEN_PGSHIFT		(LRU_GEN_PGOFF * (LRU_GEN_WIDTH != 0))
 
 /* NODE:ZONE or SECTION:ZONE is used to ID a zone for the buddy allocator */
 #ifdef NODE_NOT_IN_PAGE_FLAGS
@@ -816,8 +820,8 @@ int finish_mkwrite_fault(struct vm_fault *vmf);
 
 #define ZONEID_PGSHIFT		(ZONEID_PGOFF * (ZONEID_SHIFT != 0))
 
-#if SECTIONS_WIDTH+NODES_WIDTH+ZONES_WIDTH > BITS_PER_LONG - NR_PAGEFLAGS
-#error SECTIONS_WIDTH+NODES_WIDTH+ZONES_WIDTH > BITS_PER_LONG - NR_PAGEFLAGS
+#if SECTIONS_WIDTH+NODES_WIDTH+ZONES_WIDTH+LRU_GEN_WIDTH+LRU_REFS_WIDTH > BITS_PER_LONG - NR_PAGEFLAGS
+#error SECTIONS_WIDTH+NODES_WIDTH+ZONES_WIDTH+LRU_GEN_WIDTH+LRU_REFS_WIDTH > BITS_PER_LONG - NR_PAGEFLAGS
 #endif
 
 #define ZONES_MASK		((1UL << ZONES_WIDTH) - 1)
@@ -826,6 +830,8 @@ int finish_mkwrite_fault(struct vm_fault *vmf);
 #define LAST_CPUPID_MASK	((1UL << LAST_CPUPID_SHIFT) - 1)
 #define KASAN_TAG_MASK		((1UL << KASAN_TAG_WIDTH) - 1)
 #define ZONEID_MASK		((1UL << ZONEID_SHIFT) - 1)
+#define LRU_REFS_MASK		((1UL << LRU_REFS_WIDTH) - 1)
+#define LRU_GEN_MASK		((1UL << LRU_GEN_WIDTH) - 1)
 
 static inline enum zone_type page_zonenum(const struct page *page)
 {

@@ -75,6 +75,10 @@
 #include <trace/hooks/vh_vmscan.h>
 
 
+#ifdef CONFIG_LRU_GEN
+DEFINE_STATIC_KEY_ARRAY_FALSE(lru_gen_caps, NR_LRU_GEN_CAPS);
+#endif
+
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
 	unsigned long nr_to_reclaim;

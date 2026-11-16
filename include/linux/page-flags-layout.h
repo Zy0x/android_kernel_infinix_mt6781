@@ -82,6 +82,18 @@
 #define LAST_CPUPID_WIDTH 0
 #endif
 
+#ifdef CONFIG_LRU_GEN
+/*
+ * LRU_GEN_WIDTH stores generation + 1 (0 when not in MGLRU, 1..4).
+ * LRU_REFS_WIDTH stores tier reference count (0..3).
+ */
+#define LRU_GEN_WIDTH		3
+#define LRU_REFS_WIDTH		2
+#else
+#define LRU_GEN_WIDTH		0
+#define LRU_REFS_WIDTH		0
+#endif
+
 #ifdef CONFIG_KASAN_SW_TAGS
 #define KASAN_TAG_WIDTH 8
 #if SECTIONS_WIDTH+NODES_WIDTH+ZONES_WIDTH+LAST_CPUPID_WIDTH+KASAN_TAG_WIDTH \

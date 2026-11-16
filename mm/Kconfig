@@ -851,6 +851,27 @@ source "mm/task_mem/Kconfig"
 source "mm/multi_kswapd/Kconfig"
 #endif /*OPLUS_FEATURE_MULTI_KSWAPD*/
 
+# Multi-Gen LRU (MGLRU)
+config LRU_GEN
+	bool "Multi-Gen LRU"
+	depends on MMU && 64BIT && SWAP
+	help
+	  A high performance LRU implementation that overhauls the classic
+	  active/inactive LRU to optimize page reclaim on heavy workloads.
+
+config LRU_GEN_ENABLED
+	bool "Enable by default"
+	depends on LRU_GEN
+	help
+	  This option enables the multi-gen LRU by default at boot time.
+
+config LRU_GEN_STATS
+	bool "Full stats for debugging"
+	depends on LRU_GEN
+	help
+	  Do not enable this option unless you plan to look at historical stats
+	  from debugfs for tuning or troubleshooting.
+
 #ifdef OPLUS_FEATURE_HEALTHINFO
 source "mm/healthinfo/Kconfig"
 #endif /*OPLUS_FEATURE_HEALTHINFO*/

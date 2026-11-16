@@ -4,6 +4,8 @@
 
 #include <linux/huge_mm.h>
 #include <linux/swap.h>
+#include <linux/jump_label.h>
+#include <linux/log2.h>
 
 /**
  * page_is_file_cache - should the page be on a file LRU or anon LRU?
@@ -44,9 +46,205 @@ static __always_inline void update_lru_size(struct lruvec *lruvec,
 #endif
 }
 
+#ifdef CONFIG_LRU_GEN
+
+extern struct static_key_false lru_gen_caps[NR_LRU_GEN_CAPS];
+
+static inline bool lru_gen_enabled(void)
+{
+	return static_branch_unlikely(&lru_gen_caps[LRU_GEN_CORE]);
+}
+
+static inline bool lru_gen_in_fault(void)
+{
+	return !(current->flags & PF_MEMALLOC);
+}
+
+static inline int lru_gen_from_seq(unsigned long seq)
+{
+	return seq % MAX_NR_GENS;
+}
+
+static inline bool lru_gen_is_active(struct lruvec *lruvec, int gen)
+{
+	unsigned long max_seq = lruvec->lrugen.max_seq;
+
+	VM_WARN_ON_ONCE(gen >= MAX_NR_GENS);
+
+	return gen == lru_gen_from_seq(max_seq) ||
+	       gen == lru_gen_from_seq(max_seq - 1);
+}
+
+static inline int page_lru_gen(struct page *page)
+{
+	unsigned long flags = READ_ONCE(page->flags);
+
+	return ((flags >> LRU_GEN_PGSHIFT) & LRU_GEN_MASK) - 1;
+}
+
+static inline int page_lru_refs(struct page *page)
+{
+	unsigned long flags = READ_ONCE(page->flags);
+	int raw = (flags >> LRU_REFS_PGSHIFT) & LRU_REFS_MASK;
+
+	/* tier 0 when !PageWorkingset, 1..4 when PageWorkingset */
+	return (flags & BIT(PG_workingset)) ? (raw + 1) : 0;
+}
+
+static inline int lru_tier_from_refs(int refs)
+{
+	return order_base_2(refs + 1);
+}
+
+static inline int lru_gen_page_weight(struct page *page)
+{
+	return lru_tier_from_refs(page_lru_refs(page));
+}
+
+static inline void lru_gen_update_size(struct lruvec *lruvec, struct page *page,
+				       int old_gen, int new_gen)
+{
+	int type = page_is_file_cache(page);
+	int zone = page_zonenum(page);
+	int delta = hpage_nr_pages(page);
+	enum lru_list lru = type * LRU_FILE;
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+
+	VM_WARN_ON_ONCE(old_gen != -1 && old_gen >= MAX_NR_GENS);
+	VM_WARN_ON_ONCE(new_gen != -1 && new_gen >= MAX_NR_GENS);
+	VM_WARN_ON_ONCE(old_gen == -1 && new_gen == -1);
+
+	if (old_gen >= 0)
+		WRITE_ONCE(lrugen->nr_pages[old_gen][type][zone],
+			   lrugen->nr_pages[old_gen][type][zone] - delta);
+	if (new_gen >= 0)
+		WRITE_ONCE(lrugen->nr_pages[new_gen][type][zone],
+			   lrugen->nr_pages[new_gen][type][zone] + delta);
+
+	if (old_gen < 0) {
+		if (lru_gen_is_active(lruvec, new_gen))
+			lru += LRU_ACTIVE;
+		update_lru_size(lruvec, lru, zone, delta);
+		return;
+	}
+
+	if (new_gen < 0) {
+		if (lru_gen_is_active(lruvec, old_gen))
+			lru += LRU_ACTIVE;
+		update_lru_size(lruvec, lru, zone, -delta);
+		return;
+	}
+
+	if (lru_gen_is_active(lruvec, old_gen) != lru_gen_is_active(lruvec, new_gen)) {
+		int adj = lru_gen_is_active(lruvec, new_gen) ? LRU_ACTIVE : 0;
+
+		update_lru_size(lruvec, lru + (adj ^ LRU_ACTIVE), zone, -delta);
+		update_lru_size(lruvec, lru + adj, zone, delta);
+	}
+}
+
+static inline bool lru_gen_add_page(struct lruvec *lruvec, struct page *page,
+				    bool reclaiming)
+{
+	int gen;
+	int type = page_is_file_cache(page);
+	int zone = page_zonenum(page);
+	unsigned long old_flags, new_flags;
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+
+	if (!lru_gen_enabled())
+		return false;
+
+	if (PageUnevictable(page))
+		return false;
+
+	if (PageActive(page) || (type && PageReferenced(page)) || lru_gen_in_fault())
+		gen = lru_gen_from_seq(lrugen->max_seq);
+	else if (reclaiming)
+		gen = lru_gen_from_seq(lrugen->min_seq[type] + 1);
+	else
+		gen = lru_gen_from_seq(lrugen->min_seq[type]);
+
+	if (PageActive(page))
+		__ClearPageActive(page);
+
+	do {
+		new_flags = old_flags = READ_ONCE(page->flags);
+		VM_BUG_ON_PAGE(new_flags & (LRU_GEN_MASK << LRU_GEN_PGSHIFT), page);
+		new_flags &= ~(LRU_GEN_MASK << LRU_GEN_PGSHIFT);
+		new_flags |= (unsigned long)(gen + 1) << LRU_GEN_PGSHIFT;
+	} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
+
+	lru_gen_update_size(lruvec, page, -1, gen);
+	if (reclaiming)
+		list_add_tail(&page->lru, &lrugen->lists[gen][type][zone]);
+	else
+		list_add(&page->lru, &lrugen->lists[gen][type][zone]);
+
+	return true;
+}
+
+static inline bool lru_gen_del_page(struct lruvec *lruvec, struct page *page,
+				    bool reclaiming)
+{
+	unsigned long old_flags, new_flags;
+	int gen;
+
+	if (!lru_gen_enabled())
+		return false;
+
+	do {
+		new_flags = old_flags = READ_ONCE(page->flags);
+		gen = ((new_flags >> LRU_GEN_PGSHIFT) & LRU_GEN_MASK) - 1;
+		if (gen < 0)
+			return false;
+
+		VM_BUG_ON_PAGE(PageActive(page), page);
+		VM_BUG_ON_PAGE(PageUnevictable(page), page);
+
+		new_flags &= ~(LRU_GEN_MASK << LRU_GEN_PGSHIFT);
+		if (!(new_flags & BIT(PG_workingset)) || !reclaiming)
+			new_flags &= ~(LRU_REFS_MASK << LRU_REFS_PGSHIFT);
+	} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
+
+	lru_gen_update_size(lruvec, page, gen, -1);
+	list_del(&page->lru);
+
+	return true;
+}
+
+#else /* !CONFIG_LRU_GEN */
+
+static inline bool lru_gen_enabled(void)
+{
+	return false;
+}
+
+static inline bool lru_gen_in_fault(void)
+{
+	return false;
+}
+
+static inline bool lru_gen_add_page(struct lruvec *lruvec, struct page *page,
+				    bool reclaiming)
+{
+	return false;
+}
+
+static inline bool lru_gen_del_page(struct lruvec *lruvec, struct page *page,
+				    bool reclaiming)
+{
+	return false;
+}
+
+#endif /* CONFIG_LRU_GEN */
+
 static __always_inline void add_page_to_lru_list(struct page *page,
 				struct lruvec *lruvec, enum lru_list lru)
 {
+	if (lru_gen_add_page(lruvec, page, false))
+		return;
+
 	update_lru_size(lruvec, lru, page_zonenum(page), hpage_nr_pages(page));
 	list_add(&page->lru, &lruvec->lists[lru]);
 }
@@ -54,6 +252,9 @@ static __always_inline void add_page_to_lru_list(struct page *page,
 static __always_inline void add_page_to_lru_list_tail(struct page *page,
 				struct lruvec *lruvec, enum lru_list lru)
 {
+	if (lru_gen_add_page(lruvec, page, true))
+		return;
+
 	update_lru_size(lruvec, lru, page_zonenum(page), hpage_nr_pages(page));
 	list_add_tail(&page->lru, &lruvec->lists[lru]);
 }
@@ -61,6 +262,9 @@ static __always_inline void add_page_to_lru_list_tail(struct page *page,
 static __always_inline void del_page_from_lru_list(struct page *page,
 				struct lruvec *lruvec, enum lru_list lru)
 {
+	if (lru_gen_del_page(lruvec, page, false))
+		return;
+
 	list_del(&page->lru);
 	update_lru_size(lruvec, lru, page_zonenum(page), -hpage_nr_pages(page));
 }

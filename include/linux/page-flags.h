@@ -742,12 +742,21 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
  * Flags checked when a page is freed.  Pages being freed should not have
  * these flags set.  It they are, there is a problem.
  */
+#ifdef CONFIG_LRU_GEN
+#define PAGE_FLAGS_LRU_GEN					\
+	((LRU_GEN_MASK << LRU_GEN_PGSHIFT) |			\
+	 (LRU_REFS_MASK << LRU_REFS_PGSHIFT))
+#else
+#define PAGE_FLAGS_LRU_GEN	0
+#endif
+
 #define PAGE_FLAGS_CHECK_AT_FREE				\
 	(1UL << PG_lru		| 1UL << PG_locked	|	\
 	 1UL << PG_private	| 1UL << PG_private_2	|	\
 	 1UL << PG_writeback	| 1UL << PG_reserved	|	\
 	 1UL << PG_slab		| 1UL << PG_active 	|	\
-	 1UL << PG_unevictable	| __PG_MLOCKED)
+	 1UL << PG_unevictable	| __PG_MLOCKED |		\
+	 PAGE_FLAGS_LRU_GEN)
 
 /*
  * Flags checked when a page is prepped for return by the page allocator.
@@ -758,7 +767,7 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
  * alloc-free cycle to prevent from reusing the page.
  */
 #define PAGE_FLAGS_CHECK_AT_PREP	\
-	(((1UL << NR_PAGEFLAGS) - 1) & ~__PG_HWPOISON)
+	((((1UL << NR_PAGEFLAGS) - 1) & ~__PG_HWPOISON) | PAGE_FLAGS_LRU_GEN)
 
 #define PAGE_FLAGS_PRIVATE				\
 	(1UL << PG_private | 1UL << PG_private_2)

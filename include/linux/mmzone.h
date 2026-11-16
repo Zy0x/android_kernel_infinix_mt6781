@@ -235,6 +235,73 @@ static inline int is_active_lru(enum lru_list lru)
 	return (lru == LRU_ACTIVE_ANON || lru == LRU_ACTIVE_FILE);
 }
 
+#ifdef CONFIG_LRU_GEN
+
+#define MIN_NR_GENS		2U
+#define MAX_NR_GENS		4U
+#define NR_HIST_GENS		4U
+#define MAX_NR_TIERS		4U
+#define ANON_AND_FILE		2U
+
+#define MIN_LRU_BATCH		BITS_PER_LONG
+#define MAX_LRU_BATCH		(MIN_LRU_BATCH * 64)
+
+#define NR_BLOOM_FILTERS	2
+
+enum {
+	LRU_GEN_CORE,
+	LRU_GEN_MM_WALK,
+	LRU_GEN_NONLEAF_YOUNG,
+	NR_LRU_GEN_CAPS
+};
+
+#define for_each_gen_type_zone(gen, type, zone)			\
+	for ((gen) = 0; (gen) < MAX_NR_GENS; (gen)++)		\
+		for ((type) = 0; (type) < ANON_AND_FILE; (type)++)\
+			for ((zone) = 0; (zone) < MAX_NR_ZONES; (zone)++)
+
+struct lru_gen_struct {
+	/* the aging increments the youngest generation number */
+	unsigned long max_seq;
+	/* the eviction increments the oldest generation numbers */
+	unsigned long min_seq[ANON_AND_FILE];
+	/* the birth time of each generation in jiffies */
+	unsigned long timestamps[MAX_NR_GENS];
+	/* the multi-gen LRU lists, lazily sorted on eviction */
+	struct list_head lists[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
+	/* the multi-gen LRU sizes, eventually consistent */
+	long nr_pages[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
+	/* the exponential moving average of refaulted */
+	unsigned long avg_refaulted[ANON_AND_FILE][MAX_NR_TIERS];
+	/* the exponential moving average of evicted+protected */
+	unsigned long avg_total[ANON_AND_FILE][MAX_NR_TIERS];
+	/* the first tier doesn't need protection, hence the minus one */
+	unsigned long protected[NR_HIST_GENS][ANON_AND_FILE][MAX_NR_TIERS - 1];
+	/* the total pages evicted in recent generations */
+	unsigned long evicted[NR_HIST_GENS][ANON_AND_FILE][MAX_NR_TIERS];
+	unsigned long refaulted[NR_HIST_GENS][ANON_AND_FILE][MAX_NR_TIERS];
+	/* whether the multi-gen LRU is enabled for this lruvec */
+	bool enabled;
+	/* whether swap is viable for this lruvec */
+	bool can_swap;
+};
+
+struct lru_gen_mm_state {
+	unsigned long seq;
+	struct list_head *head;
+	struct list_head *tail;
+	struct wait_queue_head wait;
+	unsigned long *filters[NR_BLOOM_FILTERS];
+	int nr_waiters;
+};
+
+struct lru_gen_mm_list {
+	struct list_head fifo;
+	spinlock_t lock;
+};
+
+#endif /* CONFIG_LRU_GEN */
+
 struct zone_reclaim_stat {
 	/*
 	 * The pageout code in vmscan.c keeps track of how many of the
@@ -255,6 +322,12 @@ struct lruvec {
 	atomic_long_t			inactive_age;
 	/* Refaults at the time of last reclaim cycle */
 	unsigned long			refaults;
+#ifdef CONFIG_LRU_GEN
+	/* evictable pages divided into generations */
+	struct lru_gen_struct		lrugen;
+	/* concurrent mm_struct walker state */
+	struct lru_gen_mm_state		mm_state;
+#endif
 #ifdef CONFIG_MEMCG
 	struct pglist_data *pgdat;
 #endif
@@ -746,6 +819,10 @@ typedef struct pglist_data {
 
 	/* Fields commonly accessed by the page reclaim scanner */
 	struct lruvec		lruvec;
+#ifdef CONFIG_LRU_GEN
+	/* active mm_struct list for forward aging scans */
+	struct lru_gen_mm_list	mm_list;
+#endif
 
 	/*
 	 * The target ratio of ACTIVE_ANON to INACTIVE_ANON pages on
@@ -832,6 +909,13 @@ extern void init_currently_empty_zone(struct zone *zone, unsigned long start_pfn
 				     unsigned long size);
 
 extern void lruvec_init(struct lruvec *lruvec);
+#ifdef CONFIG_LRU_GEN
+extern void lru_gen_init_lruvec(struct lruvec *lruvec);
+extern void lru_gen_init_pgdat(struct pglist_data *pgdat);
+#else
+static inline void lru_gen_init_lruvec(struct lruvec *lruvec) {}
+static inline void lru_gen_init_pgdat(struct pglist_data *pgdat) {}
+#endif
 
 static inline struct pglist_data *lruvec_pgdat(struct lruvec *lruvec)
 {

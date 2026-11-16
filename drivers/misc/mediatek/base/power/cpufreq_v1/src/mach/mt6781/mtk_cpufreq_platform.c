@@ -746,7 +746,6 @@ int mt_cpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
 	unsigned int dds, pll, con0_b, con1_b, ckdiv_b, fh_hp_b = 0, fh_cfg_b = 0;
 	unsigned int con0_a, con1_a, ckdiv_a, fh_hp_a = 0, fh_cfg_a = 0, fh_mon_a = 0;
 	unsigned int ab20_b, ab20_a, ab20_50, con1_50, ab22_a;
-	unsigned long flags;
 
 	if (apmixed_base == 0x1000c000UL || mcucfg_base == 0x0c530000UL)
 		return scnprintf(buf, sz, "cpu_probe_err unmapped\n");
@@ -769,33 +768,6 @@ int mt_cpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
 		mt_dfs_armpll(FH_PLL1, dds);
 		udelay(50);
 #endif
-	} else if (mode == 1) {
-		local_irq_save(flags);
-		if (fh) {
-			writel(fh_hp_b & ~(1U << 1), fh + 0x0000);
-			writel(0, fh + 0x004c);
-			wmb();
-		}
-		cpufreq_write_mask(CKDIV1_L_CFG, 10:9, TOP_CKMUXSEL_MAINPLL);
-		udelay(2);
-		cpufreq_write(ARMPLL_L_CON1, pll & ~0x80000000U);
-		udelay(1);
-		cpufreq_write(ARMPLL_L_CON1, pll);
-		udelay(30);
-		cpufreq_write_mask(CKDIV1_L_CFG, 10:9, TOP_CKMUXSEL_ARMPLL);
-		local_irq_restore(flags);
-	} else if (mode == 2) {
-		local_irq_save(flags);
-		if (fh) {
-			writel(fh_hp_b & ~(1U << 1), fh + 0x0000);
-			writel(0, fh + 0x004c);
-			wmb();
-		}
-		cpufreq_write(ARMPLL_L_CON1, pll & ~0x80000000U);
-		udelay(1);
-		cpufreq_write(ARMPLL_L_CON1, pll);
-		udelay(30);
-		local_irq_restore(flags);
 	} else if (mode == 3 && fh) {
 		writel(fh_hp_b | (1U << 1), fh + 0x0000);
 	}

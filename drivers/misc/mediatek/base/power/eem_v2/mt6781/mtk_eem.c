@@ -1642,43 +1642,53 @@ static void get_volt_table_in_thread(struct eem_det *det)
 
 		switch (ndet->ctrl_id) {
 		case EEM_CTRL_L:
+			ndet->volt_tbl_pmic[i] = min(
+			(unsigned int)(clamp(
+			ndet->ops->eem_2_pmic(ndet,
+			(ndet->volt_tbl[i] + ndet->volt_offset +
+			low_temp_offset + ndet->volt_aging[i]) +
+			rm_dvtfix_offset),
+			ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
+			ndet->ops->eem_2_pmic(ndet, ndet->VMAX))),
+			ndet->volt_tbl_orig[i] + ndet->volt_clamp);
+			break;
+
 		case EEM_CTRL_B:
-		case EEM_CTRL_CCI:
-		{
-			enum mt_cpu_dvfs_id cpuid =
-				(ndet->ctrl_id == EEM_CTRL_L) ? MT_CPU_DVFS_LL :
-				(ndet->ctrl_id == EEM_CTRL_B) ? MT_CPU_DVFS_L :
-				MT_CPU_DVFS_CCI;
-			unsigned int opp_khz = mt_cpufreq_get_freq_by_idx(cpuid, i);
-			int oc_delta = 0;
-			int eff_clamp = ndet->volt_clamp;
-
-			if (ndet->ctrl_id == EEM_CTRL_B) {
-				if (opp_khz > 2185000)
-					oc_delta = 10;
-				else if (opp_khz > 2110000)
-					oc_delta = 7;
-				else if (opp_khz > 2050000)
-					oc_delta = 4;
-			} else if (ndet->ctrl_id == EEM_CTRL_L && opp_khz > 2000000) {
-				oc_delta = 4;
-			} else if (ndet->ctrl_id == EEM_CTRL_CCI && opp_khz > 1400000) {
-				oc_delta = 4;
-			}
-			if (ndet->volt_offset > 0 && eff_clamp < ndet->volt_offset)
-				eff_clamp = ndet->volt_offset;
-
 			ndet->volt_tbl_pmic[i] = min(
 			(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
 				(ndet->volt_tbl[i] + ndet->volt_offset +
-				oc_delta + low_temp_offset +
-				ndet->volt_aging[i]) + rm_dvtfix_offset),
+				low_temp_offset + ndet->volt_aging[i]) +
+				rm_dvtfix_offset),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMAX))),
-				ndet->volt_tbl_orig[i] + eff_clamp);
+				ndet->volt_tbl_orig[i] + ndet->volt_clamp);
+
+			/*
+			 *  if (eem_log_en)
+			 *	eem_debug("L->hw_v[%d]=0x%X,V(%d)L(%d)
+			 *		volt_tbl_pmic[%d]=0x%X (%d)\n",
+			 *		i, det->volt_tbl[i],
+			 *		det->volt_offset, low_temp_offset,
+			 *		i, det->volt_tbl_pmic[i],
+			 *		det->ops->pmic_2_volt(det,
+			 *		det->volt_tbl_pmic[i]));
+			 *
+			 */
+
 			break;
-		}
+
+		case EEM_CTRL_CCI:
+			ndet->volt_tbl_pmic[i] = min(
+			(unsigned int)(clamp(
+				ndet->ops->eem_2_pmic(ndet,
+				(ndet->volt_tbl[i] + ndet->volt_offset +
+				low_temp_offset + ndet->volt_aging[i]) +
+				rm_dvtfix_offset),
+				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
+				ndet->ops->eem_2_pmic(ndet, ndet->VMAX))),
+				ndet->volt_tbl_orig[i] + ndet->volt_clamp);
+			break;
 		case EEM_CTRL_GPU:
 #if SUPPORT_GPU_VB
 			if ((i == 0) && (gpu_vb_turn_pt != 0))

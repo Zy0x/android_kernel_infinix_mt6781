@@ -2551,8 +2551,8 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 	/* force parking if FHCTL not ready */
 	parking = true;
 #else
-	if (posdiv_power != real_posdiv_power || freq_new > 950000 ||
-	    g_cur_opp_freq > 950000)
+	if (posdiv_power != real_posdiv_power || freq_new > 1002000 ||
+	    g_cur_opp_freq > 1002000)
 		parking = true;
 	else
 		parking = false;
@@ -2566,6 +2566,8 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 		 * MFGPLL_CON1[26:24] = MFGPLL_POSDIV
 		 * MFGPLL_CON1[21:0]  = MFGPLL_SDM_PCW (dds)
 		 */
+		DRV_WriteReg32(MFGPLL_CON1, pll & ~0x80000000U);
+		udelay(1);
 		DRV_WriteReg32(MFGPLL_CON1, pll);
 		udelay(20);
 		/* mainpll_d5(218.4MHz) to mfgpll_ck */
@@ -2591,7 +2593,7 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 			pll);
 	}
 
-	if (freq_new > 950000) {
+	if (freq_new > 1002000) {
 		gpufreq_pr_info(
 			"@%s: req=%u posdiv=%d->%d park=%d dds=0x%x pll=0x%08x reg=0x%08x con0=0x%08x\n",
 			__func__, freq_new, real_posdiv_power, posdiv_power,
@@ -3594,6 +3596,104 @@ unsigned int mt_gpufreq_lynx_get_oc_khz(void)
 	return g_lynx_oc_max_khz;
 }
 EXPORT_SYMBOL(mt_gpufreq_lynx_get_oc_khz);
+
+int mt_gpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
+{
+	void __iomem *fh = NULL;
+	enum g_posdiv_power_enum posdiv_power;
+	unsigned int dds, pll, con0_b, con1_b, fh_hp_b = 0, fh_cfg_b = 0;
+	unsigned int con0_a, con1_a, fh_hp_a = 0, fh_cfg_a = 0, fh_mon_a = 0;
+	unsigned int ab25_b, ab25_a, ab26_a, cur_a;
+	int ret = 0;
+
+	mutex_lock(&mt_gpufreq_lock);
+	if (!g_probe_done || !g_apmixed_base || !g_buck_on) {
+		ret = scnprintf(buf, sz, "gpu_probe_err probe=%d apm=%d buck=%d\n",
+				g_probe_done, g_apmixed_base != NULL, g_buck_on);
+		mutex_unlock(&mt_gpufreq_lock);
+		return ret;
+	}
+
+	fh = ioremap(0x1000ce00, 0x200);
+	con0_b = DRV_Reg32(MFGPLL_CON0);
+	con1_b = DRV_Reg32(MFGPLL_CON1);
+	ab25_b = mt_get_abist_freq(25);
+	if (fh) {
+		fh_hp_b = DRV_Reg32(fh + 0x0000);
+		fh_cfg_b = DRV_Reg32(fh + 0x0088);
+	}
+
+	if (mode == 4)
+		posdiv_power = POSDIV_POWER_4;
+	else if (mode == 3)
+		posdiv_power = POSDIV_POWER_4;
+	else
+		posdiv_power = (khz > POSDIV_4_MAX_FREQ) ? POSDIV_POWER_2 : POSDIV_POWER_4;
+
+	dds = __mt_gpufreq_calculate_dds(khz, posdiv_power);
+	pll = 0x80000000U | (posdiv_power << POSDIV_SHIFT) | dds;
+
+	if (mode == 1 || mode == 4) {
+		if (fh) {
+			DRV_WriteReg32(fh + 0x0000, fh_hp_b & ~(1U << 4));
+			DRV_WriteReg32(fh + 0x0088, 0);
+			wmb();
+		}
+		__mt_gpufreq_switch_to_clksrc(CLOCK_SUB);
+		DRV_WriteReg32(MFGPLL_CON1, pll & ~0x80000000U);
+		udelay(2);
+		DRV_WriteReg32(MFGPLL_CON1, pll);
+		udelay(30);
+		__mt_gpufreq_switch_to_clksrc(CLOCK_MAIN);
+	} else if (mode == 2) {
+		if (fh) {
+			DRV_WriteReg32(fh + 0x0000, fh_hp_b & ~(1U << 4));
+			DRV_WriteReg32(fh + 0x0088, 0);
+			wmb();
+		}
+		__mt_gpufreq_switch_to_clksrc(CLOCK_SUB);
+		DRV_WriteReg32(MFGPLL_CON0, con0_b & ~1U);
+		udelay(2);
+		DRV_WriteReg32(MFGPLL_CON1, pll & ~0x80000000U);
+		udelay(1);
+		DRV_WriteReg32(MFGPLL_CON1, pll);
+		udelay(2);
+		DRV_WriteReg32(MFGPLL_CON0, con0_b | 1U);
+		udelay(30);
+		__mt_gpufreq_switch_to_clksrc(CLOCK_MAIN);
+	} else if (mode == 3) {
+#ifdef CONFIG_MTK_FREQ_HOPPING
+		mt_dfs_general_pll(MFGPLL_FH_PLL, dds);
+		udelay(50);
+#endif
+	} else if (mode == 0 && fh) {
+		DRV_WriteReg32(fh + 0x0000, fh_hp_b | (1U << 4));
+	}
+
+	con0_a = DRV_Reg32(MFGPLL_CON0);
+	con1_a = DRV_Reg32(MFGPLL_CON1);
+	ab25_a = mt_get_abist_freq(25);
+	ab26_a = mt_get_abist_freq(FM_AD_MFGPLL_CK);
+	cur_a = __mt_gpufreq_get_cur_freq();
+	if (fh) {
+		fh_hp_a = DRV_Reg32(fh + 0x0000);
+		fh_cfg_a = DRV_Reg32(fh + 0x0088);
+		fh_mon_a = DRV_Reg32(fh + 0x0098);
+		iounmap(fh);
+	}
+
+	ret = scnprintf(buf, sz,
+		"gpu req=%u mode=%d posdiv=%d dds=0x%x pll=0x%08x "
+		"con0=0x%08x->0x%08x con1=0x%08x->0x%08x "
+		"ab25=%u->%u ab26=%u cur=%u fhhp=0x%x->0x%x fhcfg=0x%x->0x%x fhmon=0x%08x\n",
+		khz, mode, posdiv_power, dds, pll,
+		con0_b, con0_a, con1_b, con1_a,
+		ab25_b, ab25_a, ab26_a, cur_a,
+		fh_hp_b, fh_hp_a, fh_cfg_b, fh_cfg_a, fh_mon_a);
+	mutex_unlock(&mt_gpufreq_lock);
+	return ret;
+}
+EXPORT_SYMBOL(mt_gpufreq_lynx_probe_pll);
 
 static int __mt_gpufreq_pdrv_probe(struct platform_device *pdev)
 {

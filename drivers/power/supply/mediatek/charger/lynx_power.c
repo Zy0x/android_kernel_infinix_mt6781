@@ -337,6 +337,66 @@ __weak void lynx_sync_sspm_thermal_throttle(bool disable)
 {
 }
 
+__weak int mt_gpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
+{
+	return scnprintf(buf, sz, "gpu_probe_weak\n");
+}
+
+__weak int mt_cpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
+{
+	return scnprintf(buf, sz, "cpu_probe_weak\n");
+}
+
+static char lynx_pll_probe_buf[512] = "ready\n";
+
+static int lynx_pll_probe_show(struct seq_file *m, void *v)
+{
+	seq_puts(m, lynx_pll_probe_buf);
+	return 0;
+}
+
+static int lynx_pll_probe_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, lynx_pll_probe_show, NULL);
+}
+
+static ssize_t lynx_pll_probe_write(struct file *file, const char __user *buf,
+				    size_t count, loff_t *ppos)
+{
+	char kbuf[64], target[16];
+	unsigned int khz = 0;
+	int mode = 0;
+	size_t len = min(count, sizeof(kbuf) - 1);
+
+	if (copy_from_user(kbuf, buf, len))
+		return -EFAULT;
+	kbuf[len] = '\0';
+
+	if (sscanf(kbuf, "%15s %u %d", target, &khz, &mode) == 3) {
+		if (!strcmp(target, "gpu"))
+			mt_gpufreq_lynx_probe_pll(khz, mode, lynx_pll_probe_buf,
+						  sizeof(lynx_pll_probe_buf));
+		else if (!strcmp(target, "cpu"))
+			mt_cpufreq_lynx_probe_pll(khz, mode, lynx_pll_probe_buf,
+						  sizeof(lynx_pll_probe_buf));
+		else
+			scnprintf(lynx_pll_probe_buf, sizeof(lynx_pll_probe_buf),
+				  "usage: gpu|cpu <khz> <mode>\n");
+	} else {
+		scnprintf(lynx_pll_probe_buf, sizeof(lynx_pll_probe_buf),
+			  "usage: gpu|cpu <khz> <mode>\n");
+	}
+	return count;
+}
+
+static const struct file_operations lynx_pll_probe_fops = {
+	.open = lynx_pll_probe_open,
+	.read = seq_read,
+	.write = lynx_pll_probe_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 /* 6. Status proc interface */
 static const char *lynx_chr_type_str(int type)
 {
@@ -458,6 +518,7 @@ static int __init lynx_power_init(void)
 	proc_create("thermal_silencer", 0666, lynx_proc_dir, &lynx_thermal_silencer_fops);
 	proc_create("gpu_max_khz", 0664, lynx_proc_dir, &lynx_gpu_max_khz_fops);
 	proc_create("status", 0444, lynx_proc_dir, &lynx_status_fops);
+	proc_create("pll_probe", 0664, lynx_proc_dir, &lynx_pll_probe_fops);
 
 	pr_info("LYNX_POWER: Native kernel power management initialized successfully (/proc/lynx/*)\n");
 	return 0;

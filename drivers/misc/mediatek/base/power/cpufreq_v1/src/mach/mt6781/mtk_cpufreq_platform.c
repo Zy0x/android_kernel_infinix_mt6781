@@ -15,6 +15,8 @@
 #include <linux/of_address.h>
 #include <linux/regulator/consumer.h>
 #include <linux/kernel.h>
+#include <linux/delay.h>
+#include <linux/io.h>
 #include <mt-plat/mtk_devinfo.h>
 
 #ifdef CONFIG_MTK_FREQ_HOPPING
@@ -735,3 +737,92 @@ void cpufreq_get_imax_reg(unsigned int *imax_addr, unsigned int *reg_val)
 		reg_val[i] = cpufreq_read(mcucfg_base + imax_reg_addr[i]);
 }
 #endif
+
+extern unsigned int mt_get_abist_freq(unsigned int ID);
+
+int mt_cpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
+{
+	void __iomem *fh = NULL;
+	unsigned int dds, pll, con0_b, con1_b, ckdiv_b, fh_hp_b = 0, fh_cfg_b = 0;
+	unsigned int con0_a, con1_a, ckdiv_a, fh_hp_a = 0, fh_cfg_a = 0, fh_mon_a = 0;
+	unsigned int ab20_b, ab20_a, ab20_50, con1_50, ab22_a;
+	unsigned long flags;
+
+	if (apmixed_base == 0x1000c000UL || mcucfg_base == 0x0c530000UL)
+		return scnprintf(buf, sz, "cpu_probe_err unmapped\n");
+
+	dds = _GET_BITS_VAL_(21:0, _cpu_dds_calc(khz));
+	pll = 0x80000000U | dds; /* posdiv = 0 (/1) */
+
+	fh = ioremap(0x1000ce00, 0x200);
+	con0_b = cpufreq_read(apmixed_base + 0x210);
+	con1_b = cpufreq_read(ARMPLL_L_CON1);
+	ckdiv_b = cpufreq_read(CKDIV1_L_CFG);
+	ab20_b = mt_get_abist_freq(20);
+	if (fh) {
+		fh_hp_b = readl(fh + 0x0000);
+		fh_cfg_b = readl(fh + 0x004c);
+	}
+
+	if (mode == 0) {
+#ifdef CONFIG_MTK_FREQ_HOPPING
+		mt_dfs_armpll(FH_PLL1, dds);
+		udelay(50);
+#endif
+	} else if (mode == 1) {
+		local_irq_save(flags);
+		if (fh) {
+			writel(fh_hp_b & ~(1U << 1), fh + 0x0000);
+			writel(0, fh + 0x004c);
+			wmb();
+		}
+		cpufreq_write_mask(CKDIV1_L_CFG, 10:9, TOP_CKMUXSEL_MAINPLL);
+		udelay(2);
+		cpufreq_write(ARMPLL_L_CON1, pll & ~0x80000000U);
+		udelay(1);
+		cpufreq_write(ARMPLL_L_CON1, pll);
+		udelay(30);
+		cpufreq_write_mask(CKDIV1_L_CFG, 10:9, TOP_CKMUXSEL_ARMPLL);
+		local_irq_restore(flags);
+	} else if (mode == 2) {
+		local_irq_save(flags);
+		if (fh) {
+			writel(fh_hp_b & ~(1U << 1), fh + 0x0000);
+			writel(0, fh + 0x004c);
+			wmb();
+		}
+		cpufreq_write(ARMPLL_L_CON1, pll & ~0x80000000U);
+		udelay(1);
+		cpufreq_write(ARMPLL_L_CON1, pll);
+		udelay(30);
+		local_irq_restore(flags);
+	} else if (mode == 3 && fh) {
+		writel(fh_hp_b | (1U << 1), fh + 0x0000);
+	}
+
+	con0_a = cpufreq_read(apmixed_base + 0x210);
+	con1_a = cpufreq_read(ARMPLL_L_CON1);
+	ckdiv_a = cpufreq_read(CKDIV1_L_CFG);
+	ab20_a = mt_get_abist_freq(20);
+	ab22_a = mt_get_abist_freq(22);
+	if (fh) {
+		fh_hp_a = readl(fh + 0x0000);
+		fh_cfg_a = readl(fh + 0x004c);
+		fh_mon_a = readl(fh + 0x005c);
+		iounmap(fh);
+	}
+
+	msleep(50);
+	ab20_50 = mt_get_abist_freq(20);
+	con1_50 = cpufreq_read(ARMPLL_L_CON1);
+
+	return scnprintf(buf, sz,
+		"cpu req=%u mode=%d dds=0x%x pll=0x%08x "
+		"con0=0x%08x->0x%08x con1=0x%08x->0x%08x->0x%08x ckdiv=0x%08x->0x%08x "
+		"ab20=%u->%u->%u ab22=%u fhhp=0x%x->0x%x fhcfg=0x%x->0x%x fhmon=0x%08x\n",
+		khz, mode, dds, pll,
+		con0_b, con0_a, con1_b, con1_a, con1_50, ckdiv_b, ckdiv_a,
+		ab20_b, ab20_a, ab20_50, ab22_a,
+		fh_hp_b, fh_hp_a, fh_cfg_b, fh_cfg_a, fh_mon_a);
+}
+EXPORT_SYMBOL(mt_cpufreq_lynx_probe_pll);

@@ -280,6 +280,8 @@ static uint8_t *apucCr4FwName[] = {
 /*----------------------------------------------------------------------------*/
 void tracing_mark_write(const char *fmt, ...)
 {
+	/* Debloated: no ftrace overhead during wifi TX/RX */
+	return;
 #define __BUFFER_SIZE 1024
 	va_list ap;
 	char buf[__BUFFER_SIZE];

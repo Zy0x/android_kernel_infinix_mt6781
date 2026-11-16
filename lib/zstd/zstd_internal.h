@@ -126,11 +126,46 @@ static const U32 OF_defaultNormLog = OF_DEFAULTNORMLOG;
 /*-*******************************************
 *  Shared functions to include for inlining
 *********************************************/
+#if defined(__aarch64__)
+static FORCE_INLINE void ZSTD_copy16(void *dst, const void *src)
+{
+	uint64_t a, b;
+
+	asm volatile(
+		"ldp %0, %1, [%2]\n\t"
+		"stp %0, %1, [%3]\n\t"
+		: "=&r" (a), "=&r" (b)
+		: "r" (src), "r" (dst)
+		: "memory"
+	);
+}
+
+static FORCE_INLINE void ZSTD_copy32(void *dst, const void *src)
+{
+	uint64_t a, b, c, d;
+
+	asm volatile(
+		"ldp %0, %1, [%4]\n\t"
+		"ldp %2, %3, [%4, #16]\n\t"
+		"stp %0, %1, [%5]\n\t"
+		"stp %2, %3, [%5, #16]\n\t"
+		: "=&r" (a), "=&r" (b), "=&r" (c), "=&r" (d)
+		: "r" (src), "r" (dst)
+		: "memory"
+	);
+}
+#endif
+
 ZSTD_STATIC void ZSTD_copy8(void *dst, const void *src) {
+#if defined(__aarch64__)
+	*(U64 *)dst = *(const U64 *)src;
+#else
 	memcpy(dst, src, 8);
+#endif
 }
 /*! ZSTD_wildcopy() :
-*   custom version of memcpy(), can copy up to 7 bytes too many (8 bytes if length==0) */
+*   custom version of memcpy(), can copy up to 7 bytes too many (8 bytes if length==0).
+*   On ARM64, accelerated with 32-byte and 16-byte dual LDP/STP vector copies. */
 #define WILDCOPY_OVERLENGTH 8
 ZSTD_STATIC void ZSTD_wildcopy(void *dst, const void *src, ptrdiff_t length)
 {
@@ -144,6 +179,19 @@ ZSTD_STATIC void ZSTD_wildcopy(void *dst, const void *src, ptrdiff_t length)
 	 */
 	if (length <= 8)
 		return ZSTD_copy8(dst, src);
+
+#if defined(__aarch64__)
+	while (op < oend - 24) {
+		ZSTD_copy32(op, ip);
+		op += 32;
+		ip += 32;
+	}
+	while (op < oend - 8) {
+		ZSTD_copy16(op, ip);
+		op += 16;
+		ip += 16;
+	}
+#endif
 	do {
 		ZSTD_copy8(op, ip);
 		op += 8;

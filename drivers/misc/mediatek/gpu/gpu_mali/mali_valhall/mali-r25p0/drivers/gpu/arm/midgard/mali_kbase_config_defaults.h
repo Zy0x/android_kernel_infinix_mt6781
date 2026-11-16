@@ -100,7 +100,7 @@ enum {
  * -# Power off one or more shader cores
  * -# Power off the entire GPU
  */
-#define DEFAULT_PM_GPU_POWEROFF_TICK_NS (400000) /* 400us */
+#define DEFAULT_PM_GPU_POWEROFF_TICK_NS (1000000) /* 1000us (25ms shader window) */
 
 /**
  * Power Manager number of ticks before shader cores are powered off

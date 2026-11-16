@@ -3836,15 +3836,19 @@ static int krtatm_thread(void *arg)
 #endif
 			);
 
-			/* To confirm if krtatm kthread is really running. */
-			if (krtatm_curr_maxtj >= 100000 ||
-			(krtatm_curr_maxtj - krtatm_prev_maxtj >= 20000)) {
-				tscpu_warn("%s c %d p %d cl %d gl %d s %d\n",
-				__func__, krtatm_curr_maxtj,
-				krtatm_prev_maxtj,
-				adaptive_cpu_power_limit,
-				adaptive_gpu_power_limit,
-				cl_dev_adp_cpu_state_active);
+			/* To confirm if krtatm kthread is really running (ratelimited). */
+			{
+				static DEFINE_RATELIMIT_STATE(krtatm_warn_rs, 5 * HZ, 1);
+
+				if ((krtatm_curr_maxtj >= 100000 ||
+				(krtatm_curr_maxtj - krtatm_prev_maxtj >= 20000)) &&
+				__ratelimit(&krtatm_warn_rs)) {
+					tscpu_warn("%s c %d p %d cl %d gl %d s %d\n",
+					__func__, krtatm_curr_maxtj,
+					krtatm_prev_maxtj,
+					adaptive_cpu_power_limit,
+					adaptive_gpu_power_limit,
+					cl_dev_adp_cpu_state_active);
 				/* dump more info when atm is deactivated */
 				if (!cl_dev_adp_cpu_state_active) {
 #ifdef CONFIG_MTK_TINYSYS_SSPM_SUPPORT
@@ -3869,6 +3873,7 @@ static int krtatm_thread(void *arg)
 					TARGET_TJS[0], TARGET_TJ,
 					current_ETJ, ctm_on);
 #endif
+				}
 				}
 			}
 

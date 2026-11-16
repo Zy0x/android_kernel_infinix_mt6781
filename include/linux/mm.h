@@ -2436,7 +2436,7 @@ void task_dirty_inc(struct task_struct *tsk);
 
 /* readahead.c */
 #ifndef OPLUS_FEATURE_CHG_BASIC
-#define VM_MAX_READAHEAD	128	/* kbytes */
+#define VM_MAX_READAHEAD	512	/* kbytes */
 #else
 #define VM_MAX_READAHEAD	512	/* kbytes */
 #endif

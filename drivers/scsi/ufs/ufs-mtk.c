@@ -1268,8 +1268,8 @@ static int ufs_mtk_post_link(struct ufs_hba *hba)
 			ah_ms = FIELD_GET(UFSHCI_AHIBERN8_TIMER_MASK,
 					  hba->ahit);
 		else
-			ah_ms = 10;
-		hba->clk_gating.delay_ms = ah_ms + 5;
+			ah_ms = 50;
+		hba->clk_gating.delay_ms = ah_ms + 10;
 	} else
 		hba->clk_gating.delay_ms = 0;
 
@@ -1523,6 +1523,9 @@ void ufs_mtk_parse_auto_hibern8_timer(struct ufs_hba *hba)
 			&ah_ms))
 			ah_ms = 0;
 	}
+
+	if (ah_ms && ah_ms < 50)
+		ah_ms = 50;
 
 	dev_info(hba->dev, "auto-hibern8 timer %d ms\n", ah_ms);
 

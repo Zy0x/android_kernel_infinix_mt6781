@@ -664,6 +664,11 @@ asmlinkage long compat_sys_rt_sigqueueinfo(compat_pid_t pid, int sig,
 asmlinkage long compat_sys_sysinfo(struct compat_sysinfo __user *info);
 asmlinkage long compat_sys_ioctl(unsigned int fd, unsigned int cmd,
 				 compat_ulong_t arg);
+struct futex_waitv;
+asmlinkage long compat_sys_futex_waitv(struct futex_waitv __user *waiters,
+				       unsigned int nr_futexes, unsigned int flags,
+				       struct compat_timespec __user *timeout, clockid_t clockid);
+
 asmlinkage long compat_sys_futex(u32 __user *uaddr, int op, u32 val,
 		struct compat_timespec __user *utime, u32 __user *uaddr2,
 		u32 val3);

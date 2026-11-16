@@ -821,6 +821,8 @@ __SYSCALL(__NR_statx, sys_statx)
 __SYSCALL(__NR_pidfd_send_signal, sys_pidfd_send_signal)
 #define __NR_pidfd_open 434
 __SYSCALL(__NR_pidfd_open, sys_pidfd_open)
+#define __NR_futex_waitv 449
+__SYSCALL(__NR_futex_waitv, compat_sys_futex_waitv)
 
 /*
  * Please add new compat syscalls above this comment and update

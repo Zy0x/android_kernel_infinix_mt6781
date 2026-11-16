@@ -244,10 +244,15 @@ static void lru_gen_flush_walk_batch(struct lru_gen_mm_walk *walk)
 		if (!PageLRU(page) || PageUnevictable(page))
 			continue;
 
+		lruvec = mem_cgroup_page_lruvec(page, locked_pgdat);
+		if (lruvec != walk->lruvec ||
+		    !READ_ONCE(lruvec->lrugen.enabled) ||
+		    READ_ONCE(lruvec->lrugen.max_seq) != walk->max_seq)
+			continue;
+
 		if (!mglru_page_set_gen(page, new_gen, &old_gen))
 			continue;
 
-		lruvec = mem_cgroup_page_lruvec(page, locked_pgdat);
 		lru_gen_update_size(lruvec, page, old_gen, new_gen);
 		list_move(&page->lru,
 			  &lruvec->lrugen.lists[new_gen][page_is_file_cache(page)][page_zonenum(page)]);
@@ -3008,15 +3013,19 @@ out:
  * This is a basic per-node page freer.  Used by both kswapd and direct reclaim.
  */
 #ifdef CONFIG_LRU_GEN
-static unsigned long lru_gen_lruvec_size(struct lruvec *lruvec, int reclaim_idx)
+bool lru_gen_want_enabled __read_mostly = IS_ENABLED(CONFIG_LRU_GEN_ENABLED);
+
+static unsigned long lru_gen_total_pages(struct lruvec *lruvec, int reclaim_idx,
+					 bool include_anon)
 {
 	struct lru_gen_struct *lrugen = &lruvec->lrugen;
 	unsigned long sum = 0;
 	int gen, type, zone;
+	int max_zone = min_t(int, reclaim_idx, MAX_NR_ZONES - 1);
 
 	for (gen = 0; gen < MAX_NR_GENS; gen++) {
-		for (type = 0; type < ANON_AND_FILE; type++) {
-			for (zone = 0; zone <= min_t(int, reclaim_idx, MAX_NR_ZONES - 1); zone++) {
+		for (type = include_anon ? 0 : 1; type < ANON_AND_FILE; type++) {
+			for (zone = 0; zone <= max_zone; zone++) {
 				long n = READ_ONCE(lrugen->nr_pages[gen][type][zone]);
 
 				if (n > 0)
@@ -3024,8 +3033,13 @@ static unsigned long lru_gen_lruvec_size(struct lruvec *lruvec, int reclaim_idx)
 			}
 		}
 	}
-	sum += lruvec_lru_size(lruvec, LRU_UNEVICTABLE, reclaim_idx);
 	return sum;
+}
+
+static unsigned long lru_gen_lruvec_size(struct lruvec *lruvec, int reclaim_idx)
+{
+	return lru_gen_total_pages(lruvec, reclaim_idx, true) +
+	       lruvec_lru_size(lruvec, LRU_UNEVICTABLE, reclaim_idx);
 }
 
 static unsigned long lru_gen_seq_pages(struct lruvec *lruvec, int type,
@@ -3094,6 +3108,7 @@ static bool age_lruvec(struct lruvec *lruvec, struct scan_control *sc, bool can_
 	struct lru_gen_struct *lrugen = &lruvec->lrugen;
 	unsigned long max_seq, min_s;
 	unsigned long min_pages = 0;
+	unsigned long total_pages = 0;
 	bool need_age = false;
 
 	spin_lock_irq(&pgdat->lru_lock);
@@ -3107,9 +3122,10 @@ static bool age_lruvec(struct lruvec *lruvec, struct scan_control *sc, bool can_
 	if (can_swap)
 		min_pages += lru_gen_seq_pages(lruvec, 0, lrugen->min_seq[0], sc->reclaim_idx);
 	min_pages += lru_gen_seq_pages(lruvec, 1, lrugen->min_seq[1], sc->reclaim_idx);
+	total_pages = lru_gen_total_pages(lruvec, sc->reclaim_idx, can_swap);
 
-	if (max_seq - min_s < MAX_NR_GENS - 1) {
-		if (min_pages < MIN_LRU_BATCH)
+	if (total_pages && max_seq - min_s < MAX_NR_GENS - 1) {
+		if (!min_pages || (min_pages < MIN_LRU_BATCH && total_pages > min_pages))
 			need_age = true;
 		else if (lru_gen_min_ttl &&
 			 time_after(jiffies,
@@ -3330,6 +3346,9 @@ static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct mem_cgroup *memc
 	struct blk_plug plug;
 	int tries = 0;
 
+	if (!lru_gen_total_pages(lruvec, sc->reclaim_idx, swappiness > 0))
+		return;
+
 	blk_start_plug(&plug);
 	while (tries++ < MAX_NR_GENS * 4) {
 		unsigned long r;
@@ -3467,6 +3486,8 @@ static void lru_gen_change_state(unsigned long flags)
 
 	if (want_core != was_core) {
 		if (want_core) {
+			WRITE_ONCE(lru_gen_want_enabled, true);
+			smp_wmb();
 			lru_add_drain_all();
 			static_branch_enable(&lru_gen_caps[LRU_GEN_CORE]);
 			for_each_online_node(nid) {
@@ -3478,6 +3499,8 @@ static void lru_gen_change_state(unsigned long flags)
 				} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
 			}
 		} else {
+			WRITE_ONCE(lru_gen_want_enabled, false);
+			smp_wmb();
 			for_each_online_node(nid) {
 				struct pglist_data *pgdat = NODE_DATA(nid);
 				struct mem_cgroup *memcg = mem_cgroup_iter(NULL, NULL, NULL);

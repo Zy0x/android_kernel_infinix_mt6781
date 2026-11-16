@@ -910,6 +910,7 @@ extern void init_currently_empty_zone(struct zone *zone, unsigned long start_pfn
 
 extern void lruvec_init(struct lruvec *lruvec);
 #ifdef CONFIG_LRU_GEN
+extern bool lru_gen_want_enabled;
 extern void lru_gen_init_lruvec(struct lruvec *lruvec);
 extern void lru_gen_init_pgdat(struct pglist_data *pgdat);
 struct mm_struct;

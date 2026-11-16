@@ -242,6 +242,18 @@ static inline void page_inc_refs(struct page *page)
 	ClearPageReferenced(page);
 }
 
+static inline bool lru_gen_rotate_page(struct lruvec *lruvec, struct page *page)
+{
+	int gen = page_lru_gen(page);
+
+	if (gen < 0)
+		return false;
+
+	list_move_tail(&page->lru,
+		       &lruvec->lrugen.lists[gen][page_is_file_cache(page)][page_zonenum(page)]);
+	return true;
+}
+
 static inline void lru_gen_record_refault(struct lruvec *lruvec, int type, int tier)
 {
 	struct lru_gen_struct *lrugen = &lruvec->lrugen;
@@ -262,6 +274,16 @@ static inline bool lru_gen_enabled(void)
 }
 
 static inline bool lru_gen_in_fault(void)
+{
+	return false;
+}
+
+static inline int page_lru_gen(struct page *page)
+{
+	return -1;
+}
+
+static inline bool lru_gen_rotate_page(struct lruvec *lruvec, struct page *page)
 {
 	return false;
 }

@@ -107,7 +107,7 @@ void lru_gen_init_lruvec(struct lruvec *lruvec)
 	struct lru_gen_struct *lrugen = &lruvec->lrugen;
 
 	lrugen->max_seq = MIN_NR_GENS + 1;
-	lrugen->enabled = lru_gen_enabled();
+	lrugen->enabled = READ_ONCE(lru_gen_want_enabled);
 
 	for (i = 0; i < MAX_NR_GENS; i++)
 		lrugen->timestamps[i] = jiffies;

@@ -414,19 +414,21 @@ static irqreturn_t mtk_disp_rdma_irq_handler(int irq, void *dev_id)
 	}
 	if (val & (1 << 5)) {
 		DDPIRQ("[IRQ] %s: target line!\n", mtk_dump_comp_str(rdma));
-		#ifdef OPLUS_BUG_STABILITY
-		if (mtk_crtc && mtk_drm_session_created &&
-		    !mtk_crtc_is_frame_trigger_mode(&mtk_crtc->base)) {
-			atomic_set(&mtk_crtc->sf_pf_event, 1);
-			wake_up_interruptible(&mtk_crtc->sf_present_fence_wq);
-		}
-		#else /* OPLUS_BUG_STABILITY */
 		if (mtk_crtc &&
-			!mtk_crtc_is_frame_trigger_mode(&mtk_crtc->base)) {
-			atomic_set(&mtk_crtc->sf_pf_event, 1);
-			wake_up_interruptible(&mtk_crtc->sf_present_fence_wq);
+#ifdef OPLUS_BUG_STABILITY
+		    mtk_drm_session_created &&
+#endif
+		    !mtk_crtc_is_frame_trigger_mode(&mtk_crtc->base)) {
+			struct mtk_drm_private *drm_priv = mtk_crtc->base.dev ?
+				mtk_crtc->base.dev->dev_private : NULL;
+
+			if (drm_priv && drm_priv->helper_opt &&
+			    mtk_drm_helper_get_opt(drm_priv->helper_opt,
+						   MTK_DRM_OPT_SF_PF)) {
+				atomic_set(&mtk_crtc->sf_pf_event, 1);
+				wake_up_interruptible(&mtk_crtc->sf_present_fence_wq);
+			}
 		}
-		#endif /* OPLUS_BUG_STABILITY */
 		if (rdma->mtk_crtc && rdma->mtk_crtc->esd_ctx &&
 			(!(val & (1 << 2)))) {
 			atomic_set(&rdma->mtk_crtc->esd_ctx->target_time, 1);

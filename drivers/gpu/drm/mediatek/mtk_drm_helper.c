@@ -185,6 +185,13 @@ void mtk_drm_helper_init(struct device *dev, struct mtk_drm_helper **helper_opt)
 			if (ret < 0)
 				value = 0;
 		}
+		/*
+		 * On X698 VDO mode, RDMA_TARGET_LINE runs at (h*9)/10 for ESD and
+		 * fires 1 VBLANK late relative to EOF/SOF; disabling SF_PF lets HWC
+		 * use PRESENT_FENCE (ddp_cmdq_cb at EOF/VBLANK) for full 60/90/120Hz.
+		 */
+		if (tmp_opt[i].opt == MTK_DRM_OPT_SF_PF)
+			value = 0;
 		tmp_opt[i].val = value;
 		DDPINFO("%s %d\n", tmp_opt[i].desc, tmp_opt[i].val);
 	}

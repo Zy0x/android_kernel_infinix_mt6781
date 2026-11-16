@@ -1223,14 +1223,14 @@ static int vidioc_vdec_qbuf(struct file *file, void *priv,
 				ctx->input_max_ts);
 		}
 	} else {
-		if (buf->reserved == 0xFFFFFFFF || buf->reserved == 0)
+		if (buf->reserved2 == 0xFFFFFFFF || buf->reserved2 == 0)
 			mtkbuf->general_user_fd = -1;
 		else
-			mtkbuf->general_user_fd = (int)buf->reserved;
+			mtkbuf->general_user_fd = (int)buf->reserved2;
 		mtk_v4l2_debug(1, "[%d] id=%d FB (%d) vb=%p, general_buf_fd=%d, mtkbuf->general_buf_fd = %d",
 				ctx->id, buf->index,
 				buf->length, mtkbuf,
-				buf->reserved, mtkbuf->general_user_fd);
+				buf->reserved2, mtkbuf->general_user_fd);
 	}
 
 	if (buf->flags & V4L2_BUF_FLAG_NO_CACHE_CLEAN) {
@@ -1285,9 +1285,9 @@ static int vidioc_vdec_dqbuf(struct file *file, void *priv,
 		if (mtkbuf->flags & REF_FREED)
 			buf->flags |= V4L2_BUF_FLAG_REF_FREED;
 		if (mtkbuf->general_user_fd < 0)
-			buf->reserved = 0xFFFFFFFF;
+			buf->reserved2 = 0xFFFFFFFF;
 		else
-			buf->reserved = mtkbuf->general_user_fd;
+			buf->reserved2 = mtkbuf->general_user_fd;
 		mtk_v4l2_debug(2,
 			"dqbuf mtkbuf->general_buf_fd = %d",
 			mtkbuf->general_user_fd);
@@ -2434,6 +2434,11 @@ static void vb2ops_vdec_buf_cleanup(struct vb2_buffer *vb)
 
 	ctx = vb2_get_drv_priv(vb->vb2_queue);
 	if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
+		buf->frame_buffer.dma_general_buf != NULL) {
+		dma_buf_put(buf->frame_buffer.dma_general_buf);
+		buf->frame_buffer.dma_general_buf = NULL;
+	}
+	if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
 		!vb2_is_streaming(vb->vb2_queue)) {
 		mutex_lock(&ctx->buf_lock);
 		if (buf->used == true) {
@@ -2472,7 +2477,8 @@ static int vb2ops_vdec_buf_init(struct vb2_buffer *vb)
 		}
 		for (i = 0; i < VIDEO_MAX_PLANES; i++)
 			buf->frame_buffer.fb_base[i].buf_fd = -1;
-		buf->general_user_fd = -1;
+		if (buf->general_user_fd == 0)
+			buf->general_user_fd = -1;
 	} else if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		/* Do not reset EOS for 1st buffer with Early EOS*/
 		/* buf->lastframe = NON_EOS; */

@@ -230,7 +230,9 @@ void get_freq_table_cpu(struct eem_det *det)
 		curfreq = mt_cpufreq_get_freq_by_idx
 			(cpudvfsindex, i);
 
-		det->freq_tbl[i] = PERCENT(curfreq, det->max_freq_khz);
+		det->freq_tbl[i] = PERCENT(
+			min_t(unsigned int, curfreq, det->max_freq_khz),
+			det->max_freq_khz);
 #endif
 #if 1
 		eem_debug("@@ %s freq_tbl[%d]=%d 0x%0x\n", det->name, i,

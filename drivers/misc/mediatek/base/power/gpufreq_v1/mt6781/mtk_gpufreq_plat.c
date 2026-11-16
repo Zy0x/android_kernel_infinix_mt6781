@@ -2551,7 +2551,8 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 	/* force parking if FHCTL not ready */
 	parking = true;
 #else
-	if (posdiv_power != real_posdiv_power)
+	if (posdiv_power != real_posdiv_power || freq_new > 950000 ||
+	    g_cur_opp_freq > 950000)
 		parking = true;
 	else
 		parking = false;
@@ -3547,12 +3548,26 @@ void mt_gpufreq_lynx_release_limits(void)
 }
 EXPORT_SYMBOL(mt_gpufreq_lynx_release_limits);
 
+static int __mt_gpufreq_get_stock_max_idx(void)
+{
+	int i;
+
+	if (!g_opp_table || g_max_opp_idx_num <= 0)
+		return 0;
+	for (i = 0; i < g_max_opp_idx_num; i++) {
+		if (g_opp_table[i].gpufreq_khz <= 950000)
+			return i;
+	}
+	return 0;
+}
+
 int mt_gpufreq_lynx_set_oc_khz(unsigned int max_khz)
 {
-	int i, target_idx = 5;
+	int i, target_idx;
 
-	if (!g_probe_done || !g_opp_table || g_max_opp_idx_num <= 5)
+	if (!g_probe_done || !g_opp_table || g_max_opp_idx_num <= 0)
 		return -EAGAIN;
+	target_idx = __mt_gpufreq_get_stock_max_idx();
 
 	if (max_khz == 0)
 		max_khz = 950000;
@@ -3630,9 +3645,12 @@ static int __mt_gpufreq_pdrv_probe(struct platform_device *pdev)
 	//__mt_gpufreq_gpu_dfd_trigger_simulate();
 #endif
 
-	mt_gpufreq_update_limit_idx(KIR_LYNX_OC, 5, LIMIT_IDX_DEFAULT);
-	g_lynx_oc_max_khz = (g_opp_table && g_max_opp_idx_num > 5) ?
-		g_opp_table[5].gpufreq_khz : 950000;
+	{
+		int stock_idx = __mt_gpufreq_get_stock_max_idx();
+		mt_gpufreq_update_limit_idx(KIR_LYNX_OC, stock_idx, LIMIT_IDX_DEFAULT);
+		g_lynx_oc_max_khz = (g_opp_table && g_max_opp_idx_num > stock_idx) ?
+			g_opp_table[stock_idx].gpufreq_khz : 950000;
+	}
 
 	g_probe_done = true;
 	gpufreq_pr_info("@%s: driver init is finished\n", __func__);

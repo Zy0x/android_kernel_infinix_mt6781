@@ -31,7 +31,7 @@
 //MT6781_TODO disable bringup  enable POWER CTL & DVFS
 #define MT_GPUFREQ_DVFS_ENABLE          1
 #define MT_GPUFREQ_CUST_CONFIG          0
-#define MT_GPUFREQ_CUST_INIT_OPP        (g_opp_table_segment_1[21].gpufreq_khz)
+#define MT_GPUFREQ_CUST_INIT_OPP        (g_opp_table_segment_1[24].gpufreq_khz)
 
 /**************************************************
  * DVFS Setting
@@ -349,16 +349,19 @@ struct opp_table_info *g_opp_table;
  * PTPOD definition
  **************************************************/
 unsigned int g_ptpod_opp_idx_table_segment[] = {
-	5, 21, 24, 27,
-	30, 33, 35, 37,
-	39, 41, 43, 45,
-	47, 49, 51, 53
+	8, 24, 27, 30,
+	33, 36, 38, 40,
+	42, 44, 46, 48,
+	50, 52, 54, 56
 };
 
 /**************************************************
  * GPU OPP table definition
  **************************************************/
 struct opp_table_info g_opp_table_segment_0[] = {
+	GPUOP(1125000, 107500, 117500, POSDIV_POWER_2, 0),
+	GPUOP(1095000, 105000, 115000, POSDIV_POWER_2, 0),
+	GPUOP(1065000, 102500, 112500, POSDIV_POWER_2, 0),
 	GPUOP(1040000, 100000, 110000, POSDIV_POWER_2, 0),
 	GPUOP(1010000, 97500, 107500, POSDIV_POWER_2, 0),
 	GPUOP(1004000, 95000, 105000, POSDIV_POWER_2, 0),
@@ -417,6 +420,9 @@ struct opp_table_info g_opp_table_segment_0[] = {
 
 /*voltage + 50mv*/
 struct opp_table_info g_opp_table_segment_1[] = {
+	GPUOP(1125000, 108750, 118750, POSDIV_POWER_2, 0),
+	GPUOP(1095000, 106250, 116250, POSDIV_POWER_2, 0),
+	GPUOP(1065000, 103750, 113750, POSDIV_POWER_2, 0),
 	GPUOP(1040000, 102500, 112500, POSDIV_POWER_2, 0),
 	GPUOP(1010000, 101250, 111250, POSDIV_POWER_2, 0),
 	GPUOP(1004000, 100000, 110000, POSDIV_POWER_2, 0),

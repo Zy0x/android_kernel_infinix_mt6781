@@ -54,5 +54,6 @@ extern void cpuhvfs_update_imax_state(unsigned int state);
 extern void cpuhvfs_update_imax_thermal_state(unsigned int state);
 extern void cfp_lynx_sync_silencer(bool silencer);
 extern void thrm_aware_lynx_release(void);
+extern void lynx_sync_sspm_thermal_throttle(bool disable);
 
 #endif /* _LYNX_POWER_H_ */

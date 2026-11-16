@@ -314,8 +314,10 @@ static ssize_t lynx_thermal_silencer_write(struct file *file, const char __user 
 		cpuhvfs_update_imax_thermal_state(0);
 		cfp_lynx_sync_silencer(true);
 		thrm_aware_lynx_release();
+		lynx_sync_sspm_thermal_throttle(true);
 	} else {
 		cfp_lynx_sync_silencer(false);
+		lynx_sync_sspm_thermal_throttle(false);
 	}
 	pr_info("LYNX_POWER: Thermal Silencer %s\n", g_lynx_thermal_silencer ? "ENABLED" : "DISABLED");
 
@@ -330,6 +332,10 @@ static const struct file_operations lynx_thermal_silencer_fops = {
 	.llseek = seq_lseek,
 	.release = single_release,
 };
+
+__weak void lynx_sync_sspm_thermal_throttle(bool disable)
+{
+}
 
 /* 6. Status proc interface */
 static const char *lynx_chr_type_str(int type)

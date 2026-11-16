@@ -635,7 +635,7 @@ static int tscpu_get_temp
 	if ((curr_temp > (trip_temp[0] - 15000))
 	|| (curr_temp < -30000)
 	|| (curr_temp > 85000)) {
-		printk_ratelimited(TSCPU_LOG_TAG " %u %u CPU T=%d\n",
+		tscpu_dprintk(TSCPU_LOG_TAG " %u %u CPU T=%d\n",
 			apthermolmt_get_cpu_power_limit(),
 			apthermolmt_get_gpu_power_limit(),
 			curr_temp);
@@ -1130,6 +1130,17 @@ static ssize_t tscpu_write_log
 }
 
 #if defined(THERMAL_SSPM_THERMAL_THROTTLE_SWITCH)
+void lynx_sync_sspm_thermal_throttle(bool disable)
+{
+	int target = disable ? 1 : 0;
+
+	if (tscpu_sspm_thermal_throttle == target)
+		return;
+	tscpu_sspm_thermal_throttle = target;
+	lvts_ipi_send_sspm_thermal_thtottle();
+}
+EXPORT_SYMBOL(lynx_sync_sspm_thermal_throttle);
+
 static int tscpu_read_sspm_thermal_throttle(struct seq_file *m, void *v)
 {
 	seq_printf(m, "tscpu_sspm_thermal_throttle:%d\n",

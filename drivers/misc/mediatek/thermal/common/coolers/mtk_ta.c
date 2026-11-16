@@ -320,7 +320,7 @@ static void ta_nl_send_to_user(int pid, int seq, struct tad_nl_msg_t *reply_msg)
 	ret = netlink_unicast(daemo_nl_sk, skb, pid, MSG_DONTWAIT);
 	if (ret < 0) {
 		g_ta_status = g_ta_status | 0x00000010;
-		pr_notice("[%s] send failed %d\n", __func__, ret);
+		tsta_dprintk("[%s] send failed %d\n", __func__, ret);
 		return;
 	}
 
@@ -380,7 +380,7 @@ int wakeup_ta_algo(int flow_state)
 	if (g_ta_counter >= 3) {
 		g_ta_counter = 0;
 		if (g_ta_status != 0)
-			tsta_warn("[%s] status: 0x%x\n", __func__, g_ta_status);
+			tsta_dprintk("[%s] status: 0x%x\n", __func__, g_ta_status);
 	}
 	g_ta_counter++;
 	if (g_tad_pid != 0) {

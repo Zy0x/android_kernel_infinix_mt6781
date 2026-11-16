@@ -79,6 +79,7 @@
 
 #ifdef CONFIG_LRU_GEN
 DEFINE_STATIC_KEY_ARRAY_FALSE(lru_gen_caps, NR_LRU_GEN_CAPS);
+unsigned long lru_gen_min_ttl __read_mostly;
 #endif
 
 struct scan_control {
@@ -509,6 +510,7 @@ static bool __maybe_unused try_to_inc_max_seq(struct lruvec *lruvec,
 
 	return inc_max_seq(lruvec, max_seq, can_swap);
 }
+
 #endif
 
 #ifdef ARCH_HAS_PREFETCH
@@ -2254,7 +2256,10 @@ putback_inactive_pages(struct lruvec *lruvec, struct list_head *page_list)
 
 		SetPageLRU(page);
 		lru = page_lru(page);
-		add_page_to_lru_list(page, lruvec, lru);
+		if (lru_gen_enabled())
+			add_page_to_lru_list_tail(page, lruvec, lru);
+		else
+			add_page_to_lru_list(page, lruvec, lru);
 
 		if (is_active_lru(lru)) {
 			int file = is_file_lru(lru);
@@ -3002,6 +3007,348 @@ out:
 /*
  * This is a basic per-node page freer.  Used by both kswapd and direct reclaim.
  */
+#ifdef CONFIG_LRU_GEN
+static unsigned long lru_gen_lruvec_size(struct lruvec *lruvec, int reclaim_idx)
+{
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	unsigned long sum = 0;
+	int gen, type, zone;
+
+	for (gen = 0; gen < MAX_NR_GENS; gen++) {
+		for (type = 0; type < ANON_AND_FILE; type++) {
+			for (zone = 0; zone <= min_t(int, reclaim_idx, MAX_NR_ZONES - 1); zone++) {
+				long n = READ_ONCE(lrugen->nr_pages[gen][type][zone]);
+
+				if (n > 0)
+					sum += n;
+			}
+		}
+	}
+	sum += lruvec_lru_size(lruvec, LRU_UNEVICTABLE, reclaim_idx);
+	return sum;
+}
+
+static unsigned long lru_gen_seq_pages(struct lruvec *lruvec, int type,
+				       unsigned long seq, int reclaim_idx)
+{
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	int gen = lru_gen_from_seq(seq);
+	unsigned long total = 0;
+	int z;
+
+	for (z = 0; z <= min_t(int, reclaim_idx, MAX_NR_ZONES - 1); z++) {
+		long n = READ_ONCE(lrugen->nr_pages[gen][type][z]);
+
+		if (n > 0)
+			total += n;
+	}
+	return total;
+}
+
+static void reset_ctrl_pos(struct lruvec *lruvec, int type, unsigned long seq)
+{
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	int hist = lru_gen_from_seq(seq);
+	int tier;
+
+	for (tier = 0; tier < MAX_NR_TIERS; tier++) {
+		unsigned long ref = READ_ONCE(lrugen->refaulted[hist][type][tier]);
+		unsigned long ev = READ_ONCE(lrugen->evicted[hist][type][tier]);
+		unsigned long prot = tier ? lrugen->protected[hist][type][tier - 1] : 0;
+
+		lrugen->avg_refaulted[type][tier] =
+			(lrugen->avg_refaulted[type][tier] + ref) >> 1;
+		lrugen->avg_total[type][tier] =
+			(lrugen->avg_total[type][tier] + ev + prot) >> 1;
+
+		WRITE_ONCE(lrugen->refaulted[hist][type][tier], 0);
+		lrugen->evicted[hist][type][tier] = 0;
+		if (tier)
+			lrugen->protected[hist][type][tier - 1] = 0;
+	}
+}
+
+/* Called with pgdat->lru_lock held */
+static bool inc_min_seq(struct lruvec *lruvec, int type)
+{
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	int gen, z;
+
+	if (lrugen->max_seq - lrugen->min_seq[type] < MIN_NR_GENS)
+		return false;
+
+	gen = lru_gen_from_seq(lrugen->min_seq[type]);
+	for (z = 0; z < MAX_NR_ZONES; z++) {
+		if (lrugen->nr_pages[gen][type][z] > 0)
+			return false;
+	}
+
+	reset_ctrl_pos(lruvec, type, lrugen->min_seq[type]);
+	lrugen->min_seq[type]++;
+	return true;
+}
+
+static bool age_lruvec(struct lruvec *lruvec, struct scan_control *sc, bool can_swap)
+{
+	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	unsigned long max_seq, min_s;
+	unsigned long min_pages = 0;
+	bool need_age = false;
+
+	spin_lock_irq(&pgdat->lru_lock);
+	while (inc_min_seq(lruvec, 0))
+		;
+	while (inc_min_seq(lruvec, 1))
+		;
+
+	max_seq = lrugen->max_seq;
+	min_s = min(lrugen->min_seq[0], lrugen->min_seq[1]);
+	if (can_swap)
+		min_pages += lru_gen_seq_pages(lruvec, 0, lrugen->min_seq[0], sc->reclaim_idx);
+	min_pages += lru_gen_seq_pages(lruvec, 1, lrugen->min_seq[1], sc->reclaim_idx);
+
+	if (max_seq - min_s < MAX_NR_GENS - 1) {
+		if (min_pages < MIN_LRU_BATCH)
+			need_age = true;
+		else if (lru_gen_min_ttl &&
+			 time_after(jiffies,
+				    lrugen->timestamps[lru_gen_from_seq(max_seq)] +
+				    msecs_to_jiffies(lru_gen_min_ttl)))
+			need_age = true;
+	}
+	spin_unlock_irq(&pgdat->lru_lock);
+
+	if (!need_age)
+		return false;
+
+	return try_to_inc_max_seq(lruvec, max_seq, sc, can_swap);
+}
+
+static int mglru_get_swappiness(struct mem_cgroup *memcg, struct scan_control *sc)
+{
+	int swappiness = vm_swappiness;
+	unsigned long totalswap = total_swap_pages;
+
+#if defined(CONFIG_NANDSWAP)
+	if (nandswap_si)
+		totalswap -= nandswap_si->pages;
+#endif
+#if defined(OPLUS_FEATURE_ZRAM_OPT) && defined(CONFIG_OPLUS_ZRAM_OPT)
+	if (!current_is_kswapd()) {
+#ifdef CONFIG_HYBRIDSWAP_SWAPD
+		if (strncmp(current->comm, "hybridswapd:", sizeof("hybridswapd:") - 1) == 0) {
+			swappiness = hybridswapd_swappiness;
+			if (free_swap_is_low())
+				swappiness = 0;
+		} else
+#endif
+			swappiness = direct_vm_swappiness;
+	}
+	if (!sc->may_swap || mem_cgroup_get_nr_swap_pages(memcg) <= (totalswap >> 6))
+		return 0;
+#else
+	if (!sc->may_swap || mem_cgroup_get_nr_swap_pages(memcg) <= 0)
+		return 0;
+#endif
+	return swappiness;
+}
+
+static int get_type_to_scan(struct lruvec *lruvec, int swappiness, int reclaim_idx)
+{
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	unsigned long anon_avail, file_avail;
+	u64 anon_cost, file_cost;
+
+	if (!swappiness)
+		return 1;
+
+	anon_avail = lru_gen_seq_pages(lruvec, 0, READ_ONCE(lrugen->min_seq[0]), reclaim_idx);
+	file_avail = lru_gen_seq_pages(lruvec, 1, READ_ONCE(lrugen->min_seq[1]), reclaim_idx);
+
+	if (!file_avail)
+		return 0;
+	if (!anon_avail)
+		return 1;
+
+	anon_cost = (u64)(READ_ONCE(lrugen->avg_refaulted[0][0]) + 1) *
+		    (READ_ONCE(lrugen->avg_total[1][0]) + 1) * (200 - swappiness);
+	file_cost = (u64)(READ_ONCE(lrugen->avg_refaulted[1][0]) + 1) *
+		    (READ_ONCE(lrugen->avg_total[0][0]) + 1) * max(swappiness, 1);
+
+	return (anon_cost < file_cost) ? 0 : 1;
+}
+
+static int get_tier_idx(struct lruvec *lruvec, int type)
+{
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	unsigned long ref0 = READ_ONCE(lrugen->avg_refaulted[type][0]) + 1;
+	unsigned long tot0 = READ_ONCE(lrugen->avg_total[type][0]) + 1;
+	int tier;
+
+	for (tier = 1; tier < MAX_NR_TIERS; tier++) {
+		unsigned long ref = READ_ONCE(lrugen->avg_refaulted[type][tier]) + 1;
+		unsigned long tot = READ_ONCE(lrugen->avg_total[type][tier]) + 1;
+
+		/* Protect tier if its observed refault ratio exceeds tier 0 */
+		if ((u64)ref * tot0 >= (u64)ref0 * tot)
+			return tier;
+	}
+	return 1;
+}
+
+static bool sort_page(struct lruvec *lruvec, struct page *page,
+		      int type, int tier_idx, int gen, int next_gen)
+{
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	int tier = lru_gen_page_weight(page);
+	int hist = lru_gen_from_seq(lrugen->min_seq[type]);
+	int old_gen;
+
+	if (!TestClearPageReferenced(page) && tier < tier_idx)
+		return false;
+
+	if (!mglru_page_set_gen(page, next_gen, &old_gen))
+		return false;
+
+	lru_gen_update_size(lruvec, page, gen, next_gen);
+	list_move(&page->lru, &lrugen->lists[next_gen][type][page_zonenum(page)]);
+
+	if (tier > 0 && tier < MAX_NR_TIERS)
+		lrugen->protected[hist][type][tier - 1] += hpage_nr_pages(page);
+
+	return true;
+}
+
+static unsigned long isolate_pages(struct lruvec *lruvec, struct scan_control *sc,
+				   int type, int tier_idx, struct list_head *dst,
+				   unsigned long *nr_scanned)
+{
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	isolate_mode_t mode = sc->may_unmap ? 0 : ISOLATE_UNMAPPED;
+	int gen = lru_gen_from_seq(lrugen->min_seq[type]);
+	int next_gen = lru_gen_from_seq(lrugen->min_seq[type] + 1);
+	int hist = gen;
+	unsigned long scanned = 0, taken = 0;
+	int zone;
+
+	for (zone = min_t(int, sc->reclaim_idx, MAX_NR_ZONES - 1);
+	     zone >= 0 && taken < SWAP_CLUSTER_MAX && scanned < SWAP_CLUSTER_MAX * 2;
+	     zone--) {
+		struct list_head *head = &lrugen->lists[gen][type][zone];
+
+		while (!list_empty(head) && taken < SWAP_CLUSTER_MAX &&
+		       scanned < SWAP_CLUSTER_MAX * 2) {
+			struct page *page = lru_to_page(head);
+			int tier = lru_gen_page_weight(page);
+
+			scanned++;
+			if (sort_page(lruvec, page, type, tier_idx, gen, next_gen))
+				continue;
+
+			switch (__isolate_lru_page(page, mode)) {
+			case 0:
+				lru_gen_del_page(lruvec, page, true);
+				list_add(&page->lru, dst);
+				taken += hpage_nr_pages(page);
+				if (tier < MAX_NR_TIERS)
+					lrugen->evicted[hist][type][tier] += hpage_nr_pages(page);
+				break;
+			case -EBUSY:
+				list_move(&page->lru, head);
+				break;
+			default:
+				BUG();
+			}
+		}
+	}
+
+	*nr_scanned = scanned;
+	return taken;
+}
+
+static unsigned long evict_pages(struct lruvec *lruvec, struct scan_control *sc,
+				 int swappiness)
+{
+	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
+	int type = get_type_to_scan(lruvec, swappiness, sc->reclaim_idx);
+	int tier_idx = get_tier_idx(lruvec, type);
+	unsigned long nr_scanned = 0, nr_taken, nr_reclaimed;
+	struct reclaim_stat stat;
+	LIST_HEAD(list);
+
+	spin_lock_irq(&pgdat->lru_lock);
+	nr_taken = isolate_pages(lruvec, sc, type, tier_idx, &list, &nr_scanned);
+	if (nr_taken) {
+		__mod_node_page_state(pgdat, NR_ISOLATED_ANON + type, nr_taken);
+		if (current_is_kswapd()) {
+			if (global_reclaim(sc))
+				__count_vm_events(PGSCAN_KSWAPD, nr_scanned);
+			count_memcg_events(lruvec_memcg(lruvec), PGSCAN_KSWAPD, nr_scanned);
+		} else {
+			if (global_reclaim(sc))
+				__count_vm_events(PGSCAN_DIRECT, nr_scanned);
+			count_memcg_events(lruvec_memcg(lruvec), PGSCAN_DIRECT, nr_scanned);
+		}
+	} else {
+		inc_min_seq(lruvec, type);
+	}
+	spin_unlock_irq(&pgdat->lru_lock);
+
+	if (!nr_taken)
+		return 0;
+
+	nr_reclaimed = shrink_page_list(&list, pgdat, sc, 0, &stat, false);
+
+	spin_lock_irq(&pgdat->lru_lock);
+	if (current_is_kswapd()) {
+		if (global_reclaim(sc))
+			__count_vm_events(PGSTEAL_KSWAPD, nr_reclaimed);
+		count_memcg_events(lruvec_memcg(lruvec), PGSTEAL_KSWAPD, nr_reclaimed);
+	} else {
+		if (global_reclaim(sc))
+			__count_vm_events(PGSTEAL_DIRECT, nr_reclaimed);
+		count_memcg_events(lruvec_memcg(lruvec), PGSTEAL_DIRECT, nr_reclaimed);
+	}
+
+	putback_inactive_pages(lruvec, &list);
+	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + type, -nr_taken);
+	spin_unlock_irq(&pgdat->lru_lock);
+
+	mem_cgroup_uncharge_list(&list);
+	free_hot_cold_page_list(&list, true);
+
+	return nr_reclaimed;
+}
+
+static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct mem_cgroup *memcg,
+				  struct scan_control *sc)
+{
+	int swappiness = mglru_get_swappiness(memcg, sc);
+	unsigned long nr_to_reclaim = sc->nr_to_reclaim;
+	unsigned long reclaimed = 0;
+	struct blk_plug plug;
+	int tries = 0;
+
+	blk_start_plug(&plug);
+	while (tries++ < MAX_NR_GENS * 4) {
+		unsigned long r;
+
+		age_lruvec(lruvec, sc, swappiness > 0);
+		r = evict_pages(lruvec, sc, swappiness);
+		reclaimed += r;
+		cond_resched();
+
+		if (sc->nr_reclaimed + reclaimed >= nr_to_reclaim)
+			break;
+		if (!r && tries >= MAX_NR_GENS)
+			break;
+	}
+	blk_finish_plug(&plug);
+	sc->nr_reclaimed += reclaimed;
+}
+#endif
+
 static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memcg,
 			      struct scan_control *sc, unsigned long *lru_pages)
 {
@@ -3015,6 +3362,13 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	struct blk_plug plug;
 	bool scan_adjusted;
 
+#ifdef CONFIG_LRU_GEN
+	if (lru_gen_enabled()) {
+		lru_gen_shrink_lruvec(lruvec, memcg, sc);
+		*lru_pages = lru_gen_lruvec_size(lruvec, sc->reclaim_idx);
+		return;
+	}
+#endif
 	get_scan_count(lruvec, memcg, sc, nr, lru_pages);
 
 	/* Record the original scan target for proportional adjustments later */
@@ -4049,7 +4403,8 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int classzone_idx)
 		 * pages are rotated regardless of classzone as this is
 		 * about consistent aging.
 		 */
-		age_active_anon(pgdat, &sc);
+		if (!lru_gen_enabled())
+			age_active_anon(pgdat, &sc);
 
 		/*
 		 * If we're getting trouble reclaiming, start doing writepage

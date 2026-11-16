@@ -213,6 +213,47 @@ static inline bool lru_gen_del_page(struct lruvec *lruvec, struct page *page,
 	return true;
 }
 
+static inline void page_inc_refs(struct page *page)
+{
+	unsigned long old_flags, new_flags;
+
+	page = compound_head(page);
+	if (PageUnevictable(page))
+		return;
+
+	if (!PageReferenced(page)) {
+		SetPageReferenced(page);
+		return;
+	}
+
+	if (!PageWorkingset(page)) {
+		SetPageWorkingset(page);
+		ClearPageReferenced(page);
+		return;
+	}
+
+	do {
+		new_flags = old_flags = READ_ONCE(page->flags);
+		if (((new_flags >> LRU_REFS_PGSHIFT) & LRU_REFS_MASK) == LRU_REFS_MASK)
+			break;
+		new_flags += BIT(LRU_REFS_PGSHIFT);
+	} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
+
+	ClearPageReferenced(page);
+}
+
+static inline void lru_gen_record_refault(struct lruvec *lruvec, int type, int tier)
+{
+	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	int hist = lru_gen_from_seq(READ_ONCE(lrugen->min_seq[type]));
+	unsigned long val;
+
+	if (tier < 0 || tier >= MAX_NR_TIERS)
+		tier = 0;
+	val = READ_ONCE(lrugen->refaulted[hist][type][tier]);
+	WRITE_ONCE(lrugen->refaulted[hist][type][tier], val + 1);
+}
+
 #else /* !CONFIG_LRU_GEN */
 
 static inline bool lru_gen_enabled(void)
@@ -236,6 +277,9 @@ static inline bool lru_gen_del_page(struct lruvec *lruvec, struct page *page,
 {
 	return false;
 }
+
+static inline void page_inc_refs(struct page *page) {}
+static inline void lru_gen_record_refault(struct lruvec *lruvec, int type, int tier) {}
 
 #endif /* CONFIG_LRU_GEN */
 

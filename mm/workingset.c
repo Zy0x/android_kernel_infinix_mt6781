@@ -15,6 +15,7 @@
 #include <linux/dax.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
+#include <linux/mm_inline.h>
 
 /*
  *		Double CLOCK lists
@@ -317,6 +318,10 @@ void workingset_refault(struct page *page, void *shadow)
 	SetPageActive(page);
 	atomic_long_inc(&lruvec->inactive_age);
 	inc_lruvec_state(lruvec, WORKINGSET_ACTIVATE);
+	if (lru_gen_enabled()) {
+		SetPageWorkingset(page);
+		lru_gen_record_refault(lruvec, 1, workingset ? 1 : 0);
+	}
 
 	/* Page was active prior to eviction */
 	if (workingset) {

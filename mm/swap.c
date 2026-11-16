@@ -376,6 +376,12 @@ static void __lru_cache_activate_page(struct page *page)
 void mark_page_accessed(struct page *page)
 {
 	page = compound_head(page);
+	if (lru_gen_enabled()) {
+		page_inc_refs(page);
+		if (page_is_idle(page))
+			clear_page_idle(page);
+		return;
+	}
 	if (!PageActive(page) && !PageUnevictable(page) &&
 			(PageReferenced(page) || page_mapcount(page) > 10)) {
 

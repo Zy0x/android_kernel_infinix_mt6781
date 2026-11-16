@@ -46,6 +46,7 @@
  */
 
 #include <linux/mm.h>
+#include <linux/mm_inline.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/task.h>
 #include <linux/pagemap.h>
@@ -890,6 +891,45 @@ struct page_referenced_arg {
 /*
  * arg: page_referenced_arg will be passed
  */
+#ifdef CONFIG_LRU_GEN
+static void lru_gen_look_around(struct vm_area_struct *vma,
+				unsigned long address, pte_t *pte)
+{
+	unsigned long pmd_start = max(vma->vm_start, address & PMD_MASK);
+	unsigned long pmd_end = min(vma->vm_end, (address & PMD_MASK) + PMD_SIZE);
+	unsigned long start = (address - pmd_start > 8 * PAGE_SIZE) ?
+			      address - 8 * PAGE_SIZE : pmd_start;
+	unsigned long end = min(pmd_end, address + 8 * PAGE_SIZE);
+	pte_t *p = pte - ((address - start) >> PAGE_SHIFT);
+	unsigned long addr;
+
+	if (address < start || end <= start)
+		return;
+
+	for (addr = start; addr < end; addr += PAGE_SIZE, p++) {
+		pte_t ptent;
+		struct page *adj;
+
+		if (addr == address)
+			continue;
+		ptent = *p;
+		if (!pte_present(ptent) || !pte_young(ptent))
+			continue;
+		adj = vm_normal_page(vma, addr, ptent);
+		if (!adj || is_zone_device_page(adj))
+			continue;
+		adj = compound_head(adj);
+		if (!PageLRU(adj) || PageUnevictable(adj))
+			continue;
+		if (ptep_test_and_clear_young(vma, addr, p))
+			SetPageReferenced(adj);
+	}
+}
+#else
+static inline void lru_gen_look_around(struct vm_area_struct *vma,
+				       unsigned long address, pte_t *pte) {}
+#endif
+
 static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 			unsigned long address, void *arg)
 {
@@ -913,6 +953,8 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 		if (pvmw.pte) {
 			if (ptep_clear_flush_young_notify(vma, address,
 						pvmw.pte)) {
+				if (lru_gen_enabled())
+					lru_gen_look_around(vma, address, pvmw.pte);
 				/*
 				 * Don't treat a reference through
 				 * a sequentially read mapping as such.

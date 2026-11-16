@@ -69,6 +69,7 @@
 #include <linux/hrtimer.h>
 #include <linux/mutex.h>
 #include <linux/cdev.h>
+#include "awinic_haptic.h"
 #ifdef TIMED_OUTPUT
 #include "../../../drivers/staging/android/timed_output.h"
 #else
@@ -221,6 +222,7 @@ struct haptic_audio {
 };
 
 struct aw8624 {
+	u32 magic;
 	struct regmap *regmap;
 	struct i2c_client *i2c;
 	struct device *dev;

@@ -3839,17 +3839,9 @@ static int aw8624_read_chipid(struct aw8624 *aw8624)
 			aw8624->chipid = AW8624_ID;
 			aw8624_haptic_softreset(aw8624);
 			return 0;
-		case 0x23:
-			pr_info("%s aw86223 detected\n", __func__);
-			aw8624->chipid = AW8624_ID;
-			aw8624_haptic_softreset(aw8624);
-			return 0;
 		default:
-			pr_info("%s aw86224_5 / aw862xx detected (0x%x)\n",
-				__func__, reg);
-			aw8624->chipid = AW8624_ID;
-			aw8624_haptic_softreset(aw8624);
-			return 0;
+			pr_err("%s unexpected chipid 0x%x\n", __func__, reg);
+			break;
 		}
 		cnt++;
 
@@ -3968,49 +3960,39 @@ static struct attribute_group aw8624_attribute_group = {
 	.attrs = aw8624_attributes
 };
 
-#ifdef CONFIG_PM_SLEEP
-static int aw8624_suspend(struct device *dev)
+int aw8624_suspend_dev(struct device *dev)
 {
+#ifdef CONFIG_PM_SLEEP
 	struct aw8624 *aw8624 = dev_get_drvdata(dev);
 
-	pr_info("%s enter\n",__func__);
+	pr_info("%s enter\n", __func__);
 	mutex_lock(&aw8624->lock);
 	hrtimer_cancel(&aw8624->timer);
 	aw8624->state = 0;
 	aw8624_haptic_stop(aw8624);
 	mutex_unlock(&aw8624->lock);
-
+#endif
 	return 0;
 }
 
-static int aw8624_resume(struct device *dev)
+int aw8624_resume_dev(struct device *dev)
 {
 	return 0;
 }
-#endif
 
-/******************************************************
- *
- * i2c driver
- *
- ******************************************************/
-static int
-aw8624_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
+int aw8624_probe_dev(struct i2c_client *i2c, const struct i2c_device_id *id,
+		     int reset_gpio, int irq_gpio)
 {
 	struct aw8624 *aw8624;
 	struct device_node *np = i2c->dev.of_node;
 	int ret = -1;
 	int irq_flags = 0;
 
-	if (!i2c_check_functionality(i2c->adapter, I2C_FUNC_I2C)) {
-		dev_err(&i2c->dev, "check_functionality failed\n");
-		return -EIO;
-	}
-
 	aw8624 = devm_kzalloc(&i2c->dev, sizeof(struct aw8624), GFP_KERNEL);
 	if (aw8624 == NULL)
 		return -ENOMEM;
 
+	aw8624->magic = AW8624_STRUCT_MAGIC;
 	aw8624->dev = &i2c->dev;
 	aw8624->i2c = i2c;
 
@@ -4025,19 +4007,8 @@ aw8624_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 			goto err_parse_dt;
 		}
 	}
-	if (aw8624->dts_add_real)
-		i2c->addr =  (u16)aw8624->reg_real_addr;
-
-	if (gpio_is_valid(aw8624->reset_gpio)) {
-		aw8624->reset_gpio_ret =
-		devm_gpio_request_one(&i2c->dev, aw8624->reset_gpio,
-			GPIOF_OUT_INIT_LOW, "aw8624_rst");
-		if (aw8624->reset_gpio_ret) {
-			dev_err(&i2c->dev,
-			"%s: rst request failed\n", __func__);
-			return aw8624->reset_gpio_ret;
-		}
-	}
+	if (gpio_is_valid(reset_gpio))
+		aw8624->reset_gpio = reset_gpio;
 
 	if (gpio_is_valid(aw8624->irq_gpio)) {
 		aw8624->irq_gpio_ret =
@@ -4105,7 +4076,7 @@ err_parse_dt:
 	return ret;
 }
 
-static int aw8624_i2c_remove(struct i2c_client *i2c)
+int aw8624_remove_dev(struct i2c_client *i2c)
 {
 	struct aw8624 *aw8624 = i2c_get_clientdata(i2c);
 
@@ -4124,70 +4095,9 @@ static int aw8624_i2c_remove(struct i2c_client *i2c)
 	mutex_destroy(&aw8624->haptic_audio.lock);
 
 	sysfs_remove_group(&i2c->dev.kobj, &aw8624_attribute_group);
-	sysfs_remove_group(&i2c->dev.kobj, &aw8624_vibrator_attribute_group);
-
-	devm_free_irq(&i2c->dev, gpio_to_irq(aw8624->irq_gpio), aw8624);
-
-	return 0;
-}
-
-static const struct i2c_device_id aw8624_i2c_id[] = {
-	{ "awinic_haptic", 0 },
-	{ AW8624_I2C_NAME, 0 },
-	{ "aw8622x_haptic", 0 },
-	{ }
-};
-MODULE_DEVICE_TABLE(i2c, aw8624_i2c_id);
-
-#ifdef CONFIG_PM_SLEEP
-static const struct dev_pm_ops aw8624_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(aw8624_suspend, aw8624_resume)
-};
-#endif
-
-static const struct of_device_id aw8624_dt_match[] = {
-	{ .compatible = "awinic,awinic_haptic" },
-	{ .compatible = "awinic,aw8624_haptic" },
-	{ .compatible = "awinic,aw8622x_haptic" },
-	{ },
-};
-
-static struct i2c_driver aw8624_i2c_driver = {
-	.driver = {
-		.name = AW8624_I2C_NAME,
-		.owner = THIS_MODULE,
-		.of_match_table = of_match_ptr(aw8624_dt_match),
-#ifdef CONFIG_PM_SLEEP
-		.pm = &aw8624_pm_ops,
-#endif
-	},
-	.probe = aw8624_i2c_probe,
-	.remove = aw8624_i2c_remove,
-	.id_table = aw8624_i2c_id,
-};
-
-static int __init aw8624_i2c_init(void)
-{
-	int ret = 0;
-
-	pr_info("aw8624 driver version %s\n", AW8624_DRIVER_VERSION);
-
-	ret = i2c_add_driver(&aw8624_i2c_driver);
-	if (ret) {
-		pr_err("fail to add aw8624 device into i2c\n");
-		return ret;
-	}
+	if (aw8624->cdev.dev)
+		sysfs_remove_group(&aw8624->cdev.dev->kobj,
+				   &aw8624_vibrator_attribute_group);
 
 	return 0;
 }
-
-late_initcall(aw8624_i2c_init);
-
-static void __exit aw8624_i2c_exit(void)
-{
-	i2c_del_driver(&aw8624_i2c_driver);
-}
-module_exit(aw8624_i2c_exit);
-
-MODULE_DESCRIPTION("AW8624 Haptic Driver");
-MODULE_LICENSE("GPL v2");

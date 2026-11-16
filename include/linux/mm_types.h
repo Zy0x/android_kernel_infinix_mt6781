@@ -524,9 +524,30 @@ struct mm_struct {
 	/* HMM needs to track a few things per mm */
 	struct hmm *hmm;
 #endif
+#ifdef CONFIG_LRU_GEN
+	struct {
+		/* threaded on pgdat->mm_list.fifo */
+		struct list_head list;
+		/* per-CPU use hint cleared by walker */
+		unsigned long bitmap;
+		/* last aging seq applied to this mm */
+		unsigned long seq;
+	} lru_gen;
+#endif /* CONFIG_LRU_GEN */
 } __randomize_layout;
 
 extern struct mm_struct init_mm;
+
+#ifdef CONFIG_LRU_GEN
+static inline void lru_gen_init_mm(struct mm_struct *mm)
+{
+	INIT_LIST_HEAD(&mm->lru_gen.list);
+	mm->lru_gen.bitmap = 0;
+	mm->lru_gen.seq = 0;
+}
+#else
+static inline void lru_gen_init_mm(struct mm_struct *mm) {}
+#endif
 
 static inline void mm_init_cpumask(struct mm_struct *mm)
 {

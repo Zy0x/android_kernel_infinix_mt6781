@@ -216,6 +216,15 @@ switch_mm(struct mm_struct *prev, struct mm_struct *next,
 {
 	if (prev != next)
 		__switch_mm(next);
+#ifdef CONFIG_LRU_GEN
+	if (next != &init_mm) {
+		unsigned int cpu = raw_smp_processor_id();
+
+		if (cpu < BITS_PER_LONG &&
+		    !(READ_ONCE(next->lru_gen.bitmap) & BIT(cpu)))
+			set_bit(cpu, &next->lru_gen.bitmap);
+	}
+#endif
 
 	/*
 	 * Update the saved TTBR0_EL1 of the scheduled-in task as the previous

@@ -880,6 +880,7 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	atomic_set(&mm->mm_count, 1);
 	init_rwsem(&mm->mmap_sem);
 	INIT_LIST_HEAD(&mm->mmlist);
+	lru_gen_init_mm(mm);
 	mm->core_state = NULL;
 	atomic_long_set(&mm->nr_ptes, 0);
 	mm_nr_pmds_init(mm);
@@ -989,6 +990,7 @@ static inline void __mmput(struct mm_struct *mm)
 	exit_aio(mm);
 	ksm_exit(mm);
 	khugepaged_exit(mm); /* must run before exit_mmap */
+	lru_gen_del_mm(mm);
 	exit_mmap(mm);
 	simple_lmk_mm_freed(mm);
 	mm_put_huge_zero_page(mm);
@@ -1269,6 +1271,7 @@ static struct mm_struct *dup_mm(struct task_struct *tsk)
 	if (mm->binfmt && !try_module_get(mm->binfmt->module))
 		goto free_pt;
 
+	lru_gen_add_mm(mm);
 	return mm;
 
 free_pt:

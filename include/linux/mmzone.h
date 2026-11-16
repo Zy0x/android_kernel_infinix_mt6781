@@ -912,9 +912,15 @@ extern void lruvec_init(struct lruvec *lruvec);
 #ifdef CONFIG_LRU_GEN
 extern void lru_gen_init_lruvec(struct lruvec *lruvec);
 extern void lru_gen_init_pgdat(struct pglist_data *pgdat);
+struct mm_struct;
+extern void lru_gen_add_mm(struct mm_struct *mm);
+extern void lru_gen_del_mm(struct mm_struct *mm);
 #else
 static inline void lru_gen_init_lruvec(struct lruvec *lruvec) {}
 static inline void lru_gen_init_pgdat(struct pglist_data *pgdat) {}
+struct mm_struct;
+static inline void lru_gen_add_mm(struct mm_struct *mm) {}
+static inline void lru_gen_del_mm(struct mm_struct *mm) {}
 #endif
 
 static inline struct pglist_data *lruvec_pgdat(struct lruvec *lruvec)

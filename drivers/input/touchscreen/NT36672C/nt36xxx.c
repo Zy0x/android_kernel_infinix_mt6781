@@ -1956,7 +1956,7 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	ts->has_smooth_level = true;
 	ts->smooth_level = 0x00;
 	ts->last_cmd_ret = 0;
-	ts->micro_gain = 4;
+	ts->micro_gain = NVT_MICRO_GAIN_DEFAULT;
 	ts->edge_guard_px = NVT_EDGE_GUARD_DEFAULT;
 	ts->touch_qos_active = false;
 	ts->dt_us_min = U32_MAX;

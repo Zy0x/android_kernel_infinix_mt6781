@@ -79,6 +79,7 @@ extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 #endif
 #define TOUCH_FORCE_NUM 1000
 #define NVT_MICRO_GAIN_MAX 12
+#define NVT_MICRO_GAIN_DEFAULT 1
 #define NVT_MICRO_GAIN_MAX_OFF 36
 #define NVT_MICRO_GAIN_MAX_OFF_CEIL 120
 #define NVT_EDGE_GUARD_MAX 240

@@ -42,11 +42,16 @@ void __weak thrm_aware_lynx_release(void)
 {
 }
 
+void __weak fbt_lynx_sync_silencer(bool silencer)
+{
+}
+
 EXPORT_SYMBOL(g_lynx_thermal_silencer);
 
 extern int dcp_get_ta_status(void);
 
 static DEFINE_MUTEX(lynx_proc_mutex);
+static DEFINE_MUTEX(lynx_silencer_mutex);
 static struct proc_dir_entry *lynx_proc_dir;
 
 void lynx_bypass_on_plug_out(void)
@@ -303,7 +308,8 @@ static ssize_t lynx_thermal_silencer_write(struct file *file, const char __user 
 	if (kstrtoint(strim(kbuf), 10, &val) < 0)
 		return -EINVAL;
 
-	g_lynx_thermal_silencer = (val != 0);
+	mutex_lock(&lynx_silencer_mutex);
+	WRITE_ONCE(g_lynx_thermal_silencer, val != 0);
 	smp_wmb();
 	if (g_lynx_thermal_silencer) {
 		mt_ppm_cpu_thermal_protect(0);
@@ -313,6 +319,7 @@ static ssize_t lynx_thermal_silencer_write(struct file *file, const char __user 
 		cpuhvfs_update_imax_state(0);
 		cpuhvfs_update_imax_thermal_state(0);
 		cfp_lynx_sync_silencer(true);
+		fbt_lynx_sync_silencer(true);
 		thrm_aware_lynx_release();
 		lynx_sync_sspm_thermal_throttle(true);
 	} else {
@@ -320,6 +327,7 @@ static ssize_t lynx_thermal_silencer_write(struct file *file, const char __user 
 		lynx_sync_sspm_thermal_throttle(false);
 	}
 	pr_info("LYNX_POWER: Thermal Silencer %s\n", g_lynx_thermal_silencer ? "ENABLED" : "DISABLED");
+	mutex_unlock(&lynx_silencer_mutex);
 
 	return count;
 }

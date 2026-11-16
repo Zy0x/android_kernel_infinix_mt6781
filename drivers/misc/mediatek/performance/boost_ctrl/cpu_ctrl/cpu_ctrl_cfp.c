@@ -123,6 +123,9 @@ static void set_cfp_ppm(struct ppm_limit_data *desired_freq, int headroom_opp)
 
 static void cfp_lt_callback(int mask_loading, int loading)
 {
+	if (READ_ONCE(g_lynx_thermal_silencer))
+		return;
+
 	cfp_lock(__func__);
 
 	cfp_curr_loading = loading;
@@ -239,7 +242,9 @@ void cpu_ctrl_cfp(struct ppm_limit_data *desired_freq)
 	memcpy(cc_freq, desired_freq,
 		perfmgr_clusters * sizeof(struct ppm_limit_data));
 
-	if (!__cfp_enable) {
+	if (!__cfp_enable || READ_ONCE(g_lynx_thermal_silencer)) {
+		if (cc_is_ceiled)
+			stop_cfp();
 		set_cfp_ppm(desired_freq, cfp_curr_headroom_opp);
 		goto out_cpu_ctrl_cfp;
 	}

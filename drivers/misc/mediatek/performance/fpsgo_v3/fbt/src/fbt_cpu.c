@@ -80,7 +80,7 @@
 #define TIME_2MS  2000000
 #define TIME_1MS  1000000
 #define TARGET_UNLIMITED_FPS 240
-#define TARGET_DEFAULT_FPS 60
+#define TARGET_DEFAULT_FPS 120
 #define FBTCPU_SEC_DIVIDER 1000000000
 #define NSEC_PER_HUSEC 100000
 #define TIME_MS_TO_NS  1000000ULL
@@ -190,6 +190,8 @@ enum FPSGO_JERK_STAGE {
 	FPSGO_JERK_UBOOST,
 	FPSGO_JERK_SECOND,
 };
+
+extern bool g_lynx_thermal_silencer;
 
 static struct kobject *fbt_kobj;
 
@@ -1398,7 +1400,7 @@ static unsigned int fbt_get_new_base_blc(struct ppm_limit_data *pld,
 
 	for (cluster = 0 ; cluster < cluster_num; cluster++) {
 		pld[cluster].min = -1;
-		if (suppress_ceiling) {
+		if (suppress_ceiling && !READ_ONCE(g_lynx_thermal_silencer)) {
 			int opp =
 				fbt_get_opp_by_normalized_cap(blc_wt, cluster);
 
@@ -2207,7 +2209,7 @@ static void fbt_do_boost(unsigned int blc_wt, int pid,
 
 		pld[cluster].min = -1;
 
-		if (suppress_ceiling) {
+		if (suppress_ceiling && !READ_ONCE(g_lynx_thermal_silencer)) {
 			pld[cluster].max =
 				max(mbhr, cpu_dvfs[cluster].power[mbhr_opp]);
 
@@ -3621,8 +3623,8 @@ void fpsgo_comp2fbt_frame_start(struct render_info *thr,
 
 	mutex_lock(&fbt_mlock);
 	fbt_set_idleprefer_locked(1);
-	fbt_set_down_throttle_locked(0);
-	fbt_set_sync_flag_locked(0);
+	if (!READ_ONCE(g_lynx_thermal_silencer))
+		fbt_set_sync_flag_locked(0);
 	mutex_unlock(&fbt_mlock);
 
 	fbt_frame_start(thr, ts);
@@ -4225,6 +4227,22 @@ int fbt_switch_idleprefer(int enable)
 
 	return 0;
 }
+
+void fbt_lynx_sync_silencer(bool silencer)
+{
+	mutex_lock(&fbt_mlock);
+	if (silencer) {
+		fbt_free_bhr();
+		if (set_cap_margin)
+			fbt_set_cap_margin_locked(0);
+		if (down_throttle_ns != -1)
+			fbt_set_down_throttle_locked(-1);
+		if (sync_flag != -1)
+			fbt_set_sync_flag_locked(-1);
+	}
+	mutex_unlock(&fbt_mlock);
+}
+EXPORT_SYMBOL(fbt_lynx_sync_silencer);
 
 int fbt_switch_ceiling(int enable)
 {
@@ -5141,8 +5159,8 @@ void __exit fbt_cpu_exit(void)
 
 int __init fbt_cpu_init(void)
 {
-	bhr = 5;
-	bhr_opp = 1;
+	bhr = 15;
+	bhr_opp = 2;
 	bhr_opp_l = fbt_get_l_min_bhropp();
 	rescue_opp_c = (NR_FREQ_CPU - 1);
 	rescue_opp_f = 5;
@@ -5151,10 +5169,10 @@ int __init fbt_cpu_init(void)
 	short_rescue_ns = DEF_RESCUE_NS_TH;
 	short_min_rescue_p = 0;
 	run_time_percent = 50;
-	deqtime_bound = TIME_3MS;
-	variance = 40;
-	floor_bound = 3;
-	kmin = 10;
+	deqtime_bound = (TIME_1MS * 2);
+	variance = 20;
+	floor_bound = 2;
+	kmin = 5;
 	floor_opp = 2;
 	loading_th = 0;
 	sampling_period_MS = 256;
@@ -5185,7 +5203,7 @@ int __init fbt_cpu_init(void)
 #else
 	def_capacity_margin = get_capacity_margin();
 #endif
-	fbt_cap_margin_enable = 1;
+	fbt_cap_margin_enable = 0;
 	boost_ta = fbt_get_default_boost_ta();
 	adjust_loading = fbt_get_default_adj_loading();
 

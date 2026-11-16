@@ -29,11 +29,7 @@ static struct ppm_policy_data sysboost_policy = {
 	.name			= __stringify(PPM_POLICY_SYS_BOOST),
 	.lock			= __MUTEX_INITIALIZER(sysboost_policy.lock),
 	.policy			= PPM_POLICY_SYS_BOOST,
-#if defined(OPLUS_FEATURE_CHG_BASIC)
-	.priority		= PPM_POLICY_PRIO_USER_SPECIFY_BASE,
-#else
 	.priority		= PPM_POLICY_PRIO_PERFORMANCE_BASE,
-#endif
 	.update_limit_cb	= ppm_sysboost_update_limit_cb,
 	.status_change_cb	= ppm_sysboost_status_change_cb,
 };

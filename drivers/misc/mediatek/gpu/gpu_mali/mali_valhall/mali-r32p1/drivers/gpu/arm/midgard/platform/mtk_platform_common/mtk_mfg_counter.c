@@ -848,7 +848,7 @@ void mtk_GPU_STALL_RAW(unsigned int *diff, int size)
 {
 	unsigned int stall_counters[4] = {0};
 	int i;
-#if IS_ENABLED(CONFIG_MACH_MT6877)
+#if IS_ENABLED(CONFIG_MACH_MT6877) || IS_ENABLED(CONFIG_MACH_MT6781)
 	for (i = 0; i < size; i++) {
 			diff[i] = stall_counters[i];
 	}

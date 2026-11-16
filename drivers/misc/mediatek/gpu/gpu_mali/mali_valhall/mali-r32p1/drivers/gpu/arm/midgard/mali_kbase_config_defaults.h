@@ -100,7 +100,7 @@ enum {
  * -# Power off the entire GPU
  */
 #ifndef DEFAULT_PM_GPU_POWEROFF_TICK_NS
-#define DEFAULT_PM_GPU_POWEROFF_TICK_NS (400000) /* 400us */
+#define DEFAULT_PM_GPU_POWEROFF_TICK_NS (1000000) /* 1000us (25ms shader window) */
 #endif
 
 /**
@@ -115,7 +115,7 @@ enum {
  * Default scheduling tick granuality (can be overridden by platform header)
  */
 #ifndef DEFAULT_JS_SCHEDULING_PERIOD_NS
-#define DEFAULT_JS_SCHEDULING_PERIOD_NS    (100000000u) /* 100ms */
+#define DEFAULT_JS_SCHEDULING_PERIOD_NS    (50000000u) /* 50ms */
 #endif
 
 /**

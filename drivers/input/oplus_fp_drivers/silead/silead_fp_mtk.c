@@ -615,7 +615,6 @@ err_input:
         //gpio_free(fp_dev->rst_port);
     }
 
-err_rst:
     free_irq(fp_dev->irq, fp_dev);
     if (gpio_is_valid(fp_dev->irq_gpio))
         gpio_direction_input(fp_dev->irq_gpio);

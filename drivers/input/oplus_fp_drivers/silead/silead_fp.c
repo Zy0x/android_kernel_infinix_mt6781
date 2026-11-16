@@ -1019,11 +1019,11 @@ silfp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
      * IOC_DIR is from the user perspective, while access_ok is
      * from the kernel perspective; so they look reversed.
      */
-    if (_IOC_DIR(cmd) & _IOC_READ) {
+    if (arg && (_IOC_DIR(cmd) & _IOC_READ)) {
         err = !access_ok(VERIFY_WRITE,
                          (void __user *)arg, _IOC_SIZE(cmd));
     }
-    if (err == 0 && _IOC_DIR(cmd) & _IOC_WRITE) {
+    if (err == 0 && arg && (_IOC_DIR(cmd) & _IOC_WRITE)) {
         err = !access_ok(VERIFY_READ,
                          (void __user *)arg, _IOC_SIZE(cmd));
     }
@@ -1084,11 +1084,13 @@ silfp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     break;
 
     case SIFP_IOC_ENABLE_IRQ:
+    case SIFP_IOC_ENABLE_IRQ_R:
         LOG_MSG_DEBUG(INFO_LOG, "[%s] enable irq\n", __func__);
         silfp_irq_enable(fp_dev);
         break;
 
     case SIFP_IOC_DISABLE_IRQ:
+    case SIFP_IOC_DISABLE_IRQ_R:
         LOG_MSG_DEBUG(INFO_LOG, "[%s] disable irq\n", __func__);
         silfp_irq_disable(fp_dev);
         break;
@@ -1226,6 +1228,18 @@ silfp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             if (copy_to_user((void __user *)arg, (void *)&fp_tpinfo, sizeof(fp_tpinfo))) {
                 LOG_MSG_DEBUG(ERR_LOG, "[SIFP_IOC_GET_TP_TOUCH_INFO] copy_to fail\n");
                 retval = -EFAULT;
+            }
+        }
+        break;
+
+    case SIFP_IOC_SET_FEATURE:
+        if (arg) {
+            unsigned char feature = 0;
+            if (copy_from_user(&feature, (void __user *)arg, sizeof(char))) {
+                LOG_MSG_DEBUG(ERR_LOG, "[SIFP_IOC_SET_FEATURE] copy_from fail\n");
+                retval = -EFAULT;
+            } else {
+                LOG_MSG_DEBUG(INFO_LOG, "[%s] set feature=0x%x\n", __func__, feature);
             }
         }
         break;

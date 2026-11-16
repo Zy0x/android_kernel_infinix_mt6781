@@ -27,8 +27,6 @@
 #define MTK_DRM_PROP_PRESENT_FENCE  "PRESENT_FENCE"
 #define MTK_DRM_PROP_OVL_DSI_SEQ  "OVL_DSI_SEQ"
 
-struct mml_frame_info;
-
 /**
  * User-desired buffer creation information structure.
  *
@@ -583,7 +581,6 @@ struct drm_mtk_layering_info {
 	int res_idx;
 	uint32_t hrt_weight;
 	uint32_t hrt_idx;
-	struct mml_frame_info *mml_cfg[3];
 };
 
 /**
@@ -647,7 +644,6 @@ enum mtk_mmsys_id {
 };
 
 struct mtk_drm_disp_caps_info {
-	unsigned int hw_ver;
 	unsigned int disp_feature_flag;
 	int lcm_degree; /* for rotate180 */
 	unsigned int rsz_in_max[2]; /* for RPO { width, height } */
@@ -657,9 +653,6 @@ struct mtk_drm_disp_caps_info {
 	unsigned int max_luminance;
 	unsigned int average_luminance;
 	unsigned int min_luminance;
-
-	/* Msync2.0 */
-	unsigned int msync_level_num;
 };
 
 struct drm_mtk_session_info {

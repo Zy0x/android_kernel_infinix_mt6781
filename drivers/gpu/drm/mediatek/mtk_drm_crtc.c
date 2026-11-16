@@ -3155,6 +3155,10 @@ static void mtk_crtc_update_ddp_state(struct drm_crtc *crtc,
 	unsigned int pan_disp_frame_weight = 4;
 	struct drm_device *dev = crtc->dev;
 
+	if (index == 0)
+		mtk_crtc_disp_mode_switch_begin(crtc, old_crtc_state,
+						crtc_state, cmdq_handle);
+
 	mutex_lock(&mtk_drm->lyeblob_list_mutex);
 	prop_lye_idx = crtc_state->prop_val[CRTC_PROP_LYE_IDX];
 	/*set_hrt_bw for pan display ,set 4 for two RGB layer*/
@@ -3163,14 +3167,6 @@ static void mtk_crtc_update_ddp_state(struct drm_crtc *crtc,
 			__func__,
 			old_mtk_state->prop_val[CRTC_PROP_DISP_MODE_IDX],
 			crtc_state->prop_val[CRTC_PROP_DISP_MODE_IDX]);
-		/*
-		 * prop_lye_idx is 0 when suspend. Update display mode to avoid
-		 * the dsi params not sync with the mode of new crtc state.
-		 * And switch fps immediately when suspend or resume
-		 */
-		mtk_crtc_disp_mode_switch_begin(crtc,
-			old_crtc_state, crtc_state,
-			cmdq_handle);
 		mtk_crtc_update_hrt_state(crtc, pan_disp_frame_weight,
 			cmdq_handle);
 	}
@@ -3180,10 +3176,6 @@ static void mtk_crtc_update_ddp_state(struct drm_crtc *crtc,
 			DDPMSG("lyeblob lost ID:%d\n", prop_lye_idx);
 			break;
 		} else if (lyeblob_ids->lye_idx == prop_lye_idx) {
-			if (index == 0)
-				mtk_crtc_disp_mode_switch_begin(crtc,
-					old_crtc_state, crtc_state,
-					cmdq_handle);
 			if (index == 0) {
 #if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6833) || \
 	defined(CONFIG_MACH_MT6877) || defined(CONFIG_MACH_MT6781)

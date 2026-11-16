@@ -594,7 +594,7 @@ static struct mtk_panel_params ext_params_120hz = {
 		.data_rate = 900,
 		.vfp = 54,
 		.vfp_lp_dyn = 0,
-		.hfp = 49,
+		.hfp = 20,
 	},
 	.dyn_fps = {
 		.vact_timing_fps = 120,
@@ -653,7 +653,7 @@ static struct mtk_panel_params ext_params_90hz = {
 		.data_rate = 900,
 		.vfp = 899,
 		.vfp_lp_dyn = 0,
-		.hfp = 49,
+		.hfp = 20,
 	},
 	.dyn_fps = {
 		.vact_timing_fps = 90,
@@ -712,7 +712,7 @@ static struct mtk_panel_params ext_params_60hz = {
 		.data_rate = 900,
 		.vfp = 2588,
 		.vfp_lp_dyn = 0,
-		.hfp = 49,
+		.hfp = 20,
 	},
 	.dyn_fps = {
 		.vact_timing_fps = 60,

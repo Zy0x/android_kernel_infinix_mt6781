@@ -3446,8 +3446,8 @@ static bool __dv2_is_ta_rdy(struct dv2_algo_info *info)
 		ret = prop_chgalgo_authenticate_ta(data->pca_ta_pool[i],
 						   auth_data);
 		if (ret < 0) {
-			PCA_DBG("%s authenticate fail(%d)\n",
-				desc->support_ta[i], ret);
+			pr_debug("[PCA]%s %s authenticate fail(%d)\n",
+				__func__, desc->support_ta[i], ret);
 			if (ret == -ENETUNREACH)
 				prop_chgalgo_set_dev_notify(data->pca_swchg,
 							    14);

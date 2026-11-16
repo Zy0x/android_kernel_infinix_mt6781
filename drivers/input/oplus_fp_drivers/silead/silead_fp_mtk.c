@@ -90,23 +90,31 @@ static int silfp_hw_poweron(struct silfp_data *fp_dev)
 	if( SIL_LDO_DISBALE == 0 ) {
 	    LOG_MSG_DEBUG(INFO_LOG, "%s: enter :%d \n", __func__, err);
 	    if ( fp_dev->avdd_ldo ) {
-	        err = regulator_set_voltage(fp_dev->avdd_ldo, AVDD_MIN, AVDD_MAX);	/*set 2.8v*/
-		    LOG_MSG_DEBUG(INFO_LOG, "%s: set voltage :%d \n", __func__, err);
-	        err = regulator_enable(fp_dev->avdd_ldo);	/*enable regulator*/
-	        LOG_MSG_DEBUG(INFO_LOG, "%s: regulator_enable :%d \n", __func__, err);
-	        if (err) {
-	            goto last;
+	        if (regulator_count_voltages(fp_dev->avdd_ldo) > 0) {
+	            err = regulator_set_voltage(fp_dev->avdd_ldo, AVDD_MIN, AVDD_MAX);	/*set 2.8v*/
+	            LOG_MSG_DEBUG(INFO_LOG, "%s: set voltage :%d \n", __func__, err);
+	        }
+	        if (fp_dev->power_is_off) {
+	            err = regulator_enable(fp_dev->avdd_ldo);	/*enable regulator*/
+	            LOG_MSG_DEBUG(INFO_LOG, "%s: regulator_enable :%d \n", __func__, err);
+	            if (err) {
+	                goto last;
+	            }
 	        }
 	    }
 	    if ( fp_dev->vddio_ldo ) {
 		LOG_MSG_DEBUG(INFO_LOG, "%s: set vddio:%d \n", __func__, err);
-	        err = regulator_set_voltage(fp_dev->vddio_ldo, VDDIO_MIN, VDDIO_MAX);	/*set 1.8v*/
-	        if (err) {
-	            goto last;
+	        if (regulator_count_voltages(fp_dev->vddio_ldo) > 0) {
+	            err = regulator_set_voltage(fp_dev->vddio_ldo, VDDIO_MIN, VDDIO_MAX);	/*set 1.8v*/
+	            if (err) {
+	                goto last;
+	            }
 	        }
-	        err = regulator_enable(fp_dev->vddio_ldo);	/*enable regulator*/
-	        if (err) {
-	            goto last;
+	        if (fp_dev->power_is_off) {
+	            err = regulator_enable(fp_dev->vddio_ldo);	/*enable regulator*/
+	            if (err) {
+	                goto last;
+	            }
 	        }
 	    }
 	}
@@ -149,10 +157,10 @@ static void silfp_hw_poweroff(struct silfp_data *fp_dev)
 #ifdef BSP_SIL_POWER_SUPPLY_REGULATOR
 	if( SIL_LDO_DISBALE == 0 ) {
 	    /* Power control by Regulators(LDO) */
-	    if ( fp_dev->avdd_ldo && (regulator_is_enabled(fp_dev->avdd_ldo) > 0)) {
+	    if ( fp_dev->avdd_ldo && !fp_dev->power_is_off && (regulator_is_enabled(fp_dev->avdd_ldo) > 0)) {
 	        regulator_disable(fp_dev->avdd_ldo);    /*disable regulator*/
 	    }
-	    if ( fp_dev->vddio_ldo && (regulator_is_enabled(fp_dev->vddio_ldo) > 0)) {
+	    if ( fp_dev->vddio_ldo && !fp_dev->power_is_off && (regulator_is_enabled(fp_dev->vddio_ldo) > 0)) {
 	        regulator_disable(fp_dev->vddio_ldo);   /*disable regulator*/
 	    }
 	}
@@ -190,15 +198,18 @@ static void silfp_power_deinit(struct silfp_data *fp_dev)
 	if (SIL_LDO_DISBALE == 0 ) {
 	    /* Power control by Regulators(LDO) */
 	    if ( fp_dev->avdd_ldo ) {
-	        regulator_disable(fp_dev->avdd_ldo);	/*disable regulator*/
+	        if (!fp_dev->power_is_off)
+	            regulator_disable(fp_dev->avdd_ldo);	/*disable regulator*/
 	        regulator_put(fp_dev->avdd_ldo);
 	        fp_dev->avdd_ldo = NULL;
 	    }
 	    if ( fp_dev->vddio_ldo ) {
-	        regulator_disable(fp_dev->vddio_ldo);	/*disable regulator*/
+	        if (!fp_dev->power_is_off)
+	            regulator_disable(fp_dev->vddio_ldo);	/*disable regulator*/
 	        regulator_put(fp_dev->vddio_ldo);
 	        fp_dev->vddio_ldo = NULL;
 	    }
+	    fp_dev->power_is_off = 1;
 	}
 #endif /* BSP_SIL_POWER_SUPPLY_REGULATOR */
 
@@ -339,40 +350,52 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
         fp_dev->int_port = gpio_to_irq(fp_dev->irq_gpio);
     LOG_MSG_DEBUG(INFO_LOG, "%s, irq = %d, rst_port = %d\n", __func__, fp_dev->int_port, fp_dev->rst_port);
 
-    fp_dev->pin.pinctrl = devm_pinctrl_get(dev);
-    if (IS_ERR(fp_dev->pin.pinctrl) && fp_dev->spi)
-        fp_dev->pin.pinctrl = devm_pinctrl_get(&fp_dev->spi->dev);
-    if (IS_ERR(fp_dev->pin.pinctrl)) {
-        ret = PTR_ERR(fp_dev->pin.pinctrl);
-        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp pinctrl\n", __func__);
-        return ret;
+    if (IS_ERR_OR_NULL(fp_dev->pin.pinctrl)) {
+        fp_dev->pin.pinctrl = devm_pinctrl_get(dev);
+        if (IS_ERR(fp_dev->pin.pinctrl) && fp_dev->spi)
+            fp_dev->pin.pinctrl = devm_pinctrl_get(&fp_dev->spi->dev);
+        if (IS_ERR(fp_dev->pin.pinctrl)) {
+            ret = PTR_ERR(fp_dev->pin.pinctrl);
+            fp_dev->pin.pinctrl = NULL;
+            LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp pinctrl\n", __func__);
+            return ret;
+        }
     }
 
-    fp_dev->pin.pins_irq = pinctrl_lookup_state(fp_dev->pin.pinctrl, "irq-init");
-    if (IS_ERR(fp_dev->pin.pins_irq))
-        fp_dev->pin.pins_irq = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_pin_irq");
-    if (IS_ERR(fp_dev->pin.pins_irq)) {
-        ret = PTR_ERR(fp_dev->pin.pins_irq);
-        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp pins_irq\n", __func__);
-        return ret;
+    if (IS_ERR_OR_NULL(fp_dev->pin.pins_irq)) {
+        fp_dev->pin.pins_irq = pinctrl_lookup_state(fp_dev->pin.pinctrl, "irq-init");
+        if (IS_ERR(fp_dev->pin.pins_irq))
+            fp_dev->pin.pins_irq = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_pin_irq");
+        if (IS_ERR(fp_dev->pin.pins_irq)) {
+            ret = PTR_ERR(fp_dev->pin.pins_irq);
+            fp_dev->pin.pins_irq = NULL;
+            LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp pins_irq\n", __func__);
+            return ret;
+        }
     }
 
-    fp_dev->pin.pins_rst_h = pinctrl_lookup_state(fp_dev->pin.pinctrl, "rst-high");
-    if (IS_ERR(fp_dev->pin.pins_rst_h))
-        fp_dev->pin.pins_rst_h = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_reset_high");
-    if (IS_ERR(fp_dev->pin.pins_rst_h)) {
-        ret = PTR_ERR(fp_dev->pin.pins_rst_h);
-        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp rst-high\n", __func__);
-        return ret;
+    if (IS_ERR_OR_NULL(fp_dev->pin.pins_rst_h)) {
+        fp_dev->pin.pins_rst_h = pinctrl_lookup_state(fp_dev->pin.pinctrl, "rst-high");
+        if (IS_ERR(fp_dev->pin.pins_rst_h))
+            fp_dev->pin.pins_rst_h = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_reset_high");
+        if (IS_ERR(fp_dev->pin.pins_rst_h)) {
+            ret = PTR_ERR(fp_dev->pin.pins_rst_h);
+            fp_dev->pin.pins_rst_h = NULL;
+            LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp rst-high\n", __func__);
+            return ret;
+        }
     }
 
-    fp_dev->pin.pins_rst_l = pinctrl_lookup_state(fp_dev->pin.pinctrl, "rst-low");
-    if (IS_ERR(fp_dev->pin.pins_rst_l))
-        fp_dev->pin.pins_rst_l = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_reset_low");
-    if (IS_ERR(fp_dev->pin.pins_rst_l)) {
-        ret = PTR_ERR(fp_dev->pin.pins_rst_l);
-        LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp rst-low\n", __func__);
-        return ret;
+    if (IS_ERR_OR_NULL(fp_dev->pin.pins_rst_l)) {
+        fp_dev->pin.pins_rst_l = pinctrl_lookup_state(fp_dev->pin.pinctrl, "rst-low");
+        if (IS_ERR(fp_dev->pin.pins_rst_l))
+            fp_dev->pin.pins_rst_l = pinctrl_lookup_state(fp_dev->pin.pinctrl, "tran_fp_reset_low");
+        if (IS_ERR(fp_dev->pin.pins_rst_l)) {
+            ret = PTR_ERR(fp_dev->pin.pins_rst_l);
+            fp_dev->pin.pins_rst_l = NULL;
+            LOG_MSG_DEBUG(ERR_LOG, "%s can't find silfp rst-low\n", __func__);
+            return ret;
+        }
     }
 
 	if( SIL_LDO_DISBALE == 0 ) {
@@ -398,7 +421,7 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
 	}
 
 #ifdef BSP_SIL_POWER_SUPPLY_REGULATOR
-	if ( SIL_LDO_DISBALE == 0 ) {
+	if ( SIL_LDO_DISBALE == 0 && !fp_dev->avdd_ldo ) {
 		if (vmch_enable == 1) {
 		    fp_dev->avdd_ldo = regulator_get(&fp_dev->spi->dev, "vmch");
 		} else {
@@ -406,6 +429,10 @@ static int silfp_parse_dts(struct silfp_data* fp_dev)
 		}
         if (IS_ERR_OR_NULL(fp_dev->avdd_ldo)) {
             fp_dev->avdd_ldo = regulator_get(&fp_dev->spi->dev, "vmch");
+        }
+        if (IS_ERR(fp_dev->avdd_ldo)) {
+            LOG_MSG_DEBUG(ERR_LOG, "%s regulator_get failed: %ld\n", __func__, PTR_ERR(fp_dev->avdd_ldo));
+            fp_dev->avdd_ldo = NULL;
         }
 	}
 #endif /* BSP_SIL_POWER_SUPPLY_REGULATOR */
@@ -505,9 +532,11 @@ static int silfp_resource_init(struct silfp_data *fp_dev, struct fp_dev_init_t *
     if (status < 0){
         goto err;
     }
-    status = silfp_hw_poweron(fp_dev);
-    if (status < 0){
-        goto err;
+    if (fp_dev->power_is_off) {
+        status = silfp_hw_poweron(fp_dev);
+        if (status < 0){
+            goto err;
+        }
     }
     /*fp_dev->int_port = of_get_named_gpio(fp_dev->spi->dev.of_node, "irq-gpios", 0);
     fp_dev->rst_port = of_get_named_gpio(fp_dev->spi->dev.of_node, "rst-gpios", 0); */
@@ -538,24 +567,26 @@ static int silfp_resource_init(struct silfp_data *fp_dev, struct fp_dev_init_t *
         silfp_irq_disable(fp_dev);
     }
 
-    if (fp_dev->rst_port > 0 ) {
+    ret = 0;
+    if ((IS_ERR_OR_NULL(fp_dev->pin.pins_rst_l) || IS_ERR_OR_NULL(fp_dev->pin.pins_rst_h)) && fp_dev->rst_port > 0) {
         ret = gpio_request(fp_dev->rst_port, "SILFP_RST_PIN");
         if (ret < 0) {
-            LOG_MSG_DEBUG(ERR_LOG, "[%s] GPIO=%d request failed (%d), falling back to pinctrl\n",__func__,(s32)fp_dev->rst_port, ret);
-            ret = 0; /* reset line is driven via pinctrl states */
+            LOG_MSG_DEBUG(ERR_LOG, "[%s] GPIO=%d request failed (%d)\n", __func__, (s32)fp_dev->rst_port, ret);
+            ret = 0;
         }
     }
     if (!IS_ERR_OR_NULL(fp_dev->pin.pins_rst_l)) {
         pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_rst_l);
     }
 
-    silfp_hw_poweron(fp_dev);
     mdelay(5);
 
-    /*上电之后拉高RST，使能模组*/
-    pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_rst_h);
+    /* Pull RST high to enable Silead sensor */
+    if (!IS_ERR_OR_NULL(fp_dev->pin.pins_rst_h)) {
+        pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_rst_h);
+    }
+    mdelay(3);
 
-    /*配置spi 的上电后的默认状态，CS模式拉高输出*/
     silfp_set_spi_default_status(fp_dev);
 
     if (!ret) {
@@ -568,12 +599,13 @@ static int silfp_resource_init(struct silfp_data *fp_dev, struct fp_dev_init_t *
     dev_info->reserve = PKG_SIZE;
     dev_info->reserve <<= 12;
 
-    if (dev_info && fp_dev->pin.spi_id) {
-        //LOG_MSG_DEBUG(ERR_LOG, "spi(%d), irq(%d) reg=0x%X\n", fp_dev->pin.spi_id, fp_dev->pin.spi_irq, fp_dev->pin.spi_reg);
-        dev_info->dev_id = (uint8_t)fp_dev->pin.spi_id;
+    if (dev_info) {
+        if (fp_dev->pin.spi_id) {
+            dev_info->dev_id = (uint8_t)fp_dev->pin.spi_id;
+        }
         dev_info->reserve |= fp_dev->pin.spi_irq & 0x0FFF;
-        dev_info->reg = fp_dev->pin.spi_reg;
-        memcpy(dev_info->ta,TANAME,sizeof(dev_info->ta));
+        dev_info->reg = fp_dev->pin.spi_reg ? fp_dev->pin.spi_reg : 0x1100a000;
+        memcpy(dev_info->ta, TANAME, sizeof(dev_info->ta));
     }
 
     return status;

@@ -193,11 +193,14 @@ typedef enum _fp_spi_speet_t {
 static struct fp_dev_init_t silfp_dev_init_d = {
     .mode = 0,
     .bits = 8,
-    .speed = SPEED_18M,
+    .speed = SPEED_8M,
     .delay = 100,
     .dev = DEVICE,
     .nl_id = SIFP_NETLINK_ROUTE,
     .dev_id = 0,
+    .reserve = (PKG_SIZE << 12),
+    .reg = 0x1100a000,
+    .ta = { 0x51, 0x1E, 0xAD, 0x0D },
 };
 
 /* on some platform, home key has been redefine to KEY_HOMEPAGE! */
@@ -1049,6 +1052,9 @@ silfp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         break;
     case SIFP_IOC_DEINIT:
         silfp_resource_deinit(fp_dev);
+#ifdef BSP_SIL_NETLINK
+        pid = 0;
+#endif
         break;
 
     case SIFP_IOC_RESET: {
@@ -1315,7 +1321,14 @@ static int silfp_release(struct inode *inode, struct file *filp)
     /* last close? */
     fp_dev->users--;
     if (!fp_dev->users) {
-        // todo
+        if (atomic_read(&fp_dev->init)) {
+            LOG_MSG_DEBUG(INFO_LOG, "[%s] last fd closed while active, cleaning resources\n", __func__);
+            atomic_set(&fp_dev->init, 1);
+            silfp_resource_deinit(fp_dev);
+        }
+#ifdef BSP_SIL_NETLINK
+        pid = 0;
+#endif
     }
     mutex_unlock(&device_list_lock);
 
@@ -1347,6 +1360,49 @@ static const struct file_operations silfp_dev_fops = {
 
 /*-------------------------------------------------------------------------*/
 
+static void silfp_probe_chip_id(struct silfp_data *fp_dev)
+{
+    u8 *tx = NULL;
+    u8 *rx = NULL;
+    struct spi_transfer t;
+    struct spi_message m;
+    int ret;
+
+    if (!fp_dev || !fp_dev->spi)
+        return;
+
+    tx = kzalloc(8, GFP_KERNEL);
+    rx = kzalloc(8, GFP_KERNEL);
+    if (!tx || !rx) {
+        kfree(tx);
+        kfree(rx);
+        return;
+    }
+
+    tx[0] = 0xfc;
+    memset(&t, 0, sizeof(t));
+    t.tx_buf = tx;
+    t.rx_buf = rx;
+    t.len = 7;
+    t.bits_per_word = 8;
+    t.speed_hz = SPEED_8M;
+
+    spi_message_init(&m);
+    spi_message_add_tail(&t, &m);
+
+    silfp_set_spi(fp_dev, true);
+    silfp_hw_reset(fp_dev, 0);
+    ret = spi_sync(fp_dev->spi, &m);
+    silfp_set_spi(fp_dev, false);
+
+    LOG_MSG_DEBUG(INFO_LOG,
+        "[%s] spi_sync ret=%d rx_test fp id: %02x %02x %02x %02x (raw: %*ph)\n",
+        __func__, ret, rx[2], rx[3], rx[4], rx[5], 7, rx);
+
+    kfree(tx);
+    kfree(rx);
+}
+
 static int silfp_probe(struct spi_device *spi)
 {
     struct silfp_data	*fp_dev = NULL;
@@ -1362,6 +1418,8 @@ static int silfp_probe(struct spi_device *spi)
     memset(fp_dev, 0, sizeof(struct silfp_data));
     /* Initialize the driver data */
     fp_dev->spi = spi;
+    fp_dev->power_is_off = 1;
+    spi_set_drvdata(spi, fp_dev);
     spin_lock_init(&fp_dev->spi_lock);
 
     wake_lock_init(&fp_dev->wakelock,WAKE_LOCK_SUSPEND,"silfp_wakelock");
@@ -1418,16 +1476,26 @@ static int silfp_probe(struct spi_device *spi)
         goto err_cdev;
     }
 
-    /* Power up Silead hardware at boot probe so HAL can detect and communicate immediately */
+    /* Power up Silead hardware & configure SPI0 (mode 0, 8MHz, PAD_SEL) at probe */
     status = silfp_parse_dts(fp_dev);
     if (status == 0) {
         silfp_hw_poweron(fp_dev);
-        if (!IS_ERR_OR_NULL(fp_dev->pin.pins_rst_h))
-            pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_rst_h);
-        LOG_MSG_DEBUG(INFO_LOG, "[%s] Silead hardware powered on and reset high at probe.\n", __func__);
+        if (!IS_ERR_OR_NULL(fp_dev->pin.pins_irq))
+            pinctrl_select_state(fp_dev->pin.pinctrl, fp_dev->pin.pins_irq);
+        silfp_set_spi_default_status(fp_dev);
+
+        fp_dev->spi->mode = SPI_MODE_0;
+        fp_dev->spi->bits_per_word = 8;
+        fp_dev->spi->max_speed_hz = SPEED_8M;
+        if (spi_setup(fp_dev->spi))
+            LOG_MSG_DEBUG(ERR_LOG, "[%s] spi_setup failed\n", __func__);
+
+        silfp_probe_chip_id(fp_dev);
+        LOG_MSG_DEBUG(INFO_LOG, "[%s] Silead hardware initialized (8MHz SPI0, /dev/spidev0.0, 0x1100a000) at probe.\n", __func__);
     } else {
         LOG_MSG_DEBUG(ERR_LOG, "[%s] silfp_parse_dts failed at probe: %d\n", __func__, status);
     }
+    status = 0;
 #ifdef PROC_NODE
     silfp_proc_init(fp_dev);
 #endif /* PROC_NODE */

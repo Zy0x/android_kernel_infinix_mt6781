@@ -158,7 +158,7 @@ struct fp_dev_touch_info {
 
 #define FEATURE_FLASH_CS      0x01
 
-#define RESET_TIME            2	/* Default chip reset wait time(ms) */
+#define RESET_TIME            0	/* Default chip reset wait time(ms; 0 -> 5ms L / 3ms H) */
 #define RESET_TIME_MULTIPLE   1 /* Multiple for reset time multiple*wait_time */
 #define SIFP_NETLINK_ROUTE    30
 #define NL_MSG_LEN            16
@@ -199,7 +199,7 @@ struct fp_dev_touch_info {
   #include "silead_fp_mtk.h"
   #define PLAT_H "silead_fp_mtk.c"
 
-  #define DEVICE "/dev/spidev1.0"
+  #define DEVICE "/dev/spidev0.0"
   //#define BSP_SIL_IRQ_CONFIRM
   #define PKG_SIZE 1
   #define BSP_SIL_DYNAMIC_SPI

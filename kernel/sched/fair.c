@@ -9922,7 +9922,7 @@ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 	    max_capacity < capacity) {
 		mcc->val = capacity;
 		mcc->cpu = cpu;
-#ifdef CONFIG_SCHED_DEBUG
+#if 0 /* reduce dmesg thermal-capacity spam during dynamic scaling */
 		raw_spin_unlock_irqrestore(&mcc->lock, flags);
 		printk_deferred("CPU%d: update max cpu_capacity %lu\n",
 				cpu, capacity);

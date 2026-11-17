@@ -22,7 +22,9 @@ endif
 $(info mtk-Kbuild CONFIG_MALI_PLATFORM_THIRDPARTY := $(CONFIG_MALI_PLATFORM_THIRDPARTY))
 $(info mtk-Kbuild CONFIG_MALI_PLATFORM_THIRDPARTY_NAME := $(CONFIG_MALI_PLATFORM_THIRDPARTY_NAME))
 
-CONFIG_MALI_DEBUG := y
+CONFIG_MALI_DEBUG := n
+CONFIG_MALI_EXPERT := y
+CONFIG_MALI_2MB_ALLOC := y
 
 ccflags-y += -I$(srctree)/include
 ccflags-y += -I$(srctree)/drivers/staging/android
@@ -78,6 +80,6 @@ endif
 # Set default policy always_on
 #ccflags-y += -DMTK_POWER_POLICY_AO
 
-ccflags-y += -DCONFIG_MTK_GPU_DEBUG
-ccflags-y += -DCONFIG_MTK_GPU_DEBUG_DFD
+ccflags-y += -DCONFIG_MALI_EXPERT
+ccflags-y += -DCONFIG_MALI_2MB_ALLOC
 ccflags-y += -DCONFIG_MTK_GPU_MEM_TRACK

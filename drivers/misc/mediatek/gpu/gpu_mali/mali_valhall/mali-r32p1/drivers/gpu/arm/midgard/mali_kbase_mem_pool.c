@@ -159,9 +159,11 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 	dma_addr_t dma_addr;
 	int i;
 
-	/* don't warn on higher order failures */
+	/* Avoid compaction/direct-reclaim stalls on 2MB huge-page attempts;
+	 * callers fall back immediately to 4KB pools when fragmented.
+	 */
 	if (pool->order)
-		gfp |= __GFP_NOWARN;
+		gfp = (gfp | __GFP_NOWARN | __GFP_NORETRY) & ~__GFP_RECLAIM;
 
 	p = kbdev->mgm_dev->ops.mgm_alloc_page(kbdev->mgm_dev,
 		pool->group_id, gfp, pool->order);
@@ -380,7 +382,7 @@ int kbase_mem_pool_init(struct kbase_mem_pool *pool,
 
 	pool->reclaim.count_objects = kbase_mem_pool_reclaim_count_objects;
 	pool->reclaim.scan_objects = kbase_mem_pool_reclaim_scan_objects;
-	pool->reclaim.seeks = DEFAULT_SEEKS;
+	pool->reclaim.seeks = DEFAULT_SEEKS * 4;
 	/* Kernel versions prior to 3.1 :
 	 * struct shrinker does not define batch
 	 */

@@ -102,7 +102,7 @@ else
     MALI_USE_CSF ?= 0
 endif
 
-ifneq ($(CONFIG_MALI_KUTF), n)
+ifeq ($(CONFIG_MALI_KUTF), y)
     MALI_KERNEL_TEST_API ?= 1
 else
     MALI_KERNEL_TEST_API ?= 0

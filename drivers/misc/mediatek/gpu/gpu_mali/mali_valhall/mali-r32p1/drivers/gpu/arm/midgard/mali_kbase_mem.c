@@ -3759,6 +3759,9 @@ static int kbase_jit_grow(struct kbase_context *kctx,
 	struct kbase_mem_pool *pool;
 	int ret = -ENOMEM;
 	struct tagged_addr *gpu_pages;
+#ifdef CONFIG_MALI_2MB_ALLOC
+	bool try_2mb = true;
+#endif
 
 	if (info->commit_pages > reg->nr_pages) {
 		/* Attempted to grow larger than maximum size */
@@ -3779,10 +3782,13 @@ static int kbase_jit_grow(struct kbase_context *kctx,
 
 	/* Allocate some more pages */
 	delta = info->commit_pages - reg->gpu_alloc->nents;
+#ifdef CONFIG_MALI_2MB_ALLOC
+jit_retry:
+#endif
 	pages_required = delta;
 
 #ifdef CONFIG_MALI_2MB_ALLOC
-	if (pages_required >= (SZ_2M / SZ_4K)) {
+	if (try_2mb && pages_required >= (SZ_2M / SZ_4K)) {
 		pool = &kctx->mem_pools.large[kctx->jit_group_id];
 		/* Round up to number of 2 MB pages required */
 		pages_required += ((SZ_2M / SZ_4K) - 1);
@@ -3816,8 +3822,15 @@ static int kbase_jit_grow(struct kbase_context *kctx,
 		ret = kbase_mem_pool_grow(pool, pool_delta);
 		kbase_gpu_vm_lock(kctx);
 
-		if (ret)
+		if (ret) {
+#ifdef CONFIG_MALI_2MB_ALLOC
+			if (try_2mb && pool->order) {
+				try_2mb = false;
+				goto jit_retry;
+			}
+#endif
 			goto update_failed;
+		}
 
 		spin_lock(&kctx->mem_partials_lock);
 		kbase_mem_pool_lock(pool);
@@ -3828,6 +3841,12 @@ static int kbase_jit_grow(struct kbase_context *kctx,
 	if (!gpu_pages) {
 		kbase_mem_pool_unlock(pool);
 		spin_unlock(&kctx->mem_partials_lock);
+#ifdef CONFIG_MALI_2MB_ALLOC
+		if (try_2mb && pool->order) {
+			try_2mb = false;
+			goto jit_retry;
+		}
+#endif
 		goto update_failed;
 	}
 
@@ -3841,6 +3860,12 @@ static int kbase_jit_grow(struct kbase_context *kctx,
 					pool, gpu_pages, delta);
 			kbase_mem_pool_unlock(pool);
 			spin_unlock(&kctx->mem_partials_lock);
+#ifdef CONFIG_MALI_2MB_ALLOC
+			if (try_2mb && pool->order) {
+				try_2mb = false;
+				goto jit_retry;
+			}
+#endif
 			goto update_failed;
 		}
 	}

@@ -364,7 +364,7 @@ static bool page_fault_try_alloc(struct kbase_context *kctx,
 	}
 
 #ifdef CONFIG_MALI_2MB_ALLOC
-	if (new_pages >= (SZ_2M / SZ_4K)) {
+	if (*grow_2mb_pool && new_pages >= (SZ_2M / SZ_4K)) {
 		root_pool = &kctx->mem_pools.large[region->gpu_alloc->group_id];
 		*grow_2mb_pool = true;
 	} else {
@@ -546,7 +546,10 @@ void kbase_mmu_page_fault_worker(struct work_struct *data)
 	int err;
 	bool grown = false;
 	int pages_to_grow;
-	bool grow_2mb_pool;
+	bool grow_2mb_pool = false;
+#ifdef CONFIG_MALI_2MB_ALLOC
+	bool try_2mb = true;
+#endif
 	struct kbase_sub_alloc *prealloc_sas[2] = { NULL, NULL };
 	int i;
 	size_t current_backed_size;
@@ -784,6 +787,9 @@ page_fault_retry:
 	}
 #endif
 
+#ifdef CONFIG_MALI_2MB_ALLOC
+	grow_2mb_pool = try_2mb;
+#endif
 	spin_lock(&kctx->mem_partials_lock);
 	grown = page_fault_try_alloc(kctx, region, new_pages, &pages_to_grow,
 			&grow_2mb_pool, prealloc_sas);
@@ -941,6 +947,12 @@ page_fault_retry:
 #endif
 		}
 		if (ret < 0) {
+#ifdef CONFIG_MALI_2MB_ALLOC
+			if (try_2mb && grow_2mb_pool) {
+				try_2mb = false;
+				goto page_fault_retry;
+			}
+#endif
 			/* failed to extend, handle as a normal PF */
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as,
 					"Page allocation failure", fault);
@@ -982,11 +994,7 @@ static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,
 	int i;
 	struct page *p;
 
-#ifdef CONFIG_MALI_2MB_ALLOC
-	p = kbase_mem_pool_alloc(&kbdev->mem_pools.large[mmut->group_id]);
-#else /* CONFIG_MALI_2MB_ALLOC */
 	p = kbase_mem_pool_alloc(&kbdev->mem_pools.small[mmut->group_id]);
-#endif /* CONFIG_MALI_2MB_ALLOC */
 	if (!p)
 		return 0;
 
@@ -1024,11 +1032,7 @@ static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,
 
 alloc_free:
 
-#ifdef CONFIG_MALI_2MB_ALLOC
-	kbase_mem_pool_free(&kbdev->mem_pools.large[mmut->group_id], p, false);
-#else /* CONFIG_MALI_2MB_ALLOC */
 	kbase_mem_pool_free(&kbdev->mem_pools.small[mmut->group_id], p, false);
-#endif /* CONFIG_MALI_2MB_ALLOC */
 
 	return 0;
 }
@@ -1254,11 +1258,7 @@ int kbase_mmu_insert_single_page(struct kbase_context *kctx, u64 vpfn,
 			 */
 			mutex_unlock(&kctx->mmu.mmu_lock);
 			err = kbase_mem_pool_grow(
-#ifdef CONFIG_MALI_2MB_ALLOC
-				&kbdev->mem_pools.large[
-#else
 				&kbdev->mem_pools.small[
-#endif
 					kctx->mmu.group_id],
 				MIDGARD_MMU_BOTTOMLEVEL);
 			mutex_lock(&kctx->mmu.mmu_lock);
@@ -1337,11 +1337,7 @@ static inline void cleanup_empty_pte(struct kbase_device *kbdev,
 
 	tmp_pgd = kbdev->mmu_mode->pte_to_phy_addr(*pte);
 	tmp_p = phys_to_page(tmp_pgd);
-#ifdef CONFIG_MALI_2MB_ALLOC
-	kbase_mem_pool_free(&kbdev->mem_pools.large[mmut->group_id],
-#else
 	kbase_mem_pool_free(&kbdev->mem_pools.small[mmut->group_id],
-#endif
 		tmp_p, false);
 
 	/* If the MMU tables belong to a context then we accounted the memory
@@ -1425,11 +1421,7 @@ int kbase_mmu_insert_pages_no_flush(struct kbase_device *kbdev,
 			 */
 			mutex_unlock(&mmut->mmu_lock);
 			err = kbase_mem_pool_grow(
-#ifdef CONFIG_MALI_2MB_ALLOC
-				&kbdev->mem_pools.large[mmut->group_id],
-#else
 				&kbdev->mem_pools.small[mmut->group_id],
-#endif
 				cur_level);
 			mutex_lock(&mmut->mmu_lock);
 		} while (!err);
@@ -1917,11 +1909,7 @@ static int kbase_mmu_update_pages_no_flush(struct kbase_context *kctx, u64 vpfn,
 			 */
 			mutex_unlock(&kctx->mmu.mmu_lock);
 			err = kbase_mem_pool_grow(
-#ifdef CONFIG_MALI_2MB_ALLOC
-				&kbdev->mem_pools.large[
-#else
 				&kbdev->mem_pools.small[
-#endif
 					kctx->mmu.group_id],
 				MIDGARD_MMU_BOTTOMLEVEL);
 			mutex_lock(&kctx->mmu.mmu_lock);
@@ -2016,11 +2004,7 @@ static void mmu_teardown_level(struct kbase_device *kbdev,
 	}
 
 	p = pfn_to_page(PFN_DOWN(pgd));
-#ifdef CONFIG_MALI_2MB_ALLOC
-	kbase_mem_pool_free(&kbdev->mem_pools.large[mmut->group_id],
-#else
 	kbase_mem_pool_free(&kbdev->mem_pools.small[mmut->group_id],
-#endif
 		p, true);
 
 	atomic_sub(1, &kbdev->memdev.used_pages);
@@ -2063,11 +2047,7 @@ int kbase_mmu_init(struct kbase_device *const kbdev,
 		int err;
 
 		err = kbase_mem_pool_grow(
-#ifdef CONFIG_MALI_2MB_ALLOC
-			&kbdev->mem_pools.large[mmut->group_id],
-#else
 			&kbdev->mem_pools.small[mmut->group_id],
-#endif
 			MIDGARD_MMU_BOTTOMLEVEL);
 		if (err) {
 			kbase_mmu_term(kbdev, mmut);

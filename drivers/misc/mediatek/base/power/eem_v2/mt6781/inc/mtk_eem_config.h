@@ -324,6 +324,10 @@ enum mt_cpu_dvfs_id {
 
 #define LOW_TEMP_OFF_DEFAULT	(0)
 #define EXTRA_TEMP_OFF_L		(8)
+#define HIGH_TEMP_OFF_L		(2)
+#define HIGH_TEMP_OFF_B		(2)
+#define HIGH_TEMP_OFF_CCI		(2)
+#define HIGH_TEMP_OFF_GPU		(2)
 #define EXTRA_TEMP_OFF_B		(8)
 #define EXTRA_TEMP_OFF_GPU		(4)
 #define EXTRA_LOW_TEMP_OFF_GPU	(7)

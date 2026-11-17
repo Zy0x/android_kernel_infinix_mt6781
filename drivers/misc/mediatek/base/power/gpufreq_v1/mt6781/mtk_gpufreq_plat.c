@@ -1169,6 +1169,7 @@ void mt_gpufreq_apply_aging(bool apply)
  * API : update OPP and set voltage
  * because PTPOD modified voltage table by PMIC wrapper
  */
+static void __mt_gpufreq_calculate_power(unsigned int idx, unsigned int freq, unsigned int volt, unsigned int temp);
 unsigned int mt_gpufreq_update_volt(
 		unsigned int pmic_volt[], unsigned int array_size)
 {
@@ -1193,6 +1194,23 @@ unsigned int mt_gpufreq_update_volt(
 		mt_gpufreq_apply_aging(true);
 	else
 		mt_gpufreq_cal_sb_opp_index();
+
+	/* Keep g_power_table synchronized after EEM/PTPOD updates */
+	if (g_power_table) {
+		int j;
+#ifdef CONFIG_THERMAL
+		int temp = get_immediate_gpu_wrap() / 1000;
+#else
+		int temp = 40;
+#endif
+		if (temp < -20 || temp > 125)
+			temp = 65;
+		for (j = 0; j < g_max_opp_idx_num; j++) {
+			g_power_table[j].gpufreq_vgpu = g_opp_table[j].gpufreq_vgpu;
+			__mt_gpufreq_calculate_power(j, g_power_table[j].gpufreq_khz,
+						     g_power_table[j].gpufreq_vgpu, temp);
+		}
+	}
 
 	/* update volt if powered */
 	if (g_buck_on && !g_fixed_freq_volt_state) {
@@ -2143,6 +2161,7 @@ static ssize_t mt_gpufreq_fixed_freq_volt_proc_write(
 	int ret = -EFAULT;
 	unsigned int fixed_freq = 0;
 	unsigned int fixed_volt = 0;
+	int restore_idx = -1;
 
 	len = (count < (sizeof(buf) - 1)) ? count : (sizeof(buf) - 1);
 
@@ -2179,6 +2198,7 @@ static ssize_t mt_gpufreq_fixed_freq_volt_proc_write(
 			goto out;
 		}
 
+
 		mutex_lock(&mt_gpufreq_lock);
 		if ((fixed_freq == 0) && (fixed_volt == 0)) {
 			fixed_freq =
@@ -2193,9 +2213,11 @@ static ssize_t mt_gpufreq_fixed_freq_volt_proc_write(
 				__mt_gpufreq_set_fixed_freq(fixed_freq);
 				__mt_gpufreq_set_fixed_vgpu(fixed_volt);
 			}
+			g_cur_opp_idx = g_segment_min_opp_idx;
 			g_fixed_freq = 0;
 			g_fixed_vgpu = 0;
 			g_fixed_freq_volt_state = false;
+			restore_idx = mt_gpufreq_limit_idx_by_condition(g_segment_max_opp_idx);
 		} else {
 			g_cur_opp_freq = __mt_gpufreq_get_cur_freq();
 			fixed_volt = VOLT_NORMALIZATION(fixed_volt);
@@ -2209,6 +2231,8 @@ static ssize_t mt_gpufreq_fixed_freq_volt_proc_write(
 			g_fixed_freq_volt_state = true;
 		}
 		mutex_unlock(&mt_gpufreq_lock);
+		if (restore_idx >= 0)
+			mt_gpufreq_target((unsigned int)restore_idx, KIR_PROC);
 	}
 
 out:

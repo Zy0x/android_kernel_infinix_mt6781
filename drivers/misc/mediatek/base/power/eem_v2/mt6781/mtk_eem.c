@@ -2332,6 +2332,26 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 	if (det->ops->get_freq_table)
 		det->ops->get_freq_table(det);
 
+	/* Empirical Sol-Kernel R1.081 safe undervolt margin (stacks cleanly with eem_offset) */
+	switch (det_id) {
+	case EEM_DET_L:
+	case EEM_DET_B:
+#if ENABLE_LOO_B
+	case EEM_DET_B_HI:
+#endif
+	case EEM_DET_GPU:
+#if ENABLE_LOO_G
+	case EEM_DET_GPU_HI:
+#endif
+		eem_calculate_aging_margin(det, -1, 0);
+		break;
+	case EEM_DET_CCI:
+		eem_calculate_aging_margin(det, -2, -1);
+		break;
+	default:
+		break;
+	}
+
 #if ENABLE_LOO_B
 	if ((big_2line) &&
 		(det_id == EEM_DET_B_HI)) {

@@ -157,15 +157,12 @@ static FORCE_INLINE void ZSTD_copy32(void *dst, const void *src)
 #endif
 
 ZSTD_STATIC void ZSTD_copy8(void *dst, const void *src) {
-#if defined(__aarch64__)
-	*(U64 *)dst = *(const U64 *)src;
-#else
-	memcpy(dst, src, 8);
-#endif
+	__builtin_memcpy(dst, src, 8);
 }
 /*! ZSTD_wildcopy() :
 *   custom version of memcpy(), can copy up to 7 bytes too many (8 bytes if length==0).
-*   On ARM64, accelerated with 32-byte and 16-byte dual LDP/STP vector copies. */
+*   On ARM64, accelerated with 32-byte and 16-byte dual LDP/STP vector copies
+*   when overlap distance & WILDCOPY_OVERLENGTH bounds are satisfied. */
 #define WILDCOPY_OVERLENGTH 8
 ZSTD_STATIC void ZSTD_wildcopy(void *dst, const void *src, ptrdiff_t length)
 {
@@ -181,22 +178,32 @@ ZSTD_STATIC void ZSTD_wildcopy(void *dst, const void *src, ptrdiff_t length)
 		return ZSTD_copy8(dst, src);
 
 #if defined(__aarch64__)
-	while (op < oend - 24) {
-		ZSTD_copy32(op, ip);
-		op += 32;
-		ip += 32;
+	if ((uintptr_t)op < (uintptr_t)ip || (uintptr_t)(op - ip) >= 32) {
+		while (op < oend - 24) {
+			ZSTD_copy32(op, ip);
+			op += 32;
+			ip += 32;
+		}
 	}
-	while (op < oend - 8) {
-		ZSTD_copy16(op, ip);
-		op += 16;
-		ip += 16;
+	if ((uintptr_t)op < (uintptr_t)ip || (uintptr_t)(op - ip) >= 16) {
+		while (op < oend - 8) {
+			ZSTD_copy16(op, ip);
+			op += 16;
+			ip += 16;
+		}
 	}
-#endif
+	while (op < oend) {
+		ZSTD_copy8(op, ip);
+		op += 8;
+		ip += 8;
+	}
+#else
 	do {
 		ZSTD_copy8(op, ip);
 		op += 8;
 		ip += 8;
 	} while (op < oend);
+#endif
 }
 
 /*-*******************************************

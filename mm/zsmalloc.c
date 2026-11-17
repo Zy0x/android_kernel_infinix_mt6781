@@ -856,15 +856,7 @@ static int get_pages_per_zspage(int class_size)
 		waste = zspage_size % class_size;
 		usedpc = (zspage_size - waste) * 100 / zspage_size;
 
-		/*
-		 * Stop immediately on zero waste and require >= 2% packing gain
-		 * before enlarging zspage page-chain order (curbs ZRAM churn/bloat).
-		 */
-		if (waste == 0) {
-			max_usedpc_order = i;
-			break;
-		}
-		if (usedpc > max_usedpc + 1) {
+		if (usedpc > max_usedpc) {
 			max_usedpc = usedpc;
 			max_usedpc_order = i;
 		}

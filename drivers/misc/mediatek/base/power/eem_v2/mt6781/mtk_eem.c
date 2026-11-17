@@ -1221,14 +1221,16 @@ static void eem_calculate_aging_margin(struct eem_det *det,
 
 
 	num_bank_freq = det->num_freq_tbl;
+	if (num_bank_freq <= 0)
+		return;
 
 	offset = start_oft - end_oft;
-	for (i = 0; i < det->num_freq_tbl; i++) {
+	for (i = 0; i < num_bank_freq; i++) {
 		if (i == 0)
 			det->volt_aging[i] = start_oft;
 		else
 			det->volt_aging[i] = start_oft -
-			((offset * i) / det->num_freq_tbl);
+			((offset * i) / num_bank_freq);
 	}
 
 }
@@ -1645,7 +1647,7 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			ndet->volt_tbl_pmic[i] = min(
 			(unsigned int)(clamp(
 			ndet->ops->eem_2_pmic(ndet,
-			(ndet->volt_tbl[i] + ndet->volt_offset +
+			((int)ndet->volt_tbl[i] + ndet->volt_offset +
 			low_temp_offset + ndet->volt_aging[i]) +
 			rm_dvtfix_offset),
 			ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
@@ -1657,7 +1659,7 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			ndet->volt_tbl_pmic[i] = min(
 			(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
-				(ndet->volt_tbl[i] + ndet->volt_offset +
+				((int)ndet->volt_tbl[i] + ndet->volt_offset +
 				low_temp_offset + ndet->volt_aging[i]) +
 				rm_dvtfix_offset),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
@@ -1682,7 +1684,7 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			ndet->volt_tbl_pmic[i] = min(
 			(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
-				(ndet->volt_tbl[i] + ndet->volt_offset +
+				((int)ndet->volt_tbl[i] + ndet->volt_offset +
 				low_temp_offset + ndet->volt_aging[i]) +
 				rm_dvtfix_offset),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
@@ -1706,7 +1708,7 @@ static void get_volt_table_in_thread(struct eem_det *det)
 				ndet->volt_tbl_pmic[i] = min(
 				(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
-				(ndet->volt_tbl[i] + ndet->volt_offset +
+				((int)ndet->volt_tbl[i] + ndet->volt_offset +
 				ndet->volt_aging[i]) +
 				rm_dvtfix_offset),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
@@ -1720,7 +1722,7 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			ndet->volt_tbl_pmic[i] = min(
 			(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
-				(ndet->volt_tbl[i] + ndet->volt_offset +
+				((int)ndet->volt_tbl[i] + ndet->volt_offset +
 				low_temp_offset + ndet->volt_aging[i]) +
 				rm_dvtfix_offset),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),

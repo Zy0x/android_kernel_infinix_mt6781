@@ -3541,13 +3541,15 @@ static ssize_t enabled_store(struct kobject *kobj, struct kobj_attribute *attr,
 			     const char *buf, size_t len)
 {
 	unsigned long val;
-	int err;
+	bool enable;
 
-	err = kstrtoul(buf, 0, &val);
-	if (err)
-		return err;
+	if (!kstrtoul(buf, 0, &val))
+		lru_gen_change_state(val);
+	else if (!kstrtobool(buf, &enable))
+		lru_gen_change_state(enable ? (BIT(NR_LRU_GEN_CAPS) - 1) : 0);
+	else
+		return -EINVAL;
 
-	lru_gen_change_state(val);
 	return len;
 }
 static struct kobj_attribute enabled_attr = __ATTR_RW(enabled);

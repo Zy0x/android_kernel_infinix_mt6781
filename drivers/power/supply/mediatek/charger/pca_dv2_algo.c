@@ -962,6 +962,9 @@ static inline int __dv2_get_ita_lmt(struct dv2_algo_info *info)
 		int real_soc = battery_get_soc();
 		u32 cur_soc = 0;
 
+		if (real_soc >= 0 && real_soc <= 100)
+			real_soc *= 100;
+
 		if (ui_soc > 0)
 			cur_soc = (u32)ui_soc;
 		else

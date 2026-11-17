@@ -774,6 +774,9 @@ static int mtk_switch_chr_cc(struct charger_manager *info)
 		int vbat = battery_get_bat_voltage();
 		int ibat_ma = battery_get_bat_current() / 10;
 
+		if (real_soc >= 0 && real_soc <= 100)
+			real_soc *= 100;
+
 		if (uisoc >= 99 &&
 		    ((real_soc >= 9800 &&
 		      ((vbat >= 4430 && ibat_ma <= 220) ||

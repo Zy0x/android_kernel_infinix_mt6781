@@ -583,7 +583,7 @@ static inline void zs_stat_dec(struct size_class *class,
 static inline unsigned long zs_stat_get(struct size_class *class,
 				int type)
 {
-	return class->stats.objs[type];
+	return READ_ONCE(class->stats.objs[type]);
 }
 
 #ifdef CONFIG_ZSMALLOC_STAT
@@ -856,7 +856,15 @@ static int get_pages_per_zspage(int class_size)
 		waste = zspage_size % class_size;
 		usedpc = (zspage_size - waste) * 100 / zspage_size;
 
-		if (usedpc > max_usedpc) {
+		/*
+		 * Stop immediately on zero waste and require >= 2% packing gain
+		 * before enlarging zspage page-chain order (curbs ZRAM churn/bloat).
+		 */
+		if (waste == 0) {
+			max_usedpc_order = i;
+			break;
+		}
+		if (usedpc > max_usedpc + 1) {
 			max_usedpc = usedpc;
 			max_usedpc_order = i;
 		}
@@ -2314,6 +2322,9 @@ static void __zs_compact(struct zs_pool *pool, struct size_class *class)
 	struct zs_compact_control cc;
 	struct zspage *src_zspage;
 	struct zspage *dst_zspage = NULL;
+
+	if (!zs_can_compact(class))
+		return;
 
 	spin_lock(&class->lock);
 	while ((src_zspage = isolate_zspage(class, true))) {

@@ -7580,7 +7580,7 @@ static inline int select_idle_sibling_cstate_aware(struct task_struct *p, int pr
 	struct sched_domain *sd;
 	struct sched_group *sg;
 	int best_idle_cpu = -1;
-	int best_idle_cstate = -1;
+	int best_idle_cstate = INT_MAX;
 	int best_idle_capacity = INT_MAX;
 	int i;
 
@@ -7601,14 +7601,14 @@ static inline int select_idle_sibling_cstate_aware(struct task_struct *p, int pr
 				unsigned long capacity_orig;
 
 				if (!idle_cpu(i))
-					goto next;
+					continue;
 
 				/* figure out if the task can fit here at all */
 				new_usage = boosted_task_util(p);
 				capacity_orig = capacity_orig_of(i);
 
 				if (new_usage > capacity_orig)
-					goto next;
+					continue;
 
 				/* if the task fits without changing OPP and we
 				 * intended to use this CPU, just proceed

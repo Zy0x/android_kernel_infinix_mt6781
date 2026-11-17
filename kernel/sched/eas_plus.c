@@ -129,6 +129,8 @@ bool is_intra_domain(int prev, int target)
 #endif
 }
 
+static int find_best_idle_cpu_wakeup(struct task_struct *p, int prev_cpu, bool prefer_idle);
+
 static int
 ___select_idle_sibling(struct task_struct *p, int prev_cpu, int new_cpu)
 {
@@ -140,7 +142,7 @@ ___select_idle_sibling(struct task_struct *p, int prev_cpu, int new_cpu)
 #endif
 		int idle_cpu;
 
-		idle_cpu = find_best_idle_cpu(p, prefer_idle);
+		idle_cpu = find_best_idle_cpu_wakeup(p, prev_cpu, prefer_idle);
 		if (idle_cpu >= 0)
 			new_cpu = idle_cpu;
 		else
@@ -224,51 +226,89 @@ int select_max_spare_capacity(struct task_struct *p, int target)
  * cpu id or
  * -1 if target CPU is not found
  */
-int find_best_idle_cpu(struct task_struct *p, bool prefer_idle)
+static inline bool eas_cpu_wakeup_eligible(int cpu, struct task_struct *p)
+{
+	if (cpu < 0 || !cpu_online(cpu) || cpu_isolated(cpu) ||
+			!cpumask_test_cpu(cpu, &p->cpus_allowed))
+		return false;
+#ifdef CONFIG_MTK_SCHED_INTEROP
+	if (cpu_rq(cpu)->rt.rt_nr_running && likely(!is_rt_throttle(cpu)))
+		return false;
+#endif
+	return idle_cpu(cpu);
+}
+
+static int find_best_idle_cpu_wakeup(struct task_struct *p, int prev_cpu, bool prefer_idle)
 {
 	int i;
 	int best_idle_cpu = -1;
-	struct cpumask *tsk_cpus_allow = &p->cpus_allowed;
+	int best_cstate = INT_MAX;
 	struct hmp_domain *domain;
-	int domain_order = 0;
 	int prefer_big = prefer_idle && (task_util(p) > stune_task_threshold);
 
-	for_each_hmp_domain_L_first(domain) {
-		for_each_cpu(i, &domain->possible_cpus) {
+	rcu_read_lock();
+	/* Cache-hot O(1) prev_cpu fastpath when cluster affinity matches */
+	if (eas_cpu_wakeup_eligible(prev_cpu, p)) {
+		bool prev_big = (arch_get_cluster_id(prev_cpu) > 0);
 
-			/* tsk with prefer idle to find bigger idle cpu */
-			if (!cpu_online(i) || cpu_isolated(i) ||
-					!cpumask_test_cpu(i, tsk_cpus_allow))
-				continue;
+		if ((prefer_big && prev_big) || (!prefer_big && !prev_big)) {
+			int prev_cstate = idle_get_state_idx(cpu_rq(prev_cpu));
 
-#ifdef CONFIG_MTK_SCHED_INTEROP
-			if (cpu_rq(i)->rt.rt_nr_running &&
-					likely(!is_rt_throttle(i)))
-				continue;
-#endif
+			if (prev_cstate <= 0) {
+				rcu_read_unlock();
+				return prev_cpu;
+			}
+			best_idle_cpu = prev_cpu;
+			best_cstate = prev_cstate;
+		}
+	}
 
-			/* favoring tasks that prefer idle cpus
-			 * to improve latency.
-			 */
-			if (idle_cpu(i)) {
-				best_idle_cpu = i;
-				if (!prefer_big) {
-					goto find_idle_cpu;
-				} else {
-#ifdef CONFIG_MTK_SCHED_BL_FIRST
-					if (domain_order == 1)
+	if (prefer_big) {
+		for_each_hmp_domain_B_first(domain) {
+			for_each_cpu(i, &domain->possible_cpus) {
+				int cstate;
+
+				if (!eas_cpu_wakeup_eligible(i, p))
+					continue;
+				cstate = idle_get_state_idx(cpu_rq(i));
+				if (best_idle_cpu < 0 || cstate < best_cstate) {
+					best_idle_cpu = i;
+					best_cstate = cstate;
+					if (best_cstate <= 0)
 						goto find_idle_cpu;
-#endif
 				}
 			}
+			if (best_idle_cpu >= 0)
+				goto find_idle_cpu;
 		}
+	} else {
+		for_each_hmp_domain_L_first(domain) {
+			for_each_cpu(i, &domain->possible_cpus) {
+				int cstate;
 
-		domain_order++;
+				if (!eas_cpu_wakeup_eligible(i, p))
+					continue;
+				cstate = idle_get_state_idx(cpu_rq(i));
+				if (best_idle_cpu < 0 || cstate < best_cstate) {
+					best_idle_cpu = i;
+					best_cstate = cstate;
+					if (best_cstate <= 0)
+						goto find_idle_cpu;
+				}
+			}
+			if (best_idle_cpu >= 0)
+				goto find_idle_cpu;
+		}
 	}
 
 find_idle_cpu:
-
+	rcu_read_unlock();
 	return best_idle_cpu;
+}
+
+int find_best_idle_cpu(struct task_struct *p, bool prefer_idle)
+{
+	return find_best_idle_cpu_wakeup(p, task_cpu(p), prefer_idle);
 }
 
 static int init_cpu_info(void)

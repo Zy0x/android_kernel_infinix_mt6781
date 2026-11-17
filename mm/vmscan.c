@@ -3290,7 +3290,7 @@ static unsigned long evict_pages(struct lruvec *lruvec, struct scan_control *sc,
 	int type = get_type_to_scan(lruvec, swappiness, sc->reclaim_idx);
 	int tier_idx = get_tier_idx(lruvec, type);
 	unsigned long nr_scanned = 0, nr_taken, nr_reclaimed;
-	struct reclaim_stat stat;
+	struct reclaim_stat stat = {};
 	LIST_HEAD(list);
 
 	spin_lock_irq(&pgdat->lru_lock);
@@ -3391,12 +3391,11 @@ static void lru_gen_migrate_pages_on(struct lruvec *lruvec)
 
 			list_del(&page->lru);
 			update_lru_size(lruvec, lru, zone, -delta);
-			if (active)
-				__ClearPageActive(page);
-
 			do {
 				old_flags = new_flags = READ_ONCE(page->flags);
 				new_flags &= ~(LRU_GEN_MASK << LRU_GEN_PGSHIFT);
+				if (active)
+					new_flags &= ~BIT(PG_active);
 				new_flags |= (unsigned long)(gen + 1) << LRU_GEN_PGSHIFT;
 			} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
 
@@ -3436,15 +3435,14 @@ static void lru_gen_migrate_pages_off(struct lruvec *lruvec)
 			do {
 				old_flags = new_flags = READ_ONCE(page->flags);
 				new_flags &= ~PAGE_FLAGS_LRU_GEN;
+				if (active)
+					new_flags |= BIT(PG_active);
+				else
+					new_flags &= ~BIT(PG_active);
 			} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
 
 			list_del(&page->lru);
 			lru_gen_update_size(lruvec, page, gen, -1);
-
-			if (active)
-				SetPageActive(page);
-			else
-				__ClearPageActive(page);
 
 			update_lru_size(lruvec, lru, zone, delta);
 			list_add(&page->lru, &lruvec->lists[lru]);

@@ -165,13 +165,10 @@ static inline bool lru_gen_add_page(struct lruvec *lruvec, struct page *page,
 	else
 		gen = lru_gen_from_seq(lrugen->min_seq[type]);
 
-	if (PageActive(page))
-		__ClearPageActive(page);
-
 	do {
 		new_flags = old_flags = READ_ONCE(page->flags);
 		VM_BUG_ON_PAGE(new_flags & (LRU_GEN_MASK << LRU_GEN_PGSHIFT), page);
-		new_flags &= ~(LRU_GEN_MASK << LRU_GEN_PGSHIFT);
+		new_flags &= ~(BIT(PG_active) | (LRU_GEN_MASK << LRU_GEN_PGSHIFT));
 		new_flags |= (unsigned long)(gen + 1) << LRU_GEN_PGSHIFT;
 	} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
 

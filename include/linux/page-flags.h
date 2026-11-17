@@ -743,10 +743,13 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
  * these flags set.  It they are, there is a problem.
  */
 #ifdef CONFIG_LRU_GEN
+#define PAGE_FLAGS_LRU_GEN_FREE					\
+	(LRU_GEN_MASK << LRU_GEN_PGSHIFT)
 #define PAGE_FLAGS_LRU_GEN					\
 	((LRU_GEN_MASK << LRU_GEN_PGSHIFT) |			\
 	 (LRU_REFS_MASK << LRU_REFS_PGSHIFT))
 #else
+#define PAGE_FLAGS_LRU_GEN_FREE	0
 #define PAGE_FLAGS_LRU_GEN	0
 #endif
 
@@ -756,7 +759,7 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
 	 1UL << PG_writeback	| 1UL << PG_reserved	|	\
 	 1UL << PG_slab		| 1UL << PG_active 	|	\
 	 1UL << PG_unevictable	| __PG_MLOCKED |		\
-	 PAGE_FLAGS_LRU_GEN)
+	 PAGE_FLAGS_LRU_GEN_FREE)
 
 /*
  * Flags checked when a page is prepped for return by the page allocator.

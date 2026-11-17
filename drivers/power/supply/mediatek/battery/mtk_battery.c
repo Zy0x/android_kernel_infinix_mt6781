@@ -529,6 +529,14 @@ static int mtk_battery_get_ui_capacity(struct battery_data *data)
 {
 	if (gm.fixed_uisoc != 0xffff)
 		return gm.fixed_uisoc;
+	if (mt_get_charger_type() != CHARGER_UNKNOWN &&
+	    lynx_is_full_bypass_active() &&
+	    gm.ui_soc >= 96 && battery_get_bat_voltage() >= 4220) {
+		gm.ui_soc = 100;
+		if (data)
+			data->BAT_CAPACITY = 100;
+		return 100;
+	}
 	if (gm.ui_soc >= 0 && gm.ui_soc <= 100)
 		return gm.ui_soc;
 	if (gm.soc > 0 && gm.soc <= 10000)
@@ -554,7 +562,7 @@ static int battery_get_property(struct power_supply *psy,
 		if (mt_get_charger_type() != CHARGER_UNKNOWN) {
 			if (lynx_is_bypass_effective()) {
 				int cap = mtk_battery_get_ui_capacity(data);
-				if (cap >= 100)
+				if (cap >= 100 || lynx_is_full_bypass_active())
 					val->intval = POWER_SUPPLY_STATUS_FULL;
 				else
 					val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -562,7 +570,8 @@ static int battery_get_property(struct power_supply *psy,
 				val->intval = data->BAT_STATUS;
 			}
 		} else {
-			val->intval = data->BAT_STATUS;
+			data->BAT_STATUS = POWER_SUPPLY_STATUS_DISCHARGING;
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 		}
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
@@ -1501,6 +1510,13 @@ static ssize_t store_Battery_Temperature(
 				temp);
 			return size;
 		}
+
+		/*
+		 * Prevent legacy userspace thermal spoof (writing fixed 25C) from
+		 * corrupting fuelgauged battery impedance & ZCV temperature tables.
+		 */
+		if (temp == 25)
+			temp = 0xffff;
 
 		gm.fixed_bat_tmp = temp;
 		if (gm.fixed_bat_tmp == 0xffff)
@@ -4358,6 +4374,8 @@ static int battery_callback(
 			notify_fg_chr_full();
 #ifndef OPLUS_FEATURE_CHG_BASIC
 			if (lynx_is_full_bypass_active()) {
+				gm.ui_soc = 100;
+				battery_main.BAT_CAPACITY = 100;
 				battery_main.BAT_STATUS = POWER_SUPPLY_STATUS_FULL;
 				battery_update(&battery_main);
 			}
@@ -4369,7 +4387,9 @@ static int battery_callback(
 /* START CHARGING */
 			fg_sw_bat_cycle_accu();
 #ifndef OPLUS_FEATURE_CHG_BASIC
-			if (mt_get_charger_type() != CHARGER_UNKNOWN && lynx_is_bypass_effective()) {
+			if (mt_get_charger_type() == CHARGER_UNKNOWN) {
+				battery_main.BAT_STATUS = POWER_SUPPLY_STATUS_DISCHARGING;
+			} else if (lynx_is_bypass_effective()) {
 				battery_main.BAT_STATUS = lynx_is_full_bypass_active()
 					? POWER_SUPPLY_STATUS_FULL
 					: POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -4409,7 +4429,9 @@ static int battery_callback(
 		{
 /* charging leave error state */
 #ifndef OPLUS_FEATURE_CHG_BASIC
-		if (mt_get_charger_type() != CHARGER_UNKNOWN && lynx_is_bypass_effective()) {
+		if (mt_get_charger_type() == CHARGER_UNKNOWN) {
+			battery_main.BAT_STATUS = POWER_SUPPLY_STATUS_DISCHARGING;
+		} else if (lynx_is_bypass_effective()) {
 			battery_main.BAT_STATUS = lynx_is_full_bypass_active()
 				? POWER_SUPPLY_STATUS_FULL
 				: POWER_SUPPLY_STATUS_NOT_CHARGING;

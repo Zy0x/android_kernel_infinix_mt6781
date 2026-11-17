@@ -2441,7 +2441,7 @@ int rt9471_set_bypass_mode(bool enable)
 
 	if (enable) {
 		u32 aicr = 0, mivr = 0;
-		u32 min_aicr = (mt_get_charger_type() == STANDARD_HOST) ? 500000 : 3000000;
+		u32 min_aicr = (mt_get_charger_type() == STANDARD_HOST) ? 500000 : 3200000;
 
 		mutex_lock(&chip->hz_lock);
 		chip->hz_pca_en = false;
@@ -2457,8 +2457,8 @@ int rt9471_set_bypass_mode(bool enable)
 
 		if (__rt9471_get_aicr(chip, &aicr) >= 0 && aicr < min_aicr)
 			__rt9471_set_aicr(chip, min_aicr);
-		if (__rt9471_get_mivr(chip, &mivr) >= 0 && mivr > 4500000)
-			__rt9471_set_mivr(chip, 4500000);
+		if (__rt9471_get_mivr(chip, &mivr) >= 0 && mivr > 4400000)
+			__rt9471_set_mivr(chip, 4400000);
 	} else if (!lynx_is_bypass_effective()) {
 		__rt9471_enable_safe_tmr(chip, chip->desc->en_safe_tmr);
 		__rt9471_enable_chg(chip, true);

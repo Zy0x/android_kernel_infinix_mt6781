@@ -1518,6 +1518,8 @@ void fg_custom_init_from_dts(struct platform_device *dev)
 		&(fg_cust_data.difference_fullocv_vth), 1);
 	fg_read_dts_val(np, "DIFFERENCE_FULLOCV_ITH",
 		&(fg_cust_data.difference_fullocv_ith), UNIT_TRANS_10);
+	if (fg_cust_data.difference_fullocv_ith < 3500)
+		fg_cust_data.difference_fullocv_ith = 3500;
 	fg_read_dts_val(np, "CHARGE_PSEUDO_FULL_LEVEL",
 		&(fg_cust_data.charge_pseudo_full_level), 1);
 	fg_read_dts_val(np, "OVER_DISCHARGE_LEVEL",
@@ -3311,16 +3313,14 @@ void fg_daemon_get_data(
 
 void fg_cmd_check(struct fgd_nl_msg_t *msg)
 {
-	while (msg->fgd_subcmd == 0 &&
+	if (msg->fgd_subcmd == 0 &&
 		msg->fgd_subcmd_para1 != FGD_NL_MSG_T_HDR_LEN) {
 		bm_err("fuel gauge version cmd:%d %d error %d != %d\n",
 			msg->fgd_cmd,
 			msg->fgd_subcmd,
 			FGD_NL_MSG_T_HDR_LEN,
 			msg->fgd_subcmd_para1);
-		msleep(5000);
-		if (gm.fix_coverity == 1)
-			return;
+		return;
 	}
 }
 
@@ -4826,6 +4826,19 @@ void bmd_ctrl_cmd_from_user(void *nl_data, struct fgd_nl_msg_t *ret_msg)
 		int rtc_ui_soc = 0;
 
 		gauge_dev_get_rtc_ui_soc(gm.gdev, &rtc_ui_soc);
+		if (gm.algo_ocv_to_soc > 100 &&
+		    abs(rtc_ui_soc * 100 - gm.algo_ocv_to_soc) > 500) {
+			int true_ui_soc = (gm.algo_ocv_to_soc + 50) / 100;
+
+			if (true_ui_soc > 100)
+				true_ui_soc = 100;
+			if (true_ui_soc < 1)
+				true_ui_soc = 1;
+			bm_err("[fr] Self-healing stale RTC_UI_SOC %d -> %d (ocv_soc=%d)\n",
+				rtc_ui_soc, true_ui_soc, gm.algo_ocv_to_soc);
+			rtc_ui_soc = true_ui_soc;
+			gauge_dev_set_rtc_ui_soc(gm.gdev, rtc_ui_soc);
+		}
 
 		ret_msg->fgd_data_len += sizeof(rtc_ui_soc);
 		memcpy(ret_msg->fgd_data, &rtc_ui_soc,

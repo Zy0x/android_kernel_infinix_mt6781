@@ -98,6 +98,10 @@ int pe50_set_chg_para(struct charger_manager *info)
 		cv = info->data.battery_cv;
 		eoc = info->data.termination_current;
 	}
+	if (cv > 4450000)
+		cv = 4450000;
+	if (!tran_pe50_running && eoc > 200000)
+		eoc = 200000;
 
 	charger_dev_set_comp_ir(info->chg1_dev, info->data.comp_ir);
 	charger_dev_set_comp_iv(info->chg1_dev, info->data.comp_iv);
@@ -152,7 +156,7 @@ static void _disable_all_charging(struct charger_manager *info)
 static void mtk_switch_enter_hw_bypass(struct charger_manager *info)
 {
 	struct switch_charging_alg_data *swchgalg = info->algorithm_data;
-	u32 min_aicr = (info->chr_type == STANDARD_HOST) ? 500000 : 3000000;
+	u32 min_aicr = (info->chr_type == STANDARD_HOST) ? 500000 : 3200000;
 
 	rt9471_set_bypass_mode(true);
 	charger_dev_enable_powerpath(info->chg1_dev, true);
@@ -205,7 +209,7 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 	}
 
 	if (lynx_is_bypass_effective()) {
-		u32 min_aicr = (info->chr_type == STANDARD_HOST) ? 500000 : 2500000;
+		u32 min_aicr = (info->chr_type == STANDARD_HOST) ? 500000 : 3200000;
 
 		pdata = &info->chg1_data;
 		mutex_lock(&swchgalg->ichg_aicr_access_mutex);
@@ -252,6 +256,9 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 
 	if (info->usb_unlimited) {
 		if (pdata->input_current_limit_by_aicl != -1) {
+			if (pdata->input_current_limit_by_aicl < 2000000 &&
+			    (info->chr_type == STANDARD_CHARGER || info->chr_type == CHARGING_HOST))
+				pdata->input_current_limit_by_aicl = 2000000;
 			pdata->input_current_limit =
 				pdata->input_current_limit_by_aicl;
 		} else {
@@ -664,6 +671,7 @@ static int mtk_switch_chr_pe50_running(struct charger_manager *info)
 
 stop:
 	chr_info("%s PE5 stops\n", __func__);
+	tran_pe50_running = 0;
 	info->pe5.online = false;
 	swchgalg->state = CHR_CC;
 	/* Let charging algorithm run CHR_CC immediately */
@@ -759,17 +767,42 @@ static int mtk_switch_chr_cc(struct charger_manager *info)
 	swchg_turn_on_charging(info);
 
 	charger_dev_is_charging_done(info->chg1_dev, &chg_done);
+	if (!chg_done) {
+		static int full_sat_cnt;
+		int uisoc = battery_get_uisoc();
+		int real_soc = battery_get_soc();
+		int vbat = battery_get_bat_voltage();
+		int ibat_ma = battery_get_bat_current() / 10;
 
+		if (uisoc >= 99 &&
+		    ((real_soc >= 9800 &&
+		      ((vbat >= 4430 && ibat_ma <= 220) ||
+		       (vbat >= 4440 && ibat_ma <= 260))) ||
+		     (vbat >= 4440 && ibat_ma <= 200))) {
+			full_sat_cnt++;
+			chr_err("kernel_autocut: saturation (%d/3) uisoc=%d%% real=%d vbat=%dmV ibat=%dmA\n",
+				full_sat_cnt, uisoc, real_soc, vbat, ibat_ma);
+			if (full_sat_cnt >= 3) {
+				chg_done = true;
+				full_sat_cnt = 0;
+			}
+		} else {
+			full_sat_cnt = 0;
+		}
+	}
 
 	if (chg_done) {
 		swchgalg->state = CHR_BATFULL;
-		charger_dev_do_event(info->chg1_dev, EVENT_EOC, 0);
-		chr_err("battery full!\n");
+		tran_pe50_running = 0;
+		tran_pe50_full = 1;
 		if (lynx_is_full_bypass_enabled() && !lynx_is_manual_bypass_active()) {
 			lynx_bypass_set_full_latch(true);
 			mtk_switch_enter_hw_bypass(info);
 			info->polling_interval = CHARGING_FULL_INTERVAL;
 		}
+		charger_dev_do_event(info->chg1_dev, EVENT_EOC, 0);
+		charger_manager_notifier(info, CHARGER_NOTIFY_EOC);
+		chr_err("battery full!\n");
 	}
 
 	/* If it is not disabled by throttling,

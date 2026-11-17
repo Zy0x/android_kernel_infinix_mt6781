@@ -30,6 +30,7 @@ bool __attribute__ ((weak)) is_power_path_supported(void)
 }
 extern bool prj_for_mtk_60w_support(void);
 extern int oplus_voocphy_get_cp_vbat(void);
+extern int fgauge_get_cached_chg_curr_ma(void);
 int pmic_get_battery_voltage(void)
 {
 	int bat = 0;
@@ -45,6 +46,24 @@ int pmic_get_battery_voltage(void)
 	if (prj_for_mtk_60w_support() == true) {
 		if ((oplus_voocphy_get_cp_vbat() > 0) && (pmic_get_vbus() > 4100)) {
 			bat = oplus_voocphy_get_cp_vbat();
+		}
+	}
+	if (is_battery_init_done()) {
+		int curr_ma = fgauge_get_cached_chg_curr_ma();
+
+		if (curr_ma > 300) {
+			/*
+			 * Compensate mainboard PCB power-path & FPC trace IR drop (~28 mOhm)
+			 * between PMIC BATSNS and true battery connector Kelvin sense (RT9759 Vbat)
+			 * during active charging (> 300 mA). Uses lockless cached gauge current
+			 * to prevent gauge_dev->ops_lock recursion/deadlock.
+			 */
+			int trace_drop_mv = ((curr_ma - 300) * 45) / 1000;
+
+			if (trace_drop_mv > 215)
+				trace_drop_mv = 215;
+			if (bat > 3600 + trace_drop_mv)
+				bat -= trace_drop_mv;
 		}
 	}
 	return bat;

@@ -55,6 +55,12 @@
 
 static signed int g_hw_ocv_tune_value;
 static bool g_fg_is_charger_exist;
+static int g_fg_cached_chg_curr_ma;
+
+int fgauge_get_cached_chg_curr_ma(void)
+{
+	return READ_ONCE(g_fg_cached_chg_curr_ma);
+}
 
 struct mt6358_gauge {
 	const char *gauge_dev_name;
@@ -266,6 +272,9 @@ void read_fg_hw_info_current_1(struct gauge_device *gauge_dev)
 
 	gauge_dev->fg_hw_info.current_1 =
 		((dvalue * gauge_dev->fg_cust_data->car_tune_value) / 1000);
+	WRITE_ONCE(g_fg_cached_chg_curr_ma,
+		(gauge_dev->fg_hw_info.current_1 > 0) ?
+		(gauge_dev->fg_hw_info.current_1 / 10) : 0);
 
 }
 
@@ -1065,6 +1074,8 @@ static int fgauge_read_current(
 			 dvalue, gauge_dev->fg_cust_data->car_tune_value);
 
 		*data = dvalue;
+		WRITE_ONCE(g_fg_cached_chg_curr_ma,
+			(*fg_is_charging && dvalue > 0) ? (dvalue / 10) : 0);
 
 	return 0;
 }
@@ -2033,12 +2044,41 @@ static int nag_c_dltv_mv;
 static int _zcv_reg;
 static int _thr_reg;
 
+/*
+ * Compute high-current mainboard PCB trace voltage drop (in 0.1 mV units)
+ * and charging current (in mA) locklessly from g_fg_cached_chg_curr_ma so
+ * NAFG hardware comparator and software voltage gauge are never fooled by
+ * mainboard power-path IR drop during 33W direct charge pump operation
+ * and never recurse on gauge_dev->ops_lock.
+ */
+static int fgauge_get_charging_trace_comp_01mv(int *out_curr_ma)
+{
+	int curr_ma = READ_ONCE(g_fg_cached_chg_curr_ma);
+	int comp_01mv = 0;
+
+	if (out_curr_ma)
+		*out_curr_ma = (curr_ma > 0) ? curr_ma : 0;
+	if (!is_battery_init_done())
+		return 0;
+	if (curr_ma > 300) {
+		comp_01mv = ((curr_ma - 300) * 45) / 100;
+		if (comp_01mv > 2150)
+			comp_01mv = 2150;
+	}
+	return comp_01mv;
+}
+
 static void fgauge_set_nafg_intr_internal(int _prd, int _zcv_mv, int _thr_mv)
 {
 	int NAG_C_DLTV_Threashold_26_16;
 	int NAG_C_DLTV_Threashold_15_0;
+	int comp_01mv = fgauge_get_charging_trace_comp_01mv(NULL);
+	int hw_zcv_mv = _zcv_mv + comp_01mv;
 
-	_zcv_reg = MV_to_REG_value(_zcv_mv);
+	if (hw_zcv_mv > 45500)
+		hw_zcv_mv = 45500;
+
+	_zcv_reg = MV_to_REG_value(hw_zcv_mv);
 	_thr_reg = MV_to_REG_value(_thr_mv);
 
 	NAG_C_DLTV_Threashold_26_16 = (_thr_reg & 0xffff0000) >> 16;
@@ -2111,11 +2151,19 @@ static int fgauge_get_nag_dltv(struct gauge_device *gauge_dev, int *nag_dltv)
 {
 	signed int NAG_DLTV_reg_value;
 	signed int NAG_DLTV_mV_value;
+	int curr_ma = 0;
 
-	/*AUXADC_NAG_6*/
-	NAG_DLTV_reg_value = pmic_get_register_value(PMIC_AUXADC_NAG_DLTV);
+	/*AUXADC_NAG_6 (16-bit signed two's complement)*/
+	NAG_DLTV_reg_value = (s16)pmic_get_register_value(PMIC_AUXADC_NAG_DLTV);
 
 	NAG_DLTV_mV_value = REG_to_MV_value(NAG_DLTV_reg_value);
+	fgauge_get_charging_trace_comp_01mv(&curr_ma);
+	if (curr_ma > 300) {
+		int max_chg_dltv = (curr_ma * 19) / 100;
+
+		if (NAG_DLTV_mV_value < -max_chg_dltv)
+			NAG_DLTV_mV_value = -max_chg_dltv;
+	}
 	*nag_dltv = NAG_DLTV_mV_value;
 
 	bm_debug("[fg_bat_nafg][fgauge_get_nafg_dltv] mV:Reg [%d:%d]\n",
@@ -2133,6 +2181,7 @@ static int fgauge_get_nag_c_dltv(
 	signed int NAG_C_DLTV_reg_value;
 	signed int NAG_C_DLTV_mV_value;
 	bool bcheckbit10;
+	int curr_ma = 0;
 
 	/*AUXADC_NAG_7*/
 	NAG_C_DLTV_value = pmic_get_register_value(
@@ -2152,6 +2201,20 @@ static int fgauge_get_nag_c_dltv(
 			(((NAG_C_DLTV_value_H | 0xf800) & 0xffff) << 16);
 
 	NAG_C_DLTV_mV_value = REG_to_MV_value(NAG_C_DLTV_reg_value);
+	{
+		int nag_cnt = 1;
+
+		fgauge_get_nag_cnt(gauge_dev, &nag_cnt);
+		if (nag_cnt > 1)
+			NAG_C_DLTV_mV_value /= nag_cnt;
+	}
+	fgauge_get_charging_trace_comp_01mv(&curr_ma);
+	if (curr_ma > 300) {
+		int max_c_dltv = (curr_ma * 19) / 100;
+
+		if (NAG_C_DLTV_mV_value < -max_c_dltv)
+			NAG_C_DLTV_mV_value = -max_c_dltv;
+	}
 	*nag_c_dltv = NAG_C_DLTV_mV_value;
 
 	bm_debug("[fg_bat_nafg][fgauge_get_nafg_c_dltv] mV:Reg[%d:%d] [b10:%d][26_16(0x%04x) 15_00(0x%04x)]\n",
@@ -2256,6 +2319,12 @@ void battery_dump_nag(void)
 
 	vbat_val = nag_vbat_reg & 0x7fff;
 	nag_vbat_mv = REG_to_MV_value(vbat_val);
+	{
+		int comp_01mv = fgauge_get_charging_trace_comp_01mv(NULL);
+
+		if (comp_01mv > 0 && nag_vbat_mv > 36000 + comp_01mv)
+			nag_vbat_mv -= comp_01mv;
+	}
 
 	bm_err("[read_nafg_vbat] i:%d nag_vbat_reg 0x%x nag_vbat_mv %d:%d, nag_zcv:%d,_zcv_reg:0x%x,thr:%d,_thr_reg:0x%x\n",
 		i, nag_vbat_reg, nag_vbat_mv, vbat_val,
@@ -2306,6 +2375,12 @@ static int fgauge_get_nag_vbat(struct gauge_device *gauge_dev, int *vbat)
 
 	vbat_val = nag_vbat_reg & 0x7fff;
 	nag_vbat_mv = REG_to_MV_value(vbat_val);
+	{
+		int comp_01mv = fgauge_get_charging_trace_comp_01mv(NULL);
+
+		if (comp_01mv > 0 && nag_vbat_mv > 36000 + comp_01mv)
+			nag_vbat_mv -= comp_01mv;
+	}
 	*vbat = nag_vbat_mv;
 
 	return 0;

@@ -322,6 +322,9 @@ int tran_get_cv_comp(struct charger_manager *info, u32 cv)
 	if (comp > (int)info->data.v_comp_max)
 		comp = info->data.v_comp_max;
 
+	if (cv + comp > 4450000)
+		return 4450000;
+
 	return cv + comp;
 }
 EXPORT_SYMBOL(tran_get_cv_comp);

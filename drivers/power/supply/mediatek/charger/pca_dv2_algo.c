@@ -891,9 +891,13 @@ static inline void __dv2_select_vbat_cv(struct dv2_algo_info *info)
 	if (cv == data->vbat_cv)
 		goto out;
 
-	/* VBATOVP ALARM */
+	/*
+	 * VBATOVP ALARM: RT9759 quantizes VBATOVP_ALM down in 25 mV steps
+	 * (e.g. 4440 mV -> 4425 mV). Offset alarm by +25 mV so hardware alarm
+	 * sits at 4450 mV while software CV regulates smoothly at 4440 mV.
+	 */
 	ret = prop_chgalgo_set_vbatovp_alarm(data->pca_dvchg[DV2_DVCHG_MASTER],
-					     cv);
+					     cv + 25);
 	if (ret < 0) {
 		PCA_ERR("set vbatovp alarm fail(%d)\n", ret);
 		goto out;
@@ -943,6 +947,40 @@ static inline int __dv2_get_ita_lmt(struct dv2_algo_info *info)
 		ita = 1200;
 	if (!g_lynx_hyper_charge && lcd_bl_level > 0 && ita > 2000)
 		ita = 2000;
+	/*
+	 * 3-Phase Adaptive Step-Charging Architecture:
+	 * - Phase 1 (0% - 84%): Hyper Boost (Full Direct Charge Pump, up to 3000mA ITA / ~5.0A IBAT)
+	 * - Phase 2 (85% - 94%): Fast Step-Down
+	 *     85% - 89%: 1800mA ITA (~3.45A IBAT)
+	 *     90% - 94%: 1300mA ITA (~2.50A IBAT)
+	 * - Phase 3 (95% - 100%): Smooth Saturation Tapering
+	 *     95% - 96%: 1000mA ITA (~1.90A IBAT), tapering down at 4440mV CV to 500mA term
+	 *     >= 97%: Hand-off to RT9471 buck charger (CV 4450mV, IEOC 200mA) for true 100% top-off
+	 */
+	{
+		int ui_soc = battery_get_uisoc();
+		int real_soc = battery_get_soc();
+		u32 cur_soc = 0;
+
+		if (ui_soc > 0)
+			cur_soc = (u32)ui_soc;
+		else
+			prop_chgalgo_get_soc(data->pca_swchg, &cur_soc);
+
+		if ((cur_soc >= 100 && (real_soc >= 9800 || battery_get_bat_voltage() >= 4430)) ||
+		    (cur_soc >= 99 && real_soc >= 9800 &&
+		     battery_get_bat_voltage() >= 4430 &&
+		     (battery_get_bat_current() / 10) <= 550))
+			ita = 0U;
+		else if (cur_soc >= 98)
+			ita = min_t(u32, ita, 750U);
+		else if (cur_soc >= 95)
+			ita = min_t(u32, ita, 1000U);
+		else if (cur_soc >= 90)
+			ita = min_t(u32, ita, 1300U);
+		else if (cur_soc >= 85)
+			ita = min_t(u32, ita, 1800U);
+	}
 	PCA_INFO("ita(org,tta,tbat,tdvchg,prlmt,throt)=%d(%d,%d,%d,%d,%d,%d)\n",
 		 ita, data->ita_lmt, desc->tta_curlmt[data->tta_level],
 		 desc->tbat_curlmt[data->tbat_level],
@@ -1029,9 +1067,9 @@ static int __dv2_set_dvchg_protection(struct dv2_algo_info *info, bool dual)
 	u32 vout, idvchg_lmt;
 	u32 vbusovp, ibusocp, vbatovp, ibatocp;
 
-	/* VBATOVP ALARM */
+	/* VBATOVP ALARM (+25mV step guard for RT9759 quantization) */
 	ret = prop_chgalgo_set_vbatovp_alarm(data->pca_dvchg[DV2_DVCHG_MASTER],
-					     desc->vbat_cv);
+					     desc->vbat_cv + 25);
 	if (ret < 0) {
 		PCA_ERR("set vbatovp alarm fail(%d)\n", ret);
 		return ret;
@@ -1246,7 +1284,7 @@ static int __dv2_enable_swchg_charging(struct dv2_algo_info *info, bool en)
 	}
 	data->is_swchg_en = en;
 	ret = prop_chgalgo_set_vbatovp_alarm(data->pca_dvchg[DV2_DVCHG_MASTER],
-		en ? desc->swchg_off_vbat : desc->vbat_cv);
+		en ? desc->swchg_off_vbat : (desc->vbat_cv + 25));
 	if (ret < 0) {
 		PCA_ERR("set vbatovp alarm fail(%d)\n", ret);
 		return ret;
@@ -3902,6 +3940,8 @@ static bool dv2_is_algo_ready(struct prop_chgalgo_device *pca)
 	struct dv2_algo_data *data = info->data;
 	struct dv2_algo_desc *desc = info->desc;
 	u32 soc;
+	int vbat_mv = 0;
+	int vbat_ret;
 
 	mutex_lock(&data->lock);
 	PCA_DBG("++\n");
@@ -3916,13 +3956,19 @@ static bool dv2_is_algo_ready(struct prop_chgalgo_device *pca)
 		rdy = false;
 		goto out;
 	}
+	if (battery_get_uisoc() > 0)
+		soc = (u32)battery_get_uisoc();
 
-	int vbat_mv = 0;
-	int vbat_ret = __dv2_get_adc(info, PCA_ADCCHAN_VBAT, &vbat_mv);
+	vbat_ret = __dv2_get_adc(info, PCA_ADCCHAN_VBAT, &vbat_mv);
 
 	PCA_DBG("run once(%d)\n", data->run_once);
 	if (data->run_once) {
-		if ((soc < 95 || (vbat_ret == 0 && vbat_mv < 4450)) && data->ta_ready) {
+		/*
+		 * One-way hand-off guard: once RT9759 pump finishes CV tapering in
+		 * Phase 3 (soc >= 95), do NOT re-arm the pump unless battery discharges
+		 * back below 90% (< 4320 mV). Prevents RT9759 <-> RT9471 ping-pong.
+		 */
+		if (soc <= 90 && (vbat_ret == 0 && vbat_mv < 4320) && data->ta_ready) {
 			data->run_once = false;
 		} else if (!(data->notify & DV2_RESET_NOTIFY)) {
 			rdy = false;
@@ -3937,7 +3983,7 @@ static bool dv2_is_algo_ready(struct prop_chgalgo_device *pca)
 		}
 	}
 	if (monkey_flag != 6 && (soc < desc->start_soc_min || soc > desc->start_soc_max)) {
-		if (g_lynx_hyper_charge && (vbat_ret == 0 && vbat_mv < 4450) && soc <= 98) {
+		if (g_lynx_hyper_charge && (vbat_ret == 0 && vbat_mv < 4410) && soc < 99) {
 			PCA_INFO("hyper charge: bypassing start_soc_max(%d) with soc=%d, vbat=%dmV\n",
 				desc->start_soc_max, soc, vbat_mv);
 		} else {
@@ -4303,6 +4349,15 @@ static int dv2_parse_dt(struct dv2_algo_info *info)
 		desc->swchg_aicr = 0;
 		desc->swchg_ichg = 0;
 	}
+	/*
+	 * Enforce safe 4440 mV CV ceiling and zero additional software IR-clamp
+	 * regardless of live DTBO overlay (which sets 4470mV + 10mV ircmp).
+	 * RT9759 already uses a dedicated Kelvin sense line at the battery connector.
+	 */
+	if (desc->vbat_cv > 4440)
+		desc->vbat_cv = 4440;
+	desc->ircmp_rbat = 0;
+	desc->ircmp_vclamp = 0;
 	return 0;
 }
 

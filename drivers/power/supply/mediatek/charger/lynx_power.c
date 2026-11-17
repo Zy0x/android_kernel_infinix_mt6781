@@ -133,11 +133,15 @@ static ssize_t lynx_bypass_write(struct file *file, const char __user *buffer,
 		pr_info("LYNX_POWER: Manual Hardware Bypass ACTIVATED (CHG_EN=0, HZ=0, VSYS pass-through)\n");
 	} else {
 		WRITE_ONCE(g_lynx_bypass_active, false);
-		/* User explicitly turned OFF bypass: unlatch full bypass so charging resumes immediately */
-		WRITE_ONCE(g_lynx_full_bypass_latched, false);
-		rt9471_set_bypass_mode(false);
-		lynx_sync_bypass_charger(false);
-		pr_info("LYNX_POWER: Hardware Bypass DEACTIVATED (normal charging resumed)\n");
+		/* Protect 100% EOC AutoCut latch against daemon mode-reset writes when battery is full */
+		if (battery_get_uisoc() < 99 || !READ_ONCE(g_lynx_full_bypass_latched)) {
+			WRITE_ONCE(g_lynx_full_bypass_latched, false);
+			rt9471_set_bypass_mode(false);
+			lynx_sync_bypass_charger(false);
+			pr_info("LYNX_POWER: Hardware Bypass DEACTIVATED (normal charging resumed)\n");
+		} else {
+			pr_info("LYNX_POWER: Manual bypass cleared; keeping 100%% EOC AutoCut latch active\n");
+		}
 	}
 	mutex_unlock(&lynx_proc_mutex);
 
@@ -186,16 +190,18 @@ static ssize_t lynx_full_bypass_write(struct file *file, const char __user *buff
 		lynx_sync_bypass_charger(lynx_is_bypass_effective());
 		pr_info("LYNX_POWER: Full-Charge Bypass ENABLED\n");
 	} else {
-		bool was_latched = READ_ONCE(g_lynx_full_bypass_latched);
+		/* Keep autonomous kernel Full-Charge AutoCut enabled; only unlatch if < 99% */
+		WRITE_ONCE(g_lynx_full_bypass_enabled, true);
+		if (battery_get_uisoc() < 99) {
+			bool was_latched = READ_ONCE(g_lynx_full_bypass_latched);
 
-		WRITE_ONCE(g_lynx_full_bypass_enabled, false);
-		WRITE_ONCE(g_lynx_full_bypass_latched, false);
-		if (was_latched && !lynx_is_bypass_effective()) {
-			rt9471_set_bypass_mode(false);
-			lynx_sync_bypass_charger(false);
+			WRITE_ONCE(g_lynx_full_bypass_latched, false);
+			if (was_latched && !lynx_is_bypass_effective()) {
+				rt9471_set_bypass_mode(false);
+				lynx_sync_bypass_charger(false);
+			}
 		}
-		pr_info("LYNX_POWER: Full-Charge Bypass DISABLED (was_latched=%d)\n",
-			was_latched ? 1 : 0);
+		pr_info("LYNX_POWER: Autonomous Kernel Full-Charge AutoCut kept ENABLED\n");
 	}
 	mutex_unlock(&lynx_proc_mutex);
 
@@ -260,11 +266,13 @@ static ssize_t lynx_hyper_charge_write(struct file *file, const char __user *buf
 
 	g_lynx_hyper_charge = (val != 0);
 	if (g_lynx_hyper_charge) {
-		/* Explicit command to enter Hyper Charge: clear any bypass latch! */
+		/* Explicit command to enter Hyper Charge: clear manual bypass, keep 100% EOC AutoCut latch if >= 99% */
 		WRITE_ONCE(g_lynx_bypass_active, false);
-		WRITE_ONCE(g_lynx_full_bypass_latched, false);
-		rt9471_set_bypass_mode(false);
-		lynx_sync_bypass_charger(false);
+		if (battery_get_uisoc() < 99 || !READ_ONCE(g_lynx_full_bypass_latched)) {
+			WRITE_ONCE(g_lynx_full_bypass_latched, false);
+			rt9471_set_bypass_mode(false);
+			lynx_sync_bypass_charger(false);
+		}
 	}
 	lynx_sync_hyper_hv(g_lynx_hyper_charge);
 	pr_info("LYNX_POWER: Hyper Charge %s\n", g_lynx_hyper_charge ? "ENABLED" : "DISABLED");

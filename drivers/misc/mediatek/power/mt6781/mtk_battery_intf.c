@@ -16,6 +16,7 @@
 #include <mt-plat/mtk_boot.h>
 #include <mtk_gauge_class.h>
 #include <mtk_battery_internal.h>
+#include "../../../../power/supply/mediatek/charger/lynx_power.h"
 
 int __attribute__((weak)) charger_get_vbus(void)
 {
@@ -119,8 +120,15 @@ signed int battery_get_uisoc(void)
 		(boot_mode == ATE_FACTORY_BOOT))
 		return 75;
 
-	if (gm != NULL)
+	if (gm != NULL) {
+		if (mt_get_charger_type() != CHARGER_UNKNOWN &&
+		    lynx_is_full_bypass_active() &&
+		    gm->ui_soc >= 96 && pmic_get_battery_voltage() >= 4220) {
+			gm->ui_soc = 100;
+			return 100;
+		}
 		return gm->ui_soc;
+	}
 	else
 		return 50;
 }

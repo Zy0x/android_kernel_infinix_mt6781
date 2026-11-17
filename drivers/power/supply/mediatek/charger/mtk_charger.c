@@ -1882,6 +1882,10 @@ static void check_dynamic_mivr(struct charger_manager *info)
 			!mtk_pe_get_is_connect(info) &&
 			!mtk_pdc_check_charger(info)) {
 
+			if (lynx_is_bypass_effective()) {
+				charger_dev_set_mivr(info->chg1_dev, 4400000);
+				return;
+			}
 			vbat = battery_get_bat_voltage();
 			if (vbat <
 				info->data.min_charger_voltage_2 / 1000 - 200)
@@ -1893,7 +1897,7 @@ static void check_dynamic_mivr(struct charger_manager *info)
 					info->data.min_charger_voltage_1);
 			else
 				charger_dev_set_mivr(info->chg1_dev,
-					info->data.min_charger_voltage);
+					min_t(u32, info->data.min_charger_voltage, 4500000));
 		}
 	}
 }
@@ -3466,8 +3470,9 @@ static ssize_t mtk_chg_current_cmd_write(struct file *file,
 			info->cmd_discharging = false;
 			if (!lynx_is_bypass_effective()) {
 				charger_dev_enable(info->chg1_dev, true);
-				charger_manager_notifier(info,
-							CHARGER_NOTIFY_START_CHARGING);
+				if (mt_get_charger_type() != CHARGER_UNKNOWN)
+					charger_manager_notifier(info,
+								CHARGER_NOTIFY_START_CHARGING);
 			}
 		}
 

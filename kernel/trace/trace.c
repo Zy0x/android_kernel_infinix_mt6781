@@ -51,6 +51,8 @@
 
 #ifdef CONFIG_MTK_SCHED_TRACERS
 #include "mtk_ftrace.h"
+#endif
+#ifdef CONFIG_TRACING
 #define CREATE_TRACE_POINTS
 #include <trace/events/mtk_events.h>
 EXPORT_TRACEPOINT_SYMBOL(gpu_freq);

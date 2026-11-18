@@ -46,8 +46,10 @@
 #include "lens_list.h"
 
 #define AF_DRVNAME "MAIN2AF"
+#ifndef CONFIG_CUSTOM_TRAN_PROJECT
 #ifndef OPLUS_FEATURE_CAMERA_COMMON
 #define OPLUS_FEATURE_CAMERA_COMMON
+#endif
 #endif
 #if defined(CONFIG_MTK_LEGACY)
 #define I2C_CONFIG_SETTING 1
@@ -59,7 +61,7 @@
 #endif
 
 #if I2C_CONFIG_SETTING == 1
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 #define LENS_I2C_BUSNUM 2
 #else
 #define LENS_I2C_BUSNUM 0

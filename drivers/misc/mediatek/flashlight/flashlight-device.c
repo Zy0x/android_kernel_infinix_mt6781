@@ -13,8 +13,10 @@
 
 #include "flashlight-core.h"
 
+#ifndef CONFIG_CUSTOM_TRAN_PROJECT
 #ifndef OPLUS_FEATURE_CAMERA_COMMON
 #define OPLUS_FEATURE_CAMERA_COMMON
+#endif
 #endif
 
 #if defined(mt6739)
@@ -90,10 +92,20 @@ const struct flashlight_device_id flashlight_id[] = {
 };
 #endif
 #elif defined(mt6781)
+#ifdef CONFIG_CUSTOM_TRAN_PROJECT
+const struct flashlight_device_id flashlight_id[] = {
+	/* {TYPE, CT, PART, "NAME", CHANNEL, DECOUPLE} */
+	{0, 0, 0, "flashlights-ocp81375", 1, 1},
+	{1, 0, 0, "flashlights-ocp81375", 0, 1},
+	{0, 0, 0, "flashlights-aw36515", 1, 1},
+	{1, 0, 0, "flashlights-aw36515", 0, 1},
+};
+#else
 const struct flashlight_device_id flashlight_id[] = {
 	/* {TYPE, CT, PART, "NAME", CHANNEL, DECOUPLE} */
 	{0, 0, 0, "flashlights-mt6370", 0, 1},
 };
+#endif
 #elif defined(mt6799)
 const struct flashlight_device_id flashlight_id[] = {
 	/* {TYPE, CT, PART, "NAME", CHANNEL, DECOUPLE} */
@@ -118,7 +130,7 @@ const struct flashlight_device_id flashlight_id[] = {
 #else
 const struct flashlight_device_id flashlight_id[] = {
 	/* {TYPE, CT, PART, "NAME", CHANNEL, DECOUPLE} */
-	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	{0, 0, 0, "flashlights-lm3642", 0, 0},
 	{0, 0, 1, "flashlights-aw3642", 0, 0},
 	{0, 0, 0, "flashlights-mp3331", 0, 0},

@@ -35,7 +35,7 @@ enum GPIO_CTRL_STATE_CAM {
 	GPIO_CTRL_STATE_LDO_VCAMD_L,
 	GPIO_CTRL_STATE_LDO_VCAMIO_H,
 	GPIO_CTRL_STATE_LDO_VCAMIO_L,
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	GPIO_CTRL_STATE_LDO_VCAMAF_H,
 	GPIO_CTRL_STATE_LDO_VCAMAF_L,
 	GPIO_CTRL_STATE_LDO_VCAMA1_H,
@@ -79,7 +79,7 @@ struct GPIO {
 	struct pinctrl_state *ppinctrl_state_switch[
 		GPIO_CTRL_STATE_MAX_NUM_SWITCH];
 #endif
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	struct pinctrl_state *pinctrl_state_ldo_enable;
 	struct pinctrl_state *pinctrl_state_gpio_power_enable;
 	struct pinctrl_state *pinctrl_state_gpio_power_disable;

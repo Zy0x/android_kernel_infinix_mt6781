@@ -1133,6 +1133,67 @@ struct IMGSENSOR_HW_POWER_SEQ sensor_power_sequence[] = {
 	},
 #endif
 
+#ifdef CONFIG_CUSTOM_TRAN_PROJECT
+#if defined(HI1631Q_MIPI_RAW)
+	{
+		SENSOR_DRVNAME_HI1631Q_MIPI_RAW,
+		{
+			{RST, Vol_Low, 1},
+			{DOVDD, Vol_1800, 1},
+			{AVDD, Vol_2800, 1},
+			{DVDD, Vol_1100, 1},
+			{SensorMCLK, Vol_High, 1},
+			{RST, Vol_High, 1}
+		},
+	},
+#endif
+#if defined(S5KJN1_MIPI_RAW)
+	{
+		SENSOR_DRVNAME_S5KJN1_MIPI_RAW,
+		{
+			{PDN, Vol_Low, 0},
+			{RST, Vol_Low, 0},
+			{DOVDD, Vol_1800, 1},
+			{DVDD, Vol_1050, 2},
+			{AVDD, Vol_2800, 1},
+			{PDN, Vol_High, 1},
+			{RST, Vol_High, 1},
+			{SensorMCLK, Vol_High, 5}
+		},
+	},
+#endif
+#if defined(GC02M1_MIPI_RAW)
+	{
+		SENSOR_DRVNAME_GC02M1_MIPI_RAW,
+		{
+			{PDN, Vol_High, 0},
+			{RST, Vol_Low, 0},
+			{DOVDD, Vol_1800, 1},
+			{AVDD, Vol_2800, 1},
+			{SensorMCLK, Vol_High, 0},
+			{PDN, Vol_Low, 0, Vol_High, 0},
+			{RST, Vol_High, 5},
+			{PDN, Vol_Low, 0, Vol_High, 0}
+		},
+	},
+#endif
+#if defined(GC02M1B_MIPI_RAW)
+	{
+		SENSOR_DRVNAME_GC02M1B_MIPI_RAW,
+		{
+			{PDN, Vol_High, 0},
+			{RST, Vol_Low, 0},
+			{DOVDD, Vol_1800, 1},
+			{AVDD, Vol_2800, 1},
+			{SensorMCLK, Vol_High, 0},
+			{PDN, Vol_Low, 0, Vol_High, 0},
+			{RST, Vol_High, 5},
+			{SensorMCLK, Vol_High, 0},
+			{PDN, Vol_Low, 0, Vol_High, 0}
+		},
+	},
+#endif
+#endif /* CONFIG_CUSTOM_TRAN_PROJECT */
 	/* add new sensor before this line */
 	{NULL,},
 };

@@ -12,7 +12,9 @@
  */
 
 #include "gpio.h"
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 #include <soc/oplus/system/oppo_project.h>
+#endif
 
 struct GPIO_PINCTRL gpio_pinctrl_list_cam[
 			GPIO_CTRL_STATE_MAX_NUM_CAM] = {
@@ -27,7 +29,7 @@ struct GPIO_PINCTRL gpio_pinctrl_list_cam[
 	{"ldo_vcamd_0"},
 	{"ldo_vcamio_1"},
 	{"ldo_vcamio_0"},
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	{"ldo_vcama1_1"},
 	{"ldo_vcama1_0"},
 	{"ldo_vcamd1_1"},
@@ -52,7 +54,7 @@ struct GPIO_PINCTRL gpio_pinctrl_list_cam_dufu[
 	{"ldo_vcamd_0"},
 	{"ldo_vcamio_1"},
 	{"ldo_vcamio_0"},
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	{"ldo_vcamaf_1"},
 	{"ldo_vcamaf_0"},
 	{"ldo_vcama1_1"},
@@ -80,7 +82,7 @@ struct GPIO_PINCTRL gpio_pinctrl_list_cam_moss[
         {"ldo_vcamd_0"},
         {"ldo_vcamio_1"},
         {"ldo_vcamio_0"},
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 		{"ldo_vcamaf_1"},
 		{"ldo_vcamaf_0"},
         {"ldo_vcama1_1"},
@@ -95,6 +97,7 @@ struct GPIO_PINCTRL gpio_pinctrl_list_cam_moss[
 
 };
 
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 struct GPIO_PINCTRL gpio_pinctrl_list_cam_212a1[
 			GPIO_CTRL_STATE_MAX_NUM_CAM] = {
 	/* Main */
@@ -113,6 +116,7 @@ struct GPIO_PINCTRL gpio_pinctrl_list_cam_212a1[
 	{"ldo_vcama1_1"},
 	{"ldo_vcama1_0"}
 };
+#endif
 struct GPIO_PINCTRL gpio_pinctrl_list_cam_blade[
 			GPIO_CTRL_STATE_MAX_NUM_CAM] = {
 	/* Main */
@@ -126,7 +130,7 @@ struct GPIO_PINCTRL gpio_pinctrl_list_cam_blade[
 	{"ldo_vcamd_0"},
 	{"ldo_vcamio_1"},
 	{"ldo_vcamio_0"},
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	{"ldo_vcamaf_1"},
 	{"ldo_vcamaf_0"},
 	{"ldo_vcama1_1"},
@@ -151,7 +155,7 @@ struct GPIO_PINCTRL gpio_pinctrl_list_switch[
 #endif
 
 extern void gpio_dump_regs(void);
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 struct GPIO_PINCTRL gpio_pinctrl_list_ldo_enable[1] = {
 	{"fan53870_chip_enable"}
 };
@@ -186,6 +190,7 @@ static enum IMGSENSOR_RETURN gpio_init(
 		j < IMGSENSOR_SENSOR_IDX_MAX_NUM;
 		j++) {
 		for (i = 0 ; i < GPIO_CTRL_STATE_MAX_NUM_CAM; i++) {
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 			if(is_project(0x2169E) || is_project(0x2169F) || is_project(0x216C9) || is_project(0x216CA)
                           || is_project(21711) || is_project(21712)) {
 				lookup_names =
@@ -206,6 +211,9 @@ static enum IMGSENSOR_RETURN gpio_init(
 				lookup_names =
 				gpio_pinctrl_list_cam[i].ppinctrl_lookup_names;
 			}
+#else
+			lookup_names = gpio_pinctrl_list_cam[i].ppinctrl_lookup_names;
+#endif
 			if (lookup_names) {
 				ret = snprintf(str_pinctrl_name,
 				sizeof(str_pinctrl_name),
@@ -234,7 +242,7 @@ static enum IMGSENSOR_RETURN gpio_init(
 			}
 		}
 	}
-	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	if (1) {
 		if (gpio_pinctrl_list_ldo_enable[0].ppinctrl_lookup_names) {
 			pgpio->pinctrl_state_ldo_enable = pinctrl_lookup_state(
@@ -308,6 +316,7 @@ static enum IMGSENSOR_RETURN gpio_set(
 
 	PK_DBG("%s :debug pinctrl ENABLE, PinIdx %d, Val %d\n",__func__, pin, pin_state);
 
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	if (is_project(19165)) {
                 if (pin < IMGSENSOR_HW_PIN_PDN ||
                         pin > IMGSENSOR_HW_PIN_AVDD_1 ||
@@ -316,11 +325,12 @@ static enum IMGSENSOR_RETURN gpio_set(
                         sensor_idx < 0)
                                 return IMGSENSOR_RETURN_ERROR;
 	} else {
+#endif
 	if (pin < IMGSENSOR_HW_PIN_PDN ||
 #ifdef MIPI_SWITCH
 	    pin > IMGSENSOR_HW_PIN_MIPI_SWITCH_SEL ||
 #else
-		#ifdef OPLUS_FEATURE_CAMERA_COMMON
+		#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 		pin > IMGSENSOR_HW_PIN_GPIO_POWER_ENABLE ||
 		#else
 		pin > IMGSENSOR_HW_PIN_DOVDD ||
@@ -330,7 +340,9 @@ static enum IMGSENSOR_RETURN gpio_set(
 		pin_state > IMGSENSOR_HW_PIN_STATE_LEVEL_HIGH ||
 		sensor_idx < 0)
 		return IMGSENSOR_RETURN_ERROR;
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	}
+#endif
 	gpio_state = (pin_state > IMGSENSOR_HW_PIN_STATE_LEVEL_0)
 		? GPIO_STATE_H : GPIO_STATE_L;
 
@@ -344,7 +356,7 @@ static enum IMGSENSOR_RETURN gpio_set(
 	else
 #endif
 	{
-		#ifdef OPLUS_FEATURE_CAMERA_COMMON
+		#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 		if (pin == IMGSENSOR_HW_PIN_FAN53870_ENABLE) {
 			ppinctrl_state = pgpio->pinctrl_state_ldo_enable;
 		} else if(pin == IMGSENSOR_HW_PIN_GPIO_POWER_ENABLE) {

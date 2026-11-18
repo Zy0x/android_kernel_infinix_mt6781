@@ -4,4 +4,11 @@ config MTK_IMGSENSOR
 	help
 	  CONFIG_MTK_IMGSENSOR
 
+config TRAN_CAMERA_EXT_LDO_REGULATOR
+	bool "Transsion external 4-channel camera LDO regulator (cam_vdd_ext)"
+	depends on MTK_IMGSENSOR
+	default n
+	help
+	  Enable I2C external camera LDO regulator (cam_vdd_ext at 0x28) for Transsion MT6781 devices.
+
 source "drivers/misc/mediatek/imgsensor/src/Kconfig"

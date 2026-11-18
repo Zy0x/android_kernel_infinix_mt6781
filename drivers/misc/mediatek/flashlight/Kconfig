@@ -213,3 +213,12 @@ config MTK_FLASHLIGHT_EVEN
 		Select this only if your board has this IC.
 
 		Say M here if you want to compile this driver as a module.
+
+config MTK_FLASHLIGHT_OCP81375
+	tristate "Mediatek flashlight with ocp81375 driver IC"
+	depends on MTK_FLASHLIGHT
+	default n
+	help
+	  This is flashlight driver IC OCP81375 for camera.
+
+	  Say Y here if you want a flashlight OCP81375 driver IC.

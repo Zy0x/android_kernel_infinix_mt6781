@@ -1,1 +1,1 @@
-obj-y += hi1634qmipiraw_Sensor.o
+obj-y += hi1631qmipiraw_Sensor.o

@@ -14,8 +14,10 @@
 #ifndef _LENS_LIST_H
 
 #define _LENS_LIST_H
+#ifndef CONFIG_CUSTOM_TRAN_PROJECT
 #ifndef OPLUS_FEATURE_CAMERA_COMMON
 #define OPLUS_FEATURE_CAMERA_COMMON
+#endif
 #endif
 
 extern void MAIN2AF_PowerDown(void);
@@ -46,7 +48,7 @@ extern int AK7371AF_Release(struct inode *a_pstInode, struct file *a_pstFile);
 extern int AK7371AF_PowerDown(struct i2c_client *pstAF_I2Cclient,
 				int *pAF_Opened);
 extern int AK7371AF_GetFileName(unsigned char *pFileName);
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 extern int AK7314AF_SetI2Cclient(struct i2c_client *pstAF_I2Cclient,
 				 spinlock_t *pAF_SpinLock, int *pAF_Opened);
 extern long AK7314AF_Ioctl(struct file *a_pstFile, unsigned int a_u4Command,

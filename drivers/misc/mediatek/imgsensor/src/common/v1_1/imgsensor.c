@@ -59,10 +59,10 @@
 #if defined(CONFIG_MTK_CAM_SECURE_I2C)
 #include "imgsensor_ca.h"
 #endif
-#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#if !defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 #define OPLUS_FEATURE_CAMERA_COMMON
 #endif
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 #include "imgsensor_eeprom.h"
 #include "imgsensor_hwcfg_custom.h"
 #endif
@@ -105,6 +105,7 @@ void IMGSENSOR_PROFILE(struct timeval *ptv, char *tag)
 }
 #endif
 
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 #define DEVICE_MANUFACUTRE_HLT          "HLT"
 
 #define IMGSENSOR_MODULE_ID_HLT         0x09
@@ -148,6 +149,7 @@ void register_imgsensor_deviceinfo(char *name, char *version, u8 module_id)
     }
     register_device_proc(name, version, manufacture);
 }
+#endif
 
 /******************************************************************************
  * sensor function adapter
@@ -209,7 +211,7 @@ static void imgsensor_mutex_unlock(struct IMGSENSOR_SENSOR_INST *psensor_inst)
 MINT32 imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
 {
 	MINT32 ret = ERROR_NONE;
-	enum IMGSENSOR_SENSOR_IDX sensor_idx = psensor->inst.sensor_idx;
+	enum IMGSENSOR_SENSOR_IDX sensor_idx __maybe_unused = psensor->inst.sensor_idx;
 #if defined(CONFIG_MTK_CAM_SECURE_I2C)
 	MINT32 ret_sec = ERROR_NONE;
 	struct command_params c_params = {0};
@@ -268,10 +270,12 @@ MINT32 imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
 			PK_PR_ERR("SensorOpen fail");
 		} else {
 			psensor_inst->state = IMGSENSOR_STATE_OPEN;
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 			if (is_project(21015) || is_project(21217) || is_project(20609) || is_project(0x2060A) || is_project(0x2060B)
 			|| is_project(0x2070C) || is_project(20796) || is_project(20795) || is_project(0x206FF)) {
 				Oplusimgsensor_powerstate_notify(1);
 			}
+#endif
 		}
 
 #ifdef IMGSENSOR_OC_ENABLE
@@ -300,7 +304,7 @@ MINT32 imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
 
 	IMGSENSOR_FUNCTION_EXIT();
 
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	if ((is_project(21684) || is_project(21685) || is_project(21686))
 		&& sensor_idx != IMGSENSOR_SENSOR_IDX_SUB) {
 		oplus_chg_set_camera_on(1);
@@ -487,7 +491,7 @@ imgsensor_sensor_control(
 #endif
 		if (ret != ERROR_NONE)
 			PK_PR_ERR("[%s]\n", __func__);
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
         if (psensor->inst.sensor_idx != IMGSENSOR_SENSOR_IDX_SUB) {
             Oplusimgsensor_powerstate_notify(1);
         }
@@ -508,7 +512,7 @@ imgsensor_sensor_control(
 MINT32 imgsensor_sensor_close(struct IMGSENSOR_SENSOR *psensor)
 {
 	MINT32 ret = ERROR_NONE;
-	enum IMGSENSOR_SENSOR_IDX sensor_idx = psensor->inst.sensor_idx;
+	enum IMGSENSOR_SENSOR_IDX sensor_idx __maybe_unused = psensor->inst.sensor_idx;
 #if defined(CONFIG_MTK_CAM_SECURE_I2C)
 	MINT32 ret_sec = ERROR_NONE;
 	struct command_params c_params = {0};
@@ -552,7 +556,7 @@ MINT32 imgsensor_sensor_close(struct IMGSENSOR_SENSOR *psensor)
 				IMGSENSOR_HW_POWER_STATUS_OFF);
 
 			psensor_inst->state = IMGSENSOR_STATE_CLOSE;
-			#ifdef OPLUS_FEATURE_CAMERA_COMMON
+			#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 			Oplusimgsensor_powerstate_notify(0);
 			#endif
 		}
@@ -564,7 +568,7 @@ MINT32 imgsensor_sensor_close(struct IMGSENSOR_SENSOR *psensor)
 
 	IMGSENSOR_FUNCTION_EXIT();
 
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	if ((is_project(21684) || is_project(21685) || is_project(21686))
 		&& sensor_idx != IMGSENSOR_SENSOR_IDX_SUB) {
 		oplus_chg_set_camera_on(0);
@@ -584,7 +588,7 @@ static void imgsensor_init_sensor_list(void)
 	const char *penable_sensor;
 	struct device_node *of_node
 		= of_find_compatible_node(NULL, NULL, "mediatek,imgsensor");
-	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	psensor_list = Oplusimgsensor_Sensorlist();
 	#endif
 	ret = of_property_read_string(of_node, "cust-sensor", &penable_sensor);
@@ -659,7 +663,7 @@ int imgsensor_set_driver(struct IMGSENSOR_SENSOR *psensor)
 	struct IMGSENSOR_SENSOR_INST *psensor_inst = &psensor->inst;
 
 	imgsensor_mutex_init(psensor_inst);
-	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	Oplusimgsensor_i2c_init(psensor_inst);
 	#else
 	imgsensor_i2c_init(&psensor_inst->i2c_cfg,
@@ -1090,7 +1094,7 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 
 	/*in case that some structure are passed from user sapce by ptr */
 	switch (pFeatureCtrl->FeatureId) {
-	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	case SENSOR_FEATURE_SET_SENSOR_OTP:
 		ret = imgsensor_sensor_feature_control(psensor,
 					pFeatureCtrl->FeatureId,
@@ -1101,7 +1105,7 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 	case SENSOR_FEATURE_GET_EEPROM_STEREODATA:
 	case SENSOR_FEATURE_GET_DISTORTIONPARAMS:
 	{
-		enum IMGSENSOR_SENSOR_IDX sensor_idx = psensor->inst.sensor_idx;
+		enum IMGSENSOR_SENSOR_IDX sensor_idx __maybe_unused = psensor->inst.sensor_idx;
 		ret = Eeprom_Control(sensor_idx, pFeatureCtrl->FeatureId,
 						(unsigned char *)pFeaturePara, 0);
 		break;
@@ -2560,7 +2564,9 @@ static int imgsensor_probe(struct platform_device *pplatform_device)
 
 	phw->common.pplatform_device = pplatform_device;
 
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	oplus_imgsensor_hwcfg();
+#endif
 	imgsensor_hw_init(phw);
 	imgsensor_i2c_create();
 	imgsensor_proc_init();

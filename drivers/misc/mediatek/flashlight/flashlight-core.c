@@ -43,7 +43,7 @@
 #include "mtk_pbm.h" /* DLPT */
 #endif
 
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 #include<soc/oppo/oppo_project.h>
 extern void oplus_chg_set_flash_led_status(bool val);
 #endif
@@ -622,7 +622,7 @@ static int pt_trigger(void)
 
 	return 0;
 }
-#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 static void pt_low_vol_callback(LOW_BATTERY_LEVEL level)
 {
 	if (level == LOW_BATTERY_LEVEL_0) {
@@ -893,7 +893,7 @@ static int flashlight_open(struct inode *inode, struct file *file)
 		pr_debug("Open(%d,%d,%d)\n", fdev->dev_id.type,
 				fdev->dev_id.ct, fdev->dev_id.part);
 		fdev->ops->flashlight_open();
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 		if (is_project(21881) || is_project(21882)){
 			oplus_chg_set_flash_led_status(true);
 			pr_debug("set flash charge mode on\n");
@@ -919,7 +919,7 @@ static int flashlight_release(struct inode *inode, struct file *file)
 		if (fdev->enable != 0)
 			fl_enable(fdev, 0);
 		fdev->ops->flashlight_release();
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 		if (is_project(21881) || is_project(21882)){
 			oplus_chg_set_flash_led_status(false);
 			pr_debug("set flash charge mode off\n");
@@ -1114,7 +1114,7 @@ static ssize_t flashlight_pt_store(struct device *dev,
 
 	/* call callback function */
 	pt_strict = strict;
-#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	pt_low_vol_callback(low_vol);
 	pt_low_bat_callback(low_bat);
 #endif /*OPLUS_FEATURE_CAMERA_COMMON*/
@@ -1428,7 +1428,7 @@ unlock:
 }
 static DEVICE_ATTR_RW(flashlight_current);
 
-#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 /* flashlight fault sysfs */
 static ssize_t flashlight_fault_show(
 		struct device *dev, struct device_attribute *attr, char *buf)
@@ -1697,7 +1697,7 @@ static int flashlight_probe(struct platform_device *dev)
 		pr_err("Failed to create device file(current)\n");
 		goto err_create_current_device_file;
 	}
-#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	if (device_create_file(flashlight_device, &dev_attr_flashlight_fault)) {
 		pr_err("Failed to create device file(fault)\n");
 		goto err_create_fault_device_file;
@@ -1714,7 +1714,7 @@ static int flashlight_probe(struct platform_device *dev)
 	pr_debug("Probe done\n");
 
 	return 0;
-#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 err_create_sw_disable_device_file:
 	device_remove_file(flashlight_device, &dev_attr_flashlight_sw_disable);
 err_create_fault_device_file:
@@ -1746,7 +1746,7 @@ static int flashlight_remove(struct platform_device *dev)
 	fl_uninit();
 
 	/* remove device file */
-#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	device_remove_file(flashlight_device, &dev_attr_flashlight_sw_disable);
 	device_remove_file(flashlight_device, &dev_attr_flashlight_fault);
 #endif /*OPLUS_FEATURE_CAMERA_COMMON*/
@@ -1824,7 +1824,7 @@ static int __init flashlight_init(void)
 	}
 
 #ifdef CONFIG_MTK_FLASHLIGHT_PT
-#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	register_low_battery_notify(
 			&pt_low_vol_callback, LOW_BATTERY_PRIO_FLASHLIGHT);
 	register_battery_percent_notify(

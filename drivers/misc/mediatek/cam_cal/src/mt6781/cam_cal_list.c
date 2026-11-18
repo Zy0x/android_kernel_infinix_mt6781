@@ -19,6 +19,10 @@
 #define MAX_EEPROM_SIZE_16K 0x4000
 
 struct stCAM_CAL_LIST_STRUCT g_camCalList[] = {
+#ifdef CONFIG_CUSTOM_TRAN_PROJECT
+	{S5KJN1_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
+	{HI1631Q_SENSOR_ID, 0xA2, Common_read_region},
+#else
 	{GC02M1HLT_SENSOR_ID_21690, 0xA4, Common_read_region},
 	{GC02M1SHINE_SENSOR_ID_21690, 0xA4, Common_read_region,MAX_EEPROM_SIZE_16K},
 	{S5KJN1_SENSOR_ID_21690, 0xA0, Common_read_region},
@@ -49,6 +53,7 @@ struct stCAM_CAL_LIST_STRUCT g_camCalList[] = {
 	{IMX499_SENSOR_ID, 0xA0, Common_read_region},
 	{IMX481_SENSOR_ID, 0xA4, Common_read_region, DEFAULT_MAX_EEPROM_SIZE_8K,
 		BL24SA64_write_region},
+#endif
 	/*  ADD before this line */
 	{0, 0, 0}       /*end of list */
 };

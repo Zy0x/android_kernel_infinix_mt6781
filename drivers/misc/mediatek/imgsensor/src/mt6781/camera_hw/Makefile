@@ -19,7 +19,9 @@ ccflags-y += -I$(MTK_CUSTOM_PATH)/imgsensor/inc \
 obj-y		+= ../../common/v1_1/camera_hw/regulator/
 obj-y		+= ../../common/v1_1/camera_hw/gpio/
 obj-y		+= ../../common/v1_1/camera_hw/mclk/
+ifeq ($(CONFIG_CUSTOM_TRAN_PROJECT),)
 obj-y		+= ../../common/v1_1/camera_hw/wl2864/
+endif
 obj-y		+= imgsensor_cfg_table.o
 obj-y           += imgsensor_pwr_seq.o
 #obj-y           += imgsensor_oc.o

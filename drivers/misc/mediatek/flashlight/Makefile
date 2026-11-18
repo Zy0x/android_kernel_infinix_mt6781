@@ -11,6 +11,7 @@ obj-$(CONFIG_MTK_FLASHLIGHT_LED191)      += flashlights-led191.o
 obj-$(CONFIG_MTK_FLASHLIGHT_LM3642)      += flashlights-lm3642.o
 obj-$(CONFIG_MTK_FLASHLIGHT_LM3643)      += flashlights-lm3643.o
 obj-$(CONFIG_MTK_FLASHLIGHT_AW36515)     += flashlights-aw36515.o
+obj-$(CONFIG_MTK_FLASHLIGHT_OCP81375)    += flashlights-ocp81375.o
 obj-$(CONFIG_MTK_FLASHLIGHT_LM3644)      += flashlights-lm3644.o
 obj-$(CONFIG_MTK_FLASHLIGHT_RT4505)      += flashlights-rt4505.o
 obj-$(CONFIG_MTK_FLASHLIGHT_RT5081)      += flashlights-rt5081.o
@@ -22,9 +23,9 @@ obj-$(CONFIG_MTK_FLASHLIGHT_MOSS)        += flashlights-moss.o
 obj-$(CONFIG_MTK_FLASHLIGHT_DUMMY)       += flashlights-dummy.o
 obj-$(CONFIG_MTK_FLASHLIGHT_DUMMY_GPIO)  += flashlights-dummy-gpio.o
 
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+ifeq ($(CONFIG_CUSTOM_TRAN_PROJECT),)
 obj-y += ./oplus/flashlight_custom.o
-#endif
+endif
 
 ccflags-$(CONFIG_MTK_FLASHLIGHT_DEBUG)     := -DDEBUG
 ccflags-$(CONFIG_MTK_FLASHLIGHT_LED191)    += -DCONFIG_MTK_FLASHLIGHT_LED191

@@ -46,8 +46,10 @@
 
 #define AF_DRVNAME "MAINAF"
 
-#ifndef OPLUS_FEATURE_CAMERA_COMMON
+#ifndef CONFIG_CUSTOM_TRAN_PROJECT
+#if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 #define OPLUS_FEATURE_CAMERA_COMMON
+#endif
 #endif
 
 #if defined(CONFIG_MTK_LEGACY)
@@ -93,7 +95,7 @@ static struct stAF_OisPosInfo OisPosInfo;
 /* ------------------------- */
 
 static struct stAF_DrvList g_stAF_DrvList[MAX_NUM_OF_LENS] = {
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	{1, AFDRV_LC898217AF, LC898217AF_SetI2Cclient, LC898217AF_Ioctl,
 	 LC898217AF_Release, LC898217AF_GetFileName, NULL},
 	{1, AFDRV_DW9718AF, DW9718AF_SetI2Cclient, DW9718AF_Ioctl,
@@ -231,7 +233,7 @@ static struct device *lens_device;
 static struct pinctrl *af_pinctrl;
 static struct pinctrl_state *af_hwen_high;
 static struct pinctrl_state *af_hwen_low;
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 #if defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6873)
 extern struct regulator *regulator_get_regVCAMAF(void);
 #endif /* CONFIG_MACH_MT6853 */
@@ -315,7 +317,7 @@ static int af_pinctrl_set(int pin, int state)
 	return ret;
 }
 
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 extern int pmic_ldo_set_voltage_mv(unsigned int ldo_num, int set_mv);
 extern int pmic_ldo_set_disable(unsigned int ldo_num);
 extern int pmic_ldo_get_type(void);
@@ -330,6 +332,7 @@ void Other_AFRegulatorCtrl(int Stage);
 static struct regulator *regVCAMAF;
 static int g_regVCAMAFEn;
 
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 static int fail_update_cnt = 0, success_check_cnt = 0;
 void Oplus_Lens_PIDparam_update(struct stAF_MotorName* stMotorName)
 {
@@ -353,11 +356,12 @@ void Oplus_Lens_PIDparam_update(struct stAF_MotorName* stMotorName)
 		}
 	}
 }
+#endif
 void AFRegulatorCtrl(int Stage)
 {
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
     int Status = -1;
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
-    #ifdef OPLUS_FEATURE_CAMERA_COMMON
+    #if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
     if(is_project(20761) || is_project(20762) || is_project(20764) || is_project(20766) || is_project(20767)) {
         Other_AFRegulatorCtrl(Stage);
         return;
@@ -647,14 +651,14 @@ void AFRegulatorCtrl(int Stage)
 }
 #endif
 
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 void Other_AFRegulatorCtrl(int Stage)
 {
 	LOG_INF("AFIOC_S_SETPOWERCTRL regulator_put %p\n", regVCAMAF);
 
 	if (Stage == 0) {
 		if (regVCAMAF == NULL) {
-			#ifndef OPLUS_FEATURE_CAMERA_COMMON
+			#if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 			struct device_node *node, *kd_node;
 
 			/* check if customer camera node defined */
@@ -899,7 +903,9 @@ static long AF_SetMotorName(__user struct stAF_MotorName *pstMotorName)
 			i4RetValue = g_pstAF_CurDrv->pAF_SetI2Cclient(
 				g_pstAF_I2Cclient, &g_AF_SpinLock,
 				&g_s4AF_Opened);
+#if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
 			Oplus_Lens_PIDparam_update(&stMotorName);
+#endif
 			break;
 		}
 	}
@@ -1110,7 +1116,7 @@ static int AF_Open(struct inode *a_pstInode, struct file *a_pstFile)
 	g_s4AF_Opened = 1;
 	spin_unlock(&g_AF_SpinLock);
 
-        #ifndef OPLUS_FEATURE_CAMERA_COMMON
+        #if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	af_pinctrl_set(AF_PINCTRL_PIN_HWEN,
 			AF_PINCTRL_PINSTATE_HIGH);
             #if !defined(CONFIG_MTK_LEGACY)
@@ -1166,7 +1172,7 @@ static int AF_Release(struct inode *a_pstInode, struct file *a_pstFile)
 		g_s4AF_Opened = 0;
 		spin_unlock(&g_AF_SpinLock);
 	}
-        #ifndef OPLUS_FEATURE_CAMERA_COMMON
+        #if !defined(OPLUS_FEATURE_CAMERA_COMMON) || defined(CONFIG_CUSTOM_TRAN_PROJECT)
 	af_pinctrl_set(AF_PINCTRL_PIN_HWEN,
 			AF_PINCTRL_PINSTATE_LOW);
             #if !defined(CONFIG_MTK_LEGACY)
@@ -1289,7 +1295,9 @@ static const struct i2c_device_id AF_i2c_id[] = {{AF_DRVNAME, 0}, {} };
 /* PATH : vendor\mediatek\proprietary\custom\#project#\kernel\dct\dct */
 #if I2C_CONFIG_SETTING == 2
 static const struct of_device_id MAINAF_of_match[] = {
-	{.compatible = "mediatek,CAMERA_MAIN_AF"}, {},
+	{.compatible = "mediatek,CAMERA_MAIN_AF"},
+	{.compatible = "mediatek,camera_main_af"},
+	{},
 };
 #endif
 
@@ -1336,16 +1344,27 @@ static int AF_i2c_probe(struct i2c_client *client,
 	return 0;
 }
 
+static bool g_af_i2c_driver_added;
+
 static int AF_probe(struct platform_device *pdev)
 {
-	if (af_pinctrl_init(&pdev->dev))
-		LOG_INF("Failed to init pinctrl.\n");
-	return i2c_add_driver(&AF_i2c_driver);
+	if (pdev->dev.of_node) {
+		if (af_pinctrl_init(&pdev->dev))
+			LOG_INF("Failed to init pinctrl.\n");
+	}
+	if (!g_af_i2c_driver_added) {
+		g_af_i2c_driver_added = true;
+		return i2c_add_driver(&AF_i2c_driver);
+	}
+	return 0;
 }
 
 static int AF_remove(struct platform_device *pdev)
 {
-	i2c_del_driver(&AF_i2c_driver);
+	if (g_af_i2c_driver_added) {
+		i2c_del_driver(&AF_i2c_driver);
+		g_af_i2c_driver_added = false;
+	}
 	return 0;
 }
 
@@ -1362,6 +1381,7 @@ static int AF_resume(struct platform_device *pdev)
 #ifdef CONFIG_OF
 static const struct of_device_id gmainaf_of_device_id[] = {
 	{.compatible = "mediatek,camera_af_lens",},
+	{.compatible = "lens_actuator_main_af",},
 	{}
 };
 #endif

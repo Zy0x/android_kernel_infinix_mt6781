@@ -56,14 +56,14 @@
 static DEFINE_SPINLOCK(imgsensor_drv_lock);
 
 static imgsensor_info_struct imgsensor_info = {
-       .sensor_id = GC02M1B_SENSOR_ID_20601,        //record sensor id defined in Kd_imgsensor.h
+       .sensor_id = GC02M1B_SENSOR_ID,        //record sensor id defined in Kd_imgsensor.h
 
        .checksum_value = 0xf7375923,
 
        .pre = {
-             .pclk = 84000000,                //record different mode's pclk
+             .pclk = 87000000,                //record different mode's pclk
              .linelength = 2192,                //record different mode's linelength
-             .framelength = 1276,
+             .framelength = 1304,
              .startx = 0,                    //record different mode's startx of grabwindow
              .starty = 0,                    //record different mode's starty of grabwindow
              .grabwindow_width = 1600,        //record different mode's width of grabwindow //1296
@@ -72,12 +72,12 @@ static imgsensor_info_struct imgsensor_info = {
              .mipi_data_lp2hs_settle_dc = 85,//unit , ns
              /*     following for GetDefaultFramerateByScenario()    */
              .max_framerate = 300,
-             .mipi_pixel_rate = 67200000,
+             .mipi_pixel_rate = 69600000,
     },
        .cap = {
-             .pclk = 84000000,                //record different mode's pclk
+             .pclk = 87000000,                //record different mode's pclk
              .linelength = 2192,                //record different mode's linelength
-             .framelength = 1276,            //record different mode's framelength
+             .framelength = 1304,            //record different mode's framelength
              .startx = 0,                    //record different mode's startx of grabwindow
              .starty = 0,                    //record different mode's starty of grabwindow
              .grabwindow_width = 1600,        //record different mode's width of grabwindow //1296
@@ -86,12 +86,12 @@ static imgsensor_info_struct imgsensor_info = {
              .mipi_data_lp2hs_settle_dc = 85,//unit , ns
              /*     following for GetDefaultFramerateByScenario()    */
              .max_framerate = 300,
-             .mipi_pixel_rate = 67200000,
+             .mipi_pixel_rate = 69600000,
     },
        .cap1 = {                            //capture for PIP 24fps relative information, capture1 mode must use same framelength, linelength with Capture mode for shutter calculate
-             .pclk = 84000000,                //record different mode's pclk
+             .pclk = 87000000,                //record different mode's pclk
              .linelength = 2192,                //record different mode's linelength
-             .framelength = 1276,            //record different mode's framelength
+             .framelength = 1304,            //record different mode's framelength
              .startx = 0,                    //record different mode's startx of grabwindow
              .starty = 0,                    //record different mode's starty of grabwindow
              .grabwindow_width = 1600,        //record different mode's width of grabwindow //1296
@@ -100,12 +100,12 @@ static imgsensor_info_struct imgsensor_info = {
              .mipi_data_lp2hs_settle_dc = 85,//unit , ns
              /*     following for GetDefaultFramerateByScenario()    */
              .max_framerate = 300,
-             .mipi_pixel_rate = 67200000,
+             .mipi_pixel_rate = 69600000,
     },
        .normal_video = {
-           	 .pclk = 84000000,                //record different mode's pclk
+           	 .pclk = 87000000,                //record different mode's pclk
              .linelength = 2192,                //record different mode's linelength
-             .framelength = 1276,            //record different mode's framelength
+             .framelength = 1304,            //record different mode's framelength
              .startx = 0,                    //record different mode's startx of grabwindow
              .starty = 0,                    //record different mode's starty of grabwindow
              .grabwindow_width = 1600,        //record different mode's width of grabwindow //1296
@@ -114,13 +114,13 @@ static imgsensor_info_struct imgsensor_info = {
              .mipi_data_lp2hs_settle_dc = 85,//unit , ns
              /*     following for GetDefaultFramerateByScenario()    */
              .max_framerate = 300,
-             .mipi_pixel_rate = 67200000,
+             .mipi_pixel_rate = 69600000,
 
     },
        .hs_video = {
-             .pclk = 84000000,                //record different mode's pclk
+             .pclk = 87000000,                //record different mode's pclk
              .linelength = 2192,                //record different mode's linelength
-             .framelength = 1276,            //record different mode's framelength
+             .framelength = 1304,            //record different mode's framelength
              .startx = 0,                    //record different mode's startx of grabwindow
              .starty = 0,                    //record different mode's starty of grabwindow
              .grabwindow_width = 1600,        //record different mode's width of grabwindow //1296
@@ -129,12 +129,12 @@ static imgsensor_info_struct imgsensor_info = {
              .mipi_data_lp2hs_settle_dc = 85,//unit , ns
              /*     following for GetDefaultFramerateByScenario()    */
              .max_framerate = 300,
-             .mipi_pixel_rate = 67200000,
+             .mipi_pixel_rate = 69600000,
     },
         .slim_video = {
-          	 .pclk = 84000000,                //record different mode's pclk
+          	 .pclk = 87000000,                //record different mode's pclk
              .linelength = 2192,                //record different mode's linelength
-             .framelength = 1276,            //record different mode's framelength
+             .framelength = 1304,            //record different mode's framelength
              .startx = 0,                    //record different mode's startx of grabwindow
              .starty = 0,                    //record different mode's starty of grabwindow
              .grabwindow_width = 1600,        //record different mode's width of grabwindow //1296
@@ -143,13 +143,13 @@ static imgsensor_info_struct imgsensor_info = {
              .mipi_data_lp2hs_settle_dc = 85,//unit , ns
              /*     following for GetDefaultFramerateByScenario()    */
              .max_framerate = 300,
-             .mipi_pixel_rate = 67200000,
+             .mipi_pixel_rate = 69600000,
     },
          #ifdef VENDOR_EDIT
         .custom1 = {
-             .pclk = 84000000,                //record different mode's pclk
+             .pclk = 87000000,                //record different mode's pclk
              .linelength = 2192,                //record different mode's linelength
-             .framelength = 1594,            //record different mode's framelength
+             .framelength = 1304,            //record different mode's framelength
              .startx = 0,                    //record different mode's startx of grabwindow
              .starty = 0,                    //record different mode's starty of grabwindow
              .grabwindow_width = 1600,        //record different mode's width of grabwindow //1296
@@ -158,7 +158,7 @@ static imgsensor_info_struct imgsensor_info = {
              .mipi_data_lp2hs_settle_dc = 85,//unit , ns
              /*     following for GetDefaultFramerateByScenario()    */
              .max_framerate = 240,
-             .mipi_pixel_rate = 67200000,
+             .mipi_pixel_rate = 69600000,
          },
          #endif
 
@@ -175,7 +175,7 @@ static imgsensor_info_struct imgsensor_info = {
         .ae_ispGain_delay_frame = 2,//isp gain delay frame for AE cycle
         .ihdr_support = 0,      // 1 support; 0 not support
         .ihdr_le_firstline = 0,  // 1 le first ; 0, se first
-        .sensor_mode_num = 6,      //support sensor mode num
+        .sensor_mode_num = 5,      //support sensor mode num
 
         .cap_delay_frame = 2,        //enter capture delay frame num
         .pre_delay_frame = 2,         //enter preview delay frame num
@@ -191,13 +191,13 @@ static imgsensor_info_struct imgsensor_info = {
         .sensor_output_dataformat = SENSOR_OUTPUT_FORMAT_RAW_MONO,//sensor output first pixel color R
         .mclk = 24,//mclk value, suggest 24 or 26 for 24Mhz or 26Mhz
         .mipi_lane_num = SENSOR_MIPI_1_LANE,//mipi lane num
-        .i2c_addr_table = {0x6e,0x6f,0xff},//record sensor support all write id addr, only supprt 4must end with 0xff
+        .i2c_addr_table = {0x20, 0xff},//record sensor support all write id addr, only supprt 4must end with 0xff
         .i2c_speed = 400,
 };
 
 
 static imgsensor_struct imgsensor = {
-         .mirror = IMAGE_NORMAL,
+         .mirror = IMAGE_HV_MIRROR,
          .sensor_mode = IMGSENSOR_MODE_INIT, //IMGSENSOR_MODE enum value,record current sensor mode,such as: INIT, Preview, Capture, Video,High Speed Video, Slim Video
          .shutter = 0x3ED,                    //current shutter
          .gain = 0x40,                        //current gain
@@ -208,7 +208,7 @@ static imgsensor_struct imgsensor = {
          .test_pattern = KAL_FALSE,        //test pattern mode or not. KAL_FALSE for in test pattern mode, KAL_TRUE for normal output
          .current_scenario_id = MSDK_SCENARIO_ID_CAMERA_PREVIEW,//current scenario id
          .ihdr_en = 0, //sensor need support LE, SE with HDR feature
-         .i2c_write_id = 0x6e,//record current sensor's i2c write id
+         .i2c_write_id = 0x20,//record current sensor's i2c write id
 };
 
 
@@ -638,220 +638,210 @@ static kal_uint16 table_write_cmos_sensor(kal_uint16 *para, kal_uint32 len)
 }
 
 static kal_uint16 addr_data_pair_init_gc02m1b[] = {
-/*system*/
-0xfc,0x01,
-0xf4,0x41,
-0xf5,0xc0,
-0xf6,0x44,
-0xf8,0x38,
-0xf9,0x82,
-0xfa,0x00,
-0xfd,0x80,
-0xfc,0x81,
-0xfe,0x03,
-0x01,0x0b,
-0xf7,0x01,
-0xfc,0x80,
-0xfc,0x80,
-0xfc,0x80,
-0xfc,0x8e,
-/*CISCTL*/
-0xfe,0x00,
-0x87,0x09,
-0xee,0x72,
-0xfe,0x01,
-0x8c,0x90,
-0xfe,0x00,
-0x90,0x00,
-0x03,0x04,
-0x04,0x7d,
-0x41,0x04,
-0x42,0xf4,
-0x05,0x04,
-0x06,0x48,
-0x07,0x00,
-0x08,0x18,
-0x9d, 0x18,
-0x09, 0x00,
-0x0a,0x02,
-0x0d,0x04,
-0x0e,0xbc,
-0x19,0x04,
-0x24, 0x00,
-0x56,0x20,
-0x5b,0x00,
-0x5e,0x01,
-/*analog Register width*/
-0x21, 0x3c,
-0x44, 0x20,
-0xcc, 0x01,
-/*analog mode*/
-0x1a, 0x04,
-0x1f, 0x11,
-0x27, 0x30,
-0x2b, 0x00,
-0x33, 0x00,
-0x53, 0x90,
-0xe6,0x50,
-/*analog voltage*/
-0x39,0x07,
-0x43,0x04,
-0x46,0x2a,
-0x7c,0xa0,
-0xd0,0xbe,
-0xd1,0x60,
-0xd2,0x40,
-0xd3,0xf3,
-0xde,0x1d,
-/*analog current*/
-0xcd,0x05,
-0xce, 0x6f,
-/*CISCTL RESET*/
-0xfc,0x88,
-0xfe,0x10,
-0xfe,0x00,
-0xfc,0x8e,
-0xfe,0x00,
-0xfe,0x00,
-0xfe,0x00,
-0xfe,0x00,
-0xfc,0x88,
-0xfe,0x10,
-0xfe,0x00,
-0xfc,0x8e,
-0xfe,0x04,
-0xe0,0x01,
-0xfe,0x00,
+	0xfc, 0x01,
+	0xf4, 0x41,
+	0xf5, 0xc0,
+	0xf6, 0x44,
+	0xf8, 0x3a,
+	0xf9, 0x82,
+	0xfa, 0x00,
+	0xfd, 0x80,
+	0xfc, 0x81,
+	0xfe, 0x03,
+	0x01, 0x0b,
+	0xf7, 0x01,
+	0xfc, 0x80,
+	0xfc, 0x80,
+	0xfc, 0x80,
+	0xfc, 0x8e,
+	0xfe, 0x00,
+	0x87, 0x09,
+	0xee, 0x72,
+	0xfe, 0x01,
+	0x8c, 0x90,
+	0xfe, 0x00,
+	0x90, 0x00,
+	0x03, 0x04,
+	0x04, 0xa7,
+	0x41, 0x05,
+	0x42, 0x18,
+	0x05, 0x04,
+	0x06, 0x48,
+	0x07, 0x00,
+	0x08, 0x3c,
+	0x9d, 0x3c,
+	0x09, 0x00,
+	0x0a, 0x02,
+	0x0d, 0x04,
+	0x0e, 0xbc,
+	0x17, 0x83,
+	0x19, 0x04,
+	0x24, 0x00,
+	0x56, 0x20,
+	0x5b, 0x00,
+	0x5e, 0x01,
+	0x21, 0x3e,
+	0x29, 0x42,
+	0x44, 0x21,
+	0x4b, 0x11,
+	0x55, 0x1b,
+	0xcc, 0x01,
+	0x1a, 0x04,
+	0x1f, 0x11,
+	0x27, 0x30,
+	0x2b, 0x00,
+	0x33, 0x00,
+	0x53, 0x90,
+	0xe6, 0x50,
+	0x39, 0x07,
+	0x43, 0x04,
+	0x46, 0x2a,
+	0x7c, 0xa0,
+	0xd0, 0xbe,
+	0xd1, 0x60,
+	0xd2, 0x40,
+	0xd3, 0xf3,
+	0xde, 0x1d,
+	0xcd, 0x05,
+	0xce, 0x6f,
+	0xfc, 0x88,
+	0xfe, 0x10,
+	0xfe, 0x00,
+	0xfc, 0x8e,
+	0xfe, 0x00,
+	0xfe, 0x00,
+	0xfe, 0x00,
+	0xfe, 0x00,
+	0xfc, 0x88,
+	0xfe, 0x10,
+	0xfe, 0x00,
+	0xfc, 0x8e,
+	0xfe, 0x04,
+	0xe0, 0x01,
+	0xfe, 0x00,
+	0xfe, 0x01,
+	0x53, 0x44,
+	0x87, 0x53,
+	0x89, 0x03,
+	0xfe, 0x00,
+	0xb0, 0x74,
+	0xb1, 0x04,
+	0xb2, 0x00,
+	0xb6, 0x00,
+	0xfe, 0x04,
+	0xd8, 0x00,
+	0xc0, 0x40,
+	0xc0, 0x00,
+	0xc0, 0x00,
+	0xc0, 0x00,
+	0xc0, 0x60,
+	0xc0, 0x00,
+	0xc0, 0xc0,
+	0xc0, 0x2a,
+	0xc0, 0x80,
+	0xc0, 0x00,
+	0xc0, 0x00,
+	0xc0, 0x40,
+	0xc0, 0xa0,
+	0xc0, 0x00,
+	0xc0, 0x90,
+	0xc0, 0x19,
+	0xc0, 0xc0,
+	0xc0, 0x00,
+	0xc0, 0xd0,
+	0xc0, 0x2f,
+	0xc0, 0xe0,
+	0xc0, 0x00,
+	0xc0, 0x90,
+	0xc0, 0x39,
+	0xc0, 0x00,
+	0xc0, 0x01,
+	0xc0, 0x20,
+	0xc0, 0x04,
+	0xc0, 0x20,
+	0xc0, 0x01,
+	0xc0, 0xe0,
+	0xc0, 0x0f,
+	0xc0, 0x40,
+	0xc0, 0x01,
+	0xc0, 0xe0,
+	0xc0, 0x1a,
+	0xc0, 0x60,
+	0xc0, 0x01,
+	0xc0, 0x20,
+	0xc0, 0x25,
+	0xc0, 0x80,
+	0xc0, 0x01,
+	0xc0, 0xa0,
+	0xc0, 0x2c,
+	0xc0, 0xa0,
+	0xc0, 0x01,
+	0xc0, 0xe0,
+	0xc0, 0x32,
+	0xc0, 0xc0,
+	0xc0, 0x01,
+	0xc0, 0x20,
+	0xc0, 0x38,
+	0xc0, 0xe0,
+	0xc0, 0x01,
+	0xc0, 0x60,
+	0xc0, 0x3c,
+	0xc0, 0x00,
+	0xc0, 0x02,
+	0xc0, 0xa0,
+	0xc0, 0x40,
+	0xc0, 0x80,
+	0xc0, 0x02,
+	0xc0, 0x18,
+	0xc0, 0x5c,
+	0xfe, 0x00,
+	0x9f, 0x10,
+	0xfe, 0x00,
+	0x26, 0x20,
+	0xfe, 0x01,
+	0x40, 0x22,
+	0x46, 0x7f,
+	0x49, 0x0f,
+	0x4a, 0xf0,
+	0xfe, 0x04,
+	0x14, 0x80,
+	0x15, 0x80,
+	0x16, 0x80,
+	0x17, 0x80,
+	0xfe, 0x01,
+	0x41, 0x20,
+	0x4c, 0x00,
+	0x4d, 0x0c,
+	0x44, 0x08,
+	0x48, 0x03,
+	0xfe, 0x01,
+	0x90, 0x01,
+	0x91, 0x00,
+	0x92, 0x06,
+	0x93, 0x00,
+	0x94, 0x06,
+	0x95, 0x04,
+	0x96, 0xb0,
+	0x97, 0x06,
+	0x98, 0x40,
+	0xfe, 0x03,
+	0x01, 0x23,
+	0x03, 0xce,
+	0x04, 0x48,
+	0x15, 0x00,
+	0x21, 0x10,
+	0x22, 0x05,
+	0x23, 0x20,
+	0x25, 0x20,
+	0x26, 0x08,
+	0x29, 0x06,
+	0x2a, 0x0d,
+	0x2b, 0x08,
+	0xfe, 0x01,
+	0x8c, 0x10,
+	0xfe, 0x00,
+	0x3e, 0x90,
 
-/*ISP*/
-0xfe, 0x01,
-0x53, 0x44,
-0x87, 0x53,
-0x89, 0x03,
-/*Gain*/
-0xfe,0x00,
-0xb0,0x74,
-0xb1,0x04,
-0xb2,0x00,
-0xb6,0x00,
-0xfe,0x04,
-0xd8,0x00,
-0xc0,0x40,
-0xc0,0x00,
-0xc0,0x00,
-0xc0,0x00,
-0xc0,0x60,
-0xc0,0x00,
-0xc0,0xc0,
-0xc0,0x2a,
-0xc0,0x80,
-0xc0,0x00,
-0xc0,0x00,
-0xc0,0x40,
-0xc0,0xa0,
-0xc0,0x00,
-0xc0,0x90,
-0xc0,0x19,
-0xc0,0xc0,
-0xc0,0x00,
-0xc0,0xD0,
-0xc0,0x2F,
-0xc0,0xe0,
-0xc0,0x00,
-0xc0,0x90,
-0xc0,0x39,
-0xc0,0x00,
-0xc0,0x01,
-0xc0,0x20,
-0xc0,0x04,
-0xc0,0x20,
-0xc0,0x01,
-0xc0,0xe0,
-0xc0,0x0f,
-0xc0,0x40,
-0xc0,0x01,
-0xc0,0xe0,
-0xc0,0x1a,
-0xc0,0x60,
-0xc0,0x01,
-0xc0,0x20,
-0xc0,0x25,
-0xc0,0x80,
-0xc0,0x01,
-0xc0,0xa0,
-0xc0,0x2c,
-0xc0,0xa0,
-0xc0,0x01,
-0xc0,0xe0,
-0xc0,0x32,
-0xc0,0xc0,
-0xc0,0x01,
-0xc0,0x20,
-0xc0,0x38,
-0xc0,0xe0,
-0xc0,0x01,
-0xc0,0x60,
-0xc0,0x3c,
-0xc0,0x00,
-0xc0,0x02,
-0xc0,0xa0,
-0xc0,0x40,
-0xc0,0x80,
-0xc0,0x02,
-0xc0,0x18,
-0xc0,0x5c,
-0xfe,0x00,
-0x9f,0x10,
-0xfe,0x00,
-0x26,0x20,
-0xfe,0x01,
-0x40,0x22,
-0x46,0x7f,
-0x49,0x0f,
-0x4a,0xf0,
-0xfe,0x04,
-0x14,0x80,
-0x15,0x80,
-0x16,0x80,
-0x17,0x80,
-/*ant _blooming*/
-0xfe,0x01,
-0x41, 0x20,
-0x4c, 0x00,
-0x4d, 0x0c,
-0x44, 0x08,
-0x48, 0x03,
-
-/*Window 1600X1200*/
-0xfe, 0x01,
-0x90,0x01,
-0x91,0x00,
-0x92,0x06,
-0x93,0x00,
-0x94, 0x06,
-0x95,0x04,
-0x96,0xb0,
-0x97,0x06,
-0x98,0x40,
-/*mipi*/
-0xfe, 0x03,
-0x01, 0x23,
-0x03, 0xce,
-0x04, 0x48,
-0x15, 0x00,
-0x21, 0x10,
-0x22, 0x05,
-0x23, 0x20,
-0x25, 0x20,
-0x26, 0x08,
-0x29, 0x06,
-0x2a, 0x0a,
-0x2b, 0x08,
-/*out*/
-0xfe,0x01,
-0x8c,0x10,
-0xfe,0x00,
-0x3e,0x00,
 };
 static kal_uint16 addr_data_pair_preview_gc02m1b[] = {
 	0xfe, 0x00,
@@ -1903,6 +1893,9 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
                     break;
             }
             break;
+        case SENSOR_FEATURE_GET_PIXEL_RATE:
+            *(MUINT32 *)(uintptr_t)(*(feature_data + 1)) = 65908800;
+            break;
         case SENSOR_FEATURE_SET_IHDR_SHUTTER_GAIN:
             LOG_INF("SENSOR_SET_SENSOR_IHDR LE=%d, SE=%d, Gain=%d\n",(UINT16)*feature_data,(UINT16)*(feature_data+1),(UINT16)*(feature_data+2));
             ihdr_write_shutter_gain((UINT16)*feature_data,(UINT16)*(feature_data+1),(UINT16)*(feature_data+2));
@@ -1934,7 +1927,7 @@ static struct SENSOR_FUNCTION_STRUCT sensor_func = {
     close
 };
 
-UINT32 GC02M1B_MIPI_RAW_20601_SensorInit(struct SENSOR_FUNCTION_STRUCT **pfFunc)
+UINT32 GC02M1B_MIPI_RAW_SensorInit(struct SENSOR_FUNCTION_STRUCT **pfFunc)
 {
     /* To Do : Check Sensor status here */
     if (pfFunc!=NULL)

@@ -73,6 +73,60 @@ static DEFINE_MUTEX(gimgsensor_open_mutex);
 struct IMGSENSOR gimgsensor;
 MUINT32 last_id;
 
+#ifdef CONFIG_CUSTOM_TRAN_PROJECT
+static char mtk_back_camera_name[38] = "no";
+static char mtk_front_camera_name[38] = "no";
+static char mtk_main2_camera_name[38] = "no";
+static char mtk_main3_camera_name[38] = "no";
+static char mtk_main4_camera_name[38] = "no";
+static struct device *tran_imgsensor_device;
+
+static ssize_t tran_imgsensor_info_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int len = 0;
+
+	len += sprintf(buf + len, "BACK_CAMERA=%s\n", mtk_back_camera_name);
+	len += sprintf(buf + len, "FRONT_CAMERA=%s\n", mtk_front_camera_name);
+	len += sprintf(buf + len, "MAIN2_CAMERA=%s\n", mtk_main2_camera_name);
+	len += sprintf(buf + len, "MAIN3_CAMERA=%s\n", mtk_main3_camera_name);
+	return len;
+}
+static DEVICE_ATTR_RO(tran_imgsensor_info);
+
+static void tran_record_sensor_name(enum IMGSENSOR_SENSOR_IDX sensor_idx,
+		const char *sensor_name)
+{
+	if (!sensor_name)
+		return;
+
+	switch (sensor_idx) {
+	case IMGSENSOR_SENSOR_IDX_MAIN:
+		strlcpy(mtk_back_camera_name, sensor_name,
+			sizeof(mtk_back_camera_name));
+		break;
+	case IMGSENSOR_SENSOR_IDX_SUB:
+		strlcpy(mtk_front_camera_name, sensor_name,
+			sizeof(mtk_front_camera_name));
+		break;
+	case IMGSENSOR_SENSOR_IDX_MAIN2:
+		strlcpy(mtk_main2_camera_name, sensor_name,
+			sizeof(mtk_main2_camera_name));
+		break;
+	case IMGSENSOR_SENSOR_IDX_SUB2:
+		strlcpy(mtk_main3_camera_name, sensor_name,
+			sizeof(mtk_main3_camera_name));
+		break;
+	case IMGSENSOR_SENSOR_IDX_MAIN3:
+		strlcpy(mtk_main4_camera_name, sensor_name,
+			sizeof(mtk_main4_camera_name));
+		break;
+	default:
+		break;
+	}
+}
+#endif
+
 /******************************************************************************
  * Profiling
  ******************************************************************************/
@@ -691,6 +745,11 @@ int imgsensor_set_driver(struct IMGSENSOR_SENSOR *psensor)
 					__func__,
 					psensor_inst->sensor_idx,
 					psensor_inst->psensor_list->name);
+#ifdef CONFIG_CUSTOM_TRAN_PROJECT
+					tran_record_sensor_name(
+						psensor_inst->sensor_idx,
+						psensor_inst->psensor_list->name);
+#endif
 					ret = 0;
 					break;
 				}
@@ -2562,6 +2621,23 @@ static int imgsensor_probe(struct platform_device *pplatform_device)
 		return -ENODEV;
 	}
 
+#ifdef CONFIG_CUSTOM_TRAN_PROJECT
+	tran_imgsensor_device = device_create(pimgsensor->pclass, NULL,
+			0, NULL, "tran_imgsensor");
+	if (IS_ERR_OR_NULL(tran_imgsensor_device)) {
+		tran_imgsensor_device = NULL;
+		PK_PR_ERR("[tran_imgsensor] device_create fail\n");
+		return -EAGAIN;
+	}
+	if (device_create_file(tran_imgsensor_device,
+			&dev_attr_tran_imgsensor_info)) {
+		PK_PR_ERR("[tran_imgsensor_info] file_create fail\n");
+		device_unregister(tran_imgsensor_device);
+		tran_imgsensor_device = NULL;
+		return -EAGAIN;
+	}
+#endif
+
 	phw->common.pplatform_device = pplatform_device;
 
 #if defined(OPLUS_FEATURE_CAMERA_COMMON) && !defined(CONFIG_CUSTOM_TRAN_PROJECT)
@@ -2590,6 +2666,14 @@ static int imgsensor_remove(struct platform_device *pplatform_device)
 	unregister_chrdev_region(pimgsensor->dev_no, 1);
 
 	device_destroy(pimgsensor->pclass, pimgsensor->dev_no);
+#ifdef CONFIG_CUSTOM_TRAN_PROJECT
+	if (tran_imgsensor_device) {
+		device_remove_file(tran_imgsensor_device,
+				&dev_attr_tran_imgsensor_info);
+		device_unregister(tran_imgsensor_device);
+		tran_imgsensor_device = NULL;
+	}
+#endif
 	class_destroy(pimgsensor->pclass);
 
 	return 0;

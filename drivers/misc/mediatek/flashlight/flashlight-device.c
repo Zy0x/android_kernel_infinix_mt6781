@@ -91,7 +91,7 @@ const struct flashlight_device_id flashlight_id[] = {
 	{1, 1, 0, "flashlights-none", -1, 0},
 };
 #endif
-#elif defined(mt6781)
+#elif defined(mt6781) || defined(CONFIG_MACH_MT6781)
 #ifdef CONFIG_CUSTOM_TRAN_PROJECT
 const struct flashlight_device_id flashlight_id[] = {
 	/* {TYPE, CT, PART, "NAME", CHANNEL, DECOUPLE} */

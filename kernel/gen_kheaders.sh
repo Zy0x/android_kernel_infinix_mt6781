@@ -9,6 +9,7 @@ outdir="$(pwd)"
 tarfile=$1
 cpio_dir=$outdir/$tarfile.tmp
 cpio=$KBUILD_SRC/tools/build/cpio
+[ -x "$cpio" ] || cpio="$(command -v cpio)"
 dir_list="
 include/
 arch/$SRCARCH/include/

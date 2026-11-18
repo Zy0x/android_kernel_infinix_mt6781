@@ -135,4 +135,14 @@ config GENERIC_IRQ_DEBUGFS
 
 	  If you don't know what to do here, say N.
 
+config IRQ_SBALANCE
+	tristate "Simple kernel IRQ balancer for heterogeneous SoCs"
+	depends on SMP
+	default n
+	---help---
+	  Periodic workqueue IRQ affinity balancer that offloads high-rate
+	  peripheral interrupts away from big CPU cores onto little cores
+	  while keeping latency-critical touch, display, and timer IRQs
+	  pinned. Can be built as a loadable module (sbalance.ko).
+
 endmenu

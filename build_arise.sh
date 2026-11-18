@@ -6,5 +6,5 @@ MAKE_ARGS="ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objc
 echo '[ARISE] Updating .config...'
 make $MAKE_ARGS arise_x698_defconfig
 echo '[ARISE] Building kernel Image.gz with safe thread limit (-j4)...'
-make -j4 $MAKE_ARGS Image.gz
+make -j4 $MAKE_ARGS Image.gz modules
 echo 'BUILD_ARISE_SUCCESS'

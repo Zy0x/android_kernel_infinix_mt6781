@@ -130,10 +130,12 @@ static inline int arch_within_stack_frames(const void * const stack,
 }
 #endif
 
-#ifdef CONFIG_HARDENED_USERCOPY
+#if defined(CONFIG_HARDENED_USERCOPY) || defined(__VENDOR_ABI_COMPAT__)
 extern void __check_object_size(const void *ptr, unsigned long n,
 					bool to_user);
+#endif
 
+#ifdef CONFIG_HARDENED_USERCOPY
 static __always_inline void check_object_size(const void *ptr, unsigned long n,
 					      bool to_user)
 {

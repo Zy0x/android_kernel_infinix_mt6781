@@ -151,6 +151,9 @@ extern void arch_uprobe_copy_ixol(struct page *page, unsigned long vaddr,
 					 void *src, unsigned long len);
 #else /* !CONFIG_UPROBES */
 struct uprobes_state {
+#ifdef CONFIG_MODULES
+	void				*__kabi_xol_area;
+#endif
 };
 
 #define uprobe_get_trap_addr(regs)	instruction_pointer(regs)

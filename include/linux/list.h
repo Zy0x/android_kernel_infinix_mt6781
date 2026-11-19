@@ -29,7 +29,7 @@ static inline void INIT_LIST_HEAD(struct list_head *list)
 	list->prev = list;
 }
 
-#ifdef CONFIG_DEBUG_LIST
+#if defined(CONFIG_DEBUG_LIST) || defined(__VENDOR_ABI_COMPAT__)
 extern bool __list_add_valid(struct list_head *new,
 			      struct list_head *prev,
 			      struct list_head *next);

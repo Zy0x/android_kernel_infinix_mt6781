@@ -336,7 +336,12 @@ struct sched_info {
 
 	/* When were we last queued to run? */
 	unsigned long long		last_queued;
-
+#elif defined(CONFIG_MODULES)
+	/* Preserve task_struct ABI layout for prebuilt vendor .ko modules */
+	unsigned long			__kabi_pcount;
+	unsigned long long		__kabi_run_delay;
+	unsigned long long		__kabi_last_arrival;
+	unsigned long long		__kabi_last_queued;
 #endif /* CONFIG_SCHED_INFO */
 };
 
@@ -513,6 +518,9 @@ struct sched_statistics {
 	u64				nr_wakeups_affine_attempts;
 	u64				nr_wakeups_passive;
 	u64				nr_wakeups_idle;
+#elif defined(CONFIG_MODULES)
+	/* Preserve sched_entity/task_struct ABI layout for prebuilt vendor .ko */
+	u64				__kabi_reserved[27];
 #endif
 };
 
@@ -1030,6 +1038,12 @@ struct task_struct {
 	unsigned long			swap_in;
 	unsigned long			swap_out;
 #endif
+#elif defined(CONFIG_MODULES)
+	unsigned long			__kabi_fm_flt;
+#ifdef CONFIG_SWAP
+	unsigned long			__kabi_swap_in;
+	unsigned long			__kabi_swap_out;
+#endif
 #endif
 
 #ifdef CONFIG_POSIX_TIMERS
@@ -1426,6 +1440,8 @@ struct task_struct {
 #endif
 #ifdef CONFIG_UPROBES
 	struct uprobe_task		*utask;
+#elif defined(CONFIG_MODULES)
+	void				*__kabi_utask;
 #endif
 #if defined(CONFIG_BCACHE) || defined(CONFIG_BCACHE_MODULE)
 	unsigned int			sequential_io;

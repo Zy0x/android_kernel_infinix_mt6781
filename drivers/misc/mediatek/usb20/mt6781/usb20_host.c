@@ -27,6 +27,15 @@
 #include <linux/of_address.h>
 #include <mt-plat/mtk_battery.h>
 
+#ifdef CONFIG_MTK_CHARGER
+extern void do_charger_detect(void);
+static void do_otg_chrdet_redetect(struct work_struct *data)
+{
+	if (mt_usb_is_device() && battery_get_vbus() > 3000)
+		do_charger_detect();
+}
+static DECLARE_DELAYED_WORK(otg_chrdet_redetect_work, do_otg_chrdet_redetect);
+#endif
 #ifdef CONFIG_TRAN_CHARGER_FUNCS_ADD
 extern bool tran_usb_5per_close_otg(void);
 extern bool tran_sw_close_otg(void);
@@ -702,6 +711,9 @@ static void do_host_work(struct work_struct *data)
 		/* clock on -> of: clk_prepare_cnt -2 */
 		usb_prepare_clock(false);
 		usb_prepare_clock(false);
+#ifdef CONFIG_MTK_CHARGER
+		schedule_delayed_work(&otg_chrdet_redetect_work, msecs_to_jiffies(250));
+#endif
 	} else if (usb_clk_state == NO_CHANGE) {
 		/* clock no change : clk_prepare_cnt -1 */
 		usb_prepare_clock(false);

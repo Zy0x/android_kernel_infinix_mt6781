@@ -5,6 +5,7 @@
 
 
 #include <linux/sched.h>
+#include <linux/sched/task.h>
 #include <linux/uaccess.h>
 #include <linux/pid.h>
 #include <linux/version.h>

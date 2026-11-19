@@ -48,6 +48,8 @@ config MTK_RESYM
 
 config MTK_FPSGO_V3
 	bool "Support FPSGO_V3 framework"
+	select TRACEPOINTS
+	select GENERIC_TRACER
 	default n
 	help
 	  Support FPSGO_V3 framework for most FPS performance and

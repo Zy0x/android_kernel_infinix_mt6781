@@ -786,6 +786,14 @@ int trace_printk(const char *fmt, ...)
 {
 	return 0;
 }
+static inline int trace_puts(const char *str)
+{
+	return 0;
+}
+static inline int __trace_puts(unsigned long ip, const char *str, int size)
+{
+	return 0;
+}
 static __printf(1, 0) inline int
 ftrace_vprintk(const char *fmt, va_list ap)
 {

@@ -2061,11 +2061,21 @@ static int fgauge_get_charging_trace_comp_01mv(int *out_curr_ma)
 	if (!is_battery_init_done())
 		return 0;
 	if (curr_ma > 300) {
-		comp_01mv = ((curr_ma - 300) * 45) / 100;
-		if (comp_01mv > 2150)
-			comp_01mv = 2150;
+		/*
+		 * Compensate ~28 mOhm mainboard PCB/FPC power-path IR drop
+		 * between PMIC BATSNS and true battery Kelvin sense (RT9759).
+		 * Units are 0.1 mV; capped at 150 mV (1500) during pump charge.
+		 */
+		comp_01mv = ((curr_ma - 300) * 28) / 100;
+		if (comp_01mv > 1500)
+			comp_01mv = 1500;
 	}
 	return comp_01mv;
+}
+
+int fgauge_get_charging_trace_comp_mv(void)
+{
+	return fgauge_get_charging_trace_comp_01mv(NULL) / 10;
 }
 
 static void fgauge_set_nafg_intr_internal(int _prd, int _zcv_mv, int _thr_mv)
@@ -2159,7 +2169,7 @@ static int fgauge_get_nag_dltv(struct gauge_device *gauge_dev, int *nag_dltv)
 	NAG_DLTV_mV_value = REG_to_MV_value(NAG_DLTV_reg_value);
 	fgauge_get_charging_trace_comp_01mv(&curr_ma);
 	if (curr_ma > 300) {
-		int max_chg_dltv = (curr_ma * 19) / 100;
+		int max_chg_dltv = (curr_ma * 102) / 1000;
 
 		if (NAG_DLTV_mV_value < -max_chg_dltv)
 			NAG_DLTV_mV_value = -max_chg_dltv;
@@ -2205,15 +2215,36 @@ static int fgauge_get_nag_c_dltv(
 		int nag_cnt = 1;
 
 		fgauge_get_nag_cnt(gauge_dev, &nag_cnt);
-		if (nag_cnt > 1)
-			NAG_C_DLTV_mV_value /= nag_cnt;
-	}
-	fgauge_get_charging_trace_comp_01mv(&curr_ma);
-	if (curr_ma > 300) {
-		int max_c_dltv = (curr_ma * 19) / 100;
+		if (nag_cnt < 1)
+			nag_cnt = 1;
+		fgauge_get_charging_trace_comp_01mv(&curr_ma);
+		if (curr_ma > 300) {
+			/*
+			 * libfgauge_gm30.so scales c_dltv by fixed 10s rather
+			 * than nag_cnt, so keep raw cumulative NAG_C_DLTV
+			 * and scale the current-matched ceiling by nag_cnt
+			 * (~10.2 0.1mV/100mA/10s tracks ~1.0x CAR[c]).
+			 */
+			int rate_per_1000 = 102;
+			s64 max_c_dltv;
 
-		if (NAG_C_DLTV_mV_value < -max_c_dltv)
-			NAG_C_DLTV_mV_value = -max_c_dltv;
+			if (gauge_dev && gauge_dev->fg_cust_data) {
+				int c_soc = gauge_dev->fg_cust_data->c_soc;
+				int v_soc = gauge_dev->fg_cust_data->v_soc;
+
+				if (c_soc > 0 && v_soc > 0) {
+					if (c_soc - v_soc > 100)
+						rate_per_1000 = 122;
+					else if (v_soc - c_soc > 100)
+						rate_per_1000 = 85;
+				}
+			}
+			max_c_dltv = ((s64)curr_ma * rate_per_1000 * nag_cnt) / 1000;
+			if (max_c_dltv > 2000000000LL)
+				max_c_dltv = 2000000000LL;
+			if (NAG_C_DLTV_mV_value < -(int)max_c_dltv)
+				NAG_C_DLTV_mV_value = -(int)max_c_dltv;
+		}
 	}
 	*nag_c_dltv = NAG_C_DLTV_mV_value;
 

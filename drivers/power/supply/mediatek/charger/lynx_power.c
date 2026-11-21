@@ -353,7 +353,8 @@ __weak void lynx_sync_sspm_thermal_throttle(bool disable)
 {
 }
 
-__weak int mt_gpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
+__weak int mt_gpufreq_lynx_probe_pll(unsigned int khz, int mode, int vgpu_req,
+				      char *buf, int sz)
 {
 	return scnprintf(buf, sz, "gpu_probe_weak\n");
 }
@@ -368,7 +369,7 @@ __weak int mt_cpufreq_lynx_probe_cci(unsigned int khz, int mode, char *buf, int 
 	return scnprintf(buf, sz, "cci_probe_weak\n");
 }
 
-static char lynx_pll_probe_buf[512] = "ready\n";
+static char lynx_pll_probe_buf[1024] = "ready\n";
 
 static int lynx_pll_probe_show(struct seq_file *m, void *v)
 {
@@ -386,16 +387,19 @@ static ssize_t lynx_pll_probe_write(struct file *file, const char __user *buf,
 {
 	char kbuf[64], target[16];
 	unsigned int khz = 0;
-	int mode = 0;
+	int mode = 0, vgpu_req = 0, nargs;
 	size_t len = min(count, sizeof(kbuf) - 1);
 
 	if (copy_from_user(kbuf, buf, len))
 		return -EFAULT;
 	kbuf[len] = '\0';
 
-	if (sscanf(kbuf, "%15s %u %d", target, &khz, &mode) == 3) {
+	nargs = sscanf(kbuf, "%15s %u %d %d", target, &khz, &mode, &vgpu_req);
+	if (nargs >= 3) {
 		if (!strcmp(target, "gpu"))
-			mt_gpufreq_lynx_probe_pll(khz, mode, lynx_pll_probe_buf,
+			mt_gpufreq_lynx_probe_pll(khz, mode,
+						  (nargs >= 4) ? vgpu_req : 0,
+						  lynx_pll_probe_buf,
 						  sizeof(lynx_pll_probe_buf));
 		else if (!strcmp(target, "cpu"))
 			mt_cpufreq_lynx_probe_pll(khz, mode, lynx_pll_probe_buf,
@@ -405,10 +409,10 @@ static ssize_t lynx_pll_probe_write(struct file *file, const char __user *buf,
 						  sizeof(lynx_pll_probe_buf));
 		else
 			scnprintf(lynx_pll_probe_buf, sizeof(lynx_pll_probe_buf),
-				  "usage: gpu|cpu|cci <khz> <mode>\n");
+				  "usage: gpu <khz> <mode> [vgpu_10uv] | cpu|cci <khz> <mode>\n");
 	} else {
 		scnprintf(lynx_pll_probe_buf, sizeof(lynx_pll_probe_buf),
-			  "usage: gpu|cpu|cci <khz> <mode>\n");
+			  "usage: gpu <khz> <mode> [vgpu_10uv] | cpu|cci <khz> <mode>\n");
 	}
 	return count;
 }

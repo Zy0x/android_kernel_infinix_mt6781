@@ -250,6 +250,8 @@ static DEFINE_MUTEX(mt_gpufreq_power_lock);
 static DEFINE_MUTEX(mt_gpufreq_limit_table_lock);
 
 static void __iomem *g_apmixed_base;
+static void __iomem *g_fhctl_base;
+static u32 g_fhctl4_saved_cfg = 0x5;
 static void __iomem *g_topckgen_base;
 static void __iomem *g_mfg_base;
 static void __iomem *g_infracfg_base;
@@ -2584,6 +2586,14 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 #endif
 
 	if (parking) {
+		if (g_fhctl_base) {
+			unsigned int fh_hp = DRV_Reg32(g_fhctl_base + 0x0000);
+			if (fh_hp & (1U << 4)) {
+				DRV_WriteReg32(g_fhctl_base + 0x0000,
+					       fh_hp & ~(1U << 4));
+				wmb();
+			}
+		}
 		/* mfgpll_ck to mainpll_d5(218.4MHz) */
 		__mt_gpufreq_switch_to_clksrc(CLOCK_SUB);
 		/*
@@ -2619,7 +2629,7 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 	}
 
 	if (freq_new > 1002000) {
-		gpufreq_pr_info(
+		gpufreq_pr_debug(
 			"@%s: req=%u posdiv=%d->%d park=%d dds=0x%x pll=0x%08x reg=0x%08x con0=0x%08x\n",
 			__func__, freq_new, real_posdiv_power, posdiv_power,
 			parking, dds, pll, DRV_Reg32(MFGPLL_CON1),
@@ -2633,20 +2643,34 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 static void __mt_gpufreq_volt_switch_without_vsram_gpu(
 		unsigned int vgpu_old, unsigned int vgpu_new)
 {
-	unsigned int vsram_gpu_new, vsram_gpu_old;
+	unsigned int cur_vgpu = vgpu_old;
+	unsigned int cur_vsram = __mt_gpufreq_get_vsram_gpu_by_vgpu(cur_vgpu);
 
 	vgpu_new = VOLT_NORMALIZATION(vgpu_new);
+	if (cur_vsram > VSRAM_GPU_MAX_VOLT)
+		cur_vsram = VSRAM_GPU_MAX_VOLT;
 
-	vsram_gpu_new = __mt_gpufreq_get_vsram_gpu_by_vgpu(vgpu_new);
-	if (vsram_gpu_new > VSRAM_GPU_MAX_VOLT)
-		vsram_gpu_new = VSRAM_GPU_MAX_VOLT;
-	vsram_gpu_old = __mt_gpufreq_get_vsram_gpu_by_vgpu(vgpu_old);
+	/* Step VGPU/VSRAM in <=100 mV hops so |VSRAM - VGPU| never violates BUCK_DIFF_MAX (250 mV). */
+	while (cur_vgpu != vgpu_new) {
+		unsigned int next_vgpu;
+		unsigned int next_vsram;
 
-	__mt_gpufreq_volt_switch(
-			vgpu_old,
-			vgpu_new,
-			vsram_gpu_old,
-			vsram_gpu_new);
+		if (vgpu_new > cur_vgpu) {
+			next_vgpu = cur_vgpu + FIXED_VSRAM_VOLT_DIFF;
+			if (next_vgpu > vgpu_new)
+				next_vgpu = vgpu_new;
+		} else {
+			next_vgpu = (cur_vgpu > vgpu_new + FIXED_VSRAM_VOLT_DIFF) ?
+				(cur_vgpu - FIXED_VSRAM_VOLT_DIFF) : vgpu_new;
+		}
+		next_vsram = __mt_gpufreq_get_vsram_gpu_by_vgpu(next_vgpu);
+		if (next_vsram > VSRAM_GPU_MAX_VOLT)
+			next_vsram = VSRAM_GPU_MAX_VOLT;
+
+		__mt_gpufreq_volt_switch(cur_vgpu, next_vgpu, cur_vsram, next_vsram);
+		cur_vgpu = next_vgpu;
+		cur_vsram = next_vsram;
+	}
 }
 
 /*
@@ -3295,6 +3319,12 @@ static int __mt_gpufreq_init_clk(struct platform_device *pdev)
 		return -ENOENT;
 	}
 
+	g_fhctl_base = __mt_gpufreq_of_ioremap("mediatek,fhctl", 0);
+	if (!g_fhctl_base)
+		g_fhctl_base = ioremap(0x1000ce00, 0x200);
+	if (g_fhctl_base)
+		g_fhctl4_saved_cfg = DRV_Reg32(g_fhctl_base + 0x0088);
+
 	g_mfg_base = __mt_gpufreq_of_ioremap("mediatek,mfgcfg", 0);
 	if (!g_mfg_base) {
 		gpufreq_pr_info("@%s: ioremap failed at mfgcfg\n", __func__);
@@ -3624,13 +3654,16 @@ unsigned int mt_gpufreq_lynx_get_oc_khz(void)
 }
 EXPORT_SYMBOL(mt_gpufreq_lynx_get_oc_khz);
 
-int mt_gpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
+int mt_gpufreq_lynx_probe_pll(unsigned int khz, int mode, int vgpu_req,
+			      char *buf, int sz)
 {
-	void __iomem *fh = NULL;
+	void __iomem *fh = g_fhctl_base;
+	bool fh_temp_mapped = false;
 	enum g_posdiv_power_enum posdiv_power;
-	unsigned int dds, pll, con0_b, con1_b, fh_hp_b = 0, fh_cfg_b = 0;
-	unsigned int con0_a, con1_a, fh_hp_a = 0, fh_cfg_a = 0, fh_mon_a = 0;
-	unsigned int ab25_b, ab25_a, ab26_a, cur_a;
+	unsigned int dds = 0, pll = 0, con0_b, con1_b, fh_hp_b = 0, fh_cfg_b = 0;
+	unsigned int con0_a, con1_a, con0_50, con1_50, fh_hp_a = 0, fh_cfg_a = 0, fh_mon_a = 0;
+	unsigned int ab26_b, ab26_a, ab26_50, ck3_b, ck3_a, ck3_50, cur_a;
+	unsigned int vgpu_b, vgpu_a, vsram_a;
 	int ret = 0;
 
 	mutex_lock(&mt_gpufreq_lock);
@@ -3641,26 +3674,95 @@ int mt_gpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
 		return ret;
 	}
 
-	fh = ioremap(0x1000ce00, 0x200);
+	vgpu_b = __mt_gpufreq_get_cur_vgpu();
+	if (mode != 0 && (khz < POSDIV_8_MIN_FREQ || khz > POSDIV_2_MAX_FREQ)) {
+		ret = scnprintf(buf, sz, "gpu_probe_err khz=%u out_of_range\n", khz);
+		mutex_unlock(&mt_gpufreq_lock);
+		return ret;
+	}
+
+	if (vgpu_req > 0) {
+		unsigned int target_vgpu;
+		if (vgpu_req < VGPU_MIN_VOLT || vgpu_req > VGPU_MAX_VOLT) {
+			ret = scnprintf(buf, sz,
+				"gpu_probe_err vgpu_req=%d out_of_range [%d..%d]\n",
+				vgpu_req, VGPU_MIN_VOLT, VGPU_MAX_VOLT);
+			mutex_unlock(&mt_gpufreq_lock);
+			return ret;
+		}
+		target_vgpu = VOLT_NORMALIZATION(vgpu_req);
+		if (mode != 0 && khz > 950000 && target_vgpu < 83750) {
+			ret = scnprintf(buf, sz,
+				"gpu_probe_refused_low_vgpu req=%u target_vgpu=%u (<83750)\n",
+				khz, target_vgpu);
+			mutex_unlock(&mt_gpufreq_lock);
+			return ret;
+		}
+		if (target_vgpu > vgpu_b) {
+			__mt_gpufreq_volt_switch_without_vsram_gpu(vgpu_b, target_vgpu);
+			g_cur_opp_vgpu = target_vgpu;
+			g_cur_opp_vsram_gpu = __mt_gpufreq_get_vsram_gpu_by_vgpu(target_vgpu);
+			if (g_cur_opp_vsram_gpu > VSRAM_GPU_MAX_VOLT)
+				g_cur_opp_vsram_gpu = VSRAM_GPU_MAX_VOLT;
+		}
+		g_fixed_vgpu = target_vgpu;
+		g_fixed_freq = khz;
+		g_fixed_freq_volt_state = true;
+	} else if (mode != 0 && khz > 950000 && vgpu_b < 83750) {
+		ret = scnprintf(buf, sz,
+			"gpu_probe_refused_low_vgpu req=%u cur_vgpu=%u (pass vgpu_10uv >= 83750)\n",
+			khz, vgpu_b);
+		mutex_unlock(&mt_gpufreq_lock);
+		return ret;
+	} else if (mode != 0) {
+		g_fixed_vgpu = vgpu_b;
+		g_fixed_freq = khz;
+		g_fixed_freq_volt_state = true;
+	}
+
+	if (!fh) {
+		fh = ioremap(0x1000ce00, 0x200);
+		fh_temp_mapped = (fh != NULL);
+	}
 	con0_b = DRV_Reg32(MFGPLL_CON0);
 	con1_b = DRV_Reg32(MFGPLL_CON1);
-	ab25_b = mt_get_abist_freq(25);
+	ab26_b = mt_get_abist_freq(FM_AD_MFGPLL_CK);
+	ck3_b = mt_get_ckgen_freq(FM_HF_FMFG_CK);
 	if (fh) {
 		fh_hp_b = DRV_Reg32(fh + 0x0000);
 		fh_cfg_b = DRV_Reg32(fh + 0x0088);
+		if (fh_cfg_b != 0)
+			g_fhctl4_saved_cfg = fh_cfg_b;
 	}
 
-	if (mode == 4)
-		posdiv_power = POSDIV_POWER_4;
-	else if (mode == 3)
-		posdiv_power = POSDIV_POWER_4;
-	else
-		posdiv_power = (khz > POSDIV_4_MAX_FREQ) ? POSDIV_POWER_2 : POSDIV_POWER_4;
+	if (mode == 0) {
+		posdiv_power = __mt_gpufreq_get_curr_posdiv_power();
+		dds = 0;
+		pll = con1_b;
+	} else {
+		if (mode == 4)
+			posdiv_power = POSDIV_POWER_4;
+		else if (mode == 5 || mode == 6)
+			posdiv_power = POSDIV_POWER_2;
+		else if (mode == 3)
+			posdiv_power = __mt_gpufreq_get_curr_posdiv_power();
+		else
+			posdiv_power = (khz > POSDIV_4_MAX_FREQ) ? POSDIV_POWER_2 : POSDIV_POWER_4;
 
-	dds = __mt_gpufreq_calculate_dds(khz, posdiv_power);
-	pll = 0x80000000U | (posdiv_power << POSDIV_SHIFT) | dds;
+		dds = __mt_gpufreq_calculate_dds(khz, posdiv_power);
+		if (dds == 0 || dds > 0x3fffffU) {
+			if (fh && fh_temp_mapped)
+				iounmap(fh);
+			ret = scnprintf(buf, sz,
+				"gpu_probe_err dds_overflow req=%u mode=%d posdiv=%d dds=0x%x\n",
+				khz, mode, posdiv_power, dds);
+			mutex_unlock(&mt_gpufreq_lock);
+			return ret;
+		}
+		pll = 0x80000000U | (posdiv_power << POSDIV_SHIFT) | dds;
+	}
 
-	if (mode == 1 || mode == 4) {
+	if (mode == 1 || mode == 4 || mode == 5) {
 		if (fh) {
 			DRV_WriteReg32(fh + 0x0000, fh_hp_b & ~(1U << 4));
 			DRV_WriteReg32(fh + 0x0088, 0);
@@ -3672,7 +3774,7 @@ int mt_gpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
 		DRV_WriteReg32(MFGPLL_CON1, pll);
 		udelay(30);
 		__mt_gpufreq_switch_to_clksrc(CLOCK_MAIN);
-	} else if (mode == 2) {
+	} else if (mode == 2 || mode == 6) {
 		if (fh) {
 			DRV_WriteReg32(fh + 0x0000, fh_hp_b & ~(1U << 4));
 			DRV_WriteReg32(fh + 0x0088, 0);
@@ -3694,28 +3796,55 @@ int mt_gpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
 		udelay(50);
 #endif
 	} else if (mode == 0 && fh) {
-		DRV_WriteReg32(fh + 0x0000, fh_hp_b | (1U << 4));
+		DRV_WriteReg32(fh + 0x0000, fh_hp_b & ~(1U << 4));
+		DRV_WriteReg32(fh + 0x0088, g_fhctl4_saved_cfg);
+		wmb();
 	}
 
 	con0_a = DRV_Reg32(MFGPLL_CON0);
 	con1_a = DRV_Reg32(MFGPLL_CON1);
-	ab25_a = mt_get_abist_freq(25);
 	ab26_a = mt_get_abist_freq(FM_AD_MFGPLL_CK);
+	ck3_a = mt_get_ckgen_freq(FM_HF_FMFG_CK);
+
+	msleep(50);
+
+	con0_50 = DRV_Reg32(MFGPLL_CON0);
+	con1_50 = DRV_Reg32(MFGPLL_CON1);
+	ab26_50 = mt_get_abist_freq(FM_AD_MFGPLL_CK);
+	ck3_50 = mt_get_ckgen_freq(FM_HF_FMFG_CK);
 	cur_a = __mt_gpufreq_get_cur_freq();
+	if (mode != 0)
+		g_cur_opp_freq = cur_a;
+
+	if (vgpu_req > 0 && VOLT_NORMALIZATION(vgpu_req) < g_cur_opp_vgpu) {
+		unsigned int target_vgpu = VOLT_NORMALIZATION(vgpu_req);
+		__mt_gpufreq_volt_switch_without_vsram_gpu(g_cur_opp_vgpu, target_vgpu);
+		g_cur_opp_vgpu = target_vgpu;
+		g_cur_opp_vsram_gpu = __mt_gpufreq_get_vsram_gpu_by_vgpu(target_vgpu);
+		if (g_cur_opp_vsram_gpu > VSRAM_GPU_MAX_VOLT)
+			g_cur_opp_vsram_gpu = VSRAM_GPU_MAX_VOLT;
+	}
+	vgpu_a = __mt_gpufreq_get_cur_vgpu();
+	vsram_a = __mt_gpufreq_get_cur_vsram_gpu();
+
 	if (fh) {
 		fh_hp_a = DRV_Reg32(fh + 0x0000);
 		fh_cfg_a = DRV_Reg32(fh + 0x0088);
 		fh_mon_a = DRV_Reg32(fh + 0x0098);
-		iounmap(fh);
+		if (fh_temp_mapped)
+			iounmap(fh);
 	}
 
 	ret = scnprintf(buf, sz,
 		"gpu req=%u mode=%d posdiv=%d dds=0x%x pll=0x%08x "
-		"con0=0x%08x->0x%08x con1=0x%08x->0x%08x "
-		"ab25=%u->%u ab26=%u cur=%u fhhp=0x%x->0x%x fhcfg=0x%x->0x%x fhmon=0x%08x\n",
+		"vgpu=%u->%u vsram=%u "
+		"con0=0x%08x->0x%08x->0x%08x con1=0x%08x->0x%08x->0x%08x "
+		"ab26=%u->%u->%u ck3=%u->%u->%u cur=%u "
+		"fhhp=0x%x->0x%x fhcfg=0x%x->0x%x fhmon=0x%08x\n",
 		khz, mode, posdiv_power, dds, pll,
-		con0_b, con0_a, con1_b, con1_a,
-		ab25_b, ab25_a, ab26_a, cur_a,
+		vgpu_b, vgpu_a, vsram_a,
+		con0_b, con0_a, con0_50, con1_b, con1_a, con1_50,
+		ab26_b, ab26_a, ab26_50, ck3_b, ck3_a, ck3_50, cur_a,
 		fh_hp_b, fh_hp_a, fh_cfg_b, fh_cfg_a, fh_mon_a);
 	mutex_unlock(&mt_gpufreq_lock);
 	return ret;

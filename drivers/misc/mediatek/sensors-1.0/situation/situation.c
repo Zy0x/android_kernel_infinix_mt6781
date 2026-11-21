@@ -619,7 +619,7 @@ static int situation_probe(void)
 		pr_err("unable to register situ misc device!!\n");
 		goto real_driver_init_fail;
 	}
-	err = sysfs_create_group(&situation_context_obj->mdev.this_device->kobj,
+	err = sensor_attr_create_group(&situation_context_obj->mdev,
 		&situation_attribute_group);
 	if (err < 0) {
 		pr_err("unable to create situ attribute file\n");

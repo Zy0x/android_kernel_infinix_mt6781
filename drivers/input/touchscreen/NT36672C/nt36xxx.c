@@ -17,9 +17,11 @@
  */
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/cpumask.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/irqdesc.h>
+#include <linux/platform_device.h>
 #include <linux/sched.h>
 #include <linux/gpio.h>
 #include <linux/proc_fs.h>
@@ -514,6 +516,76 @@ void nvt_set_micro_gain(uint8_t gain)
 	mutex_unlock(&ts->lock);
 }
 
+static int __read_mostly sol_touch_gain_boot = -1;
+static int __read_mostly sol_edge_guard_boot = -1;
+
+static int __init sol_touch_gain_setup(char *str)
+{
+	unsigned int v;
+
+	if (str && !kstrtouint(str, 10, &v)) {
+		if (v > NVT_MICRO_GAIN_MAX)
+			v = NVT_MICRO_GAIN_MAX;
+		sol_touch_gain_boot = (int)v;
+	}
+	return 1;
+}
+__setup("sol_touch_gain=", sol_touch_gain_setup);
+
+static int __init sol_edge_guard_setup(char *str)
+{
+	unsigned int v;
+
+	if (str && !kstrtouint(str, 10, &v)) {
+		if (v > NVT_EDGE_GUARD_MAX)
+			v = NVT_EDGE_GUARD_MAX;
+		sol_edge_guard_boot = (int)v;
+	}
+	return 1;
+}
+__setup("sol_edge_guard=", sol_edge_guard_setup);
+
+static cpumask_t nvt_big_irq_mask;
+
+static void nvt_pin_one_irq(int irq, const struct cpumask *mask, bool hint_enable)
+{
+	struct irq_desc *desc;
+
+	if (irq <= 0)
+		return;
+
+	irq_set_affinity(irq, mask);
+	irq_set_affinity_hint(irq, hint_enable ? mask : NULL);
+	desc = irq_to_desc(irq);
+	if (desc && desc->action && desc->action->thread)
+		set_cpus_allowed_ptr(desc->action->thread, mask);
+}
+
+void nvt_set_irq_big_cores(bool enable)
+{
+	cpumask_t target_mask;
+
+	if (!ts || !ts->client)
+		return;
+
+	ts->irq_big_cores = enable;
+	if (enable) {
+		cpumask_clear(&target_mask);
+		cpumask_set_cpu(6, &target_mask);
+		cpumask_set_cpu(7, &target_mask);
+		cpumask_and(&target_mask, &target_mask, cpu_online_mask);
+		if (cpumask_empty(&target_mask))
+			cpumask_copy(&target_mask, cpu_online_mask);
+		cpumask_copy(&nvt_big_irq_mask, &target_mask);
+		nvt_pin_one_irq(ts->client->irq, &nvt_big_irq_mask, true);
+		nvt_pin_one_irq(ts->spi_ctrl_irq, &nvt_big_irq_mask, true);
+	} else {
+		cpumask_copy(&target_mask, cpu_possible_mask);
+		nvt_pin_one_irq(ts->client->irq, &target_mask, false);
+		nvt_pin_one_irq(ts->spi_ctrl_irq, &target_mask, false);
+	}
+}
+
 void nvt_set_edge_guard(uint16_t px)
 {
 	if (!ts)
@@ -638,6 +710,8 @@ void nvt_reapply_touch_modes(void)
 	if (ts->has_smooth_level)
 		nvt_send_host_cmd(EVENTBUFFER_EXT_CMD, EVENTBUFFER_EXT_SMOOTH_LEVEL,
 				  true, ts->smooth_level, true, NULL);
+	if (ts->irq_big_cores)
+		nvt_set_irq_big_cores(true);
 }
 
 /*******************************************************
@@ -1956,8 +2030,21 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	ts->has_smooth_level = true;
 	ts->smooth_level = 0x00;
 	ts->last_cmd_ret = 0;
-	ts->micro_gain = NVT_MICRO_GAIN_DEFAULT;
-	ts->edge_guard_px = NVT_EDGE_GUARD_DEFAULT;
+	ts->micro_gain = (sol_touch_gain_boot >= 0) ?
+		(uint8_t)sol_touch_gain_boot : NVT_MICRO_GAIN_DEFAULT;
+	ts->edge_guard_px = (sol_edge_guard_boot >= 0) ?
+		(uint16_t)sol_edge_guard_boot : NVT_EDGE_GUARD_DEFAULT;
+	ts->irq_big_cores = true;
+	ts->spi_ctrl_irq = -1;
+	if (client->controller && client->controller->dev.parent &&
+	    client->controller->dev.parent->bus == &platform_bus_type) {
+		struct platform_device *spi_pdev =
+			to_platform_device(client->controller->dev.parent);
+		int sirq = platform_get_irq(spi_pdev, 0);
+
+		if (sirq > 0)
+			ts->spi_ctrl_irq = sirq;
+	}
 	ts->touch_qos_active = false;
 	ts->dt_us_min = U32_MAX;
 
@@ -2120,17 +2207,10 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 			NVT_ERR("request irq failed. ret=%d\n", ret);
 			goto err_int_request_failed;
 		} else {
-			struct irq_desc *desc = irq_to_desc(client->irq);
-			cpumask_t big_mask;
-
-			cpumask_clear(&big_mask);
-			cpumask_set_cpu(6, &big_mask);
-			cpumask_set_cpu(7, &big_mask);
-			cpumask_and(&big_mask, &big_mask, cpu_online_mask);
-			if (!cpumask_empty(&big_mask) && desc && desc->action && desc->action->thread)
-				set_cpus_allowed_ptr(desc->action->thread, &big_mask);
+			nvt_set_irq_big_cores(true);
 			nvt_irq_enable(false);
-			NVT_LOG("request irq %d succeed\n", client->irq);
+			NVT_LOG("request irq %d (spi_irq=%d) pinned to big cores\n",
+				client->irq, ts->spi_ctrl_irq);
 		}
 	}
 #if WAKEUP_GESTURE
@@ -2401,6 +2481,10 @@ static int32_t nvt_ts_remove(struct spi_device *client)
 #endif
 
 	nvt_irq_enable(false);
+	if (client->irq > 0)
+		irq_set_affinity_hint(client->irq, NULL);
+	if (ts->spi_ctrl_irq > 0)
+		irq_set_affinity_hint(ts->spi_ctrl_irq, NULL);
 	free_irq(client->irq, ts);
 
 	nvt_update_touch_qos(false);

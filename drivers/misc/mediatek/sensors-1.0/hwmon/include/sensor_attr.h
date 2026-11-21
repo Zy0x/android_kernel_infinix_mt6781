@@ -27,7 +27,10 @@ struct sensor_attr_t  {
 struct sensor_attr_dev {
 	struct device *dev;
 };
+struct attribute_group;
 extern int sensor_attr_register(struct sensor_attr_t *misc);
 extern int sensor_attr_deregister(struct sensor_attr_t *misc);
+extern int sensor_attr_create_group(struct sensor_attr_t *misc,
+				    const struct attribute_group *grp);
 
 #endif

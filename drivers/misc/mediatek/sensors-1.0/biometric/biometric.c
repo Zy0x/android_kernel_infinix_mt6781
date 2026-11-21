@@ -594,7 +594,7 @@ static int bio_probe(void)
 		pr_err("unable to register biometric misc device!!\n");
 		goto real_driver_init_fail;
 	}
-	err = sysfs_create_group(&biometric_context_obj->mdev.this_device->kobj,
+	err = sensor_attr_create_group(&biometric_context_obj->mdev,
 		&biometric_attribute_group);
 	if (err < 0) {
 		pr_err("unable to create biometric attribute file\n");

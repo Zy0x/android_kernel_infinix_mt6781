@@ -940,7 +940,7 @@ int step_c_register_control_path(struct step_c_control_path *ctl)
 		pr_err("unable to register step_c misc device!!\n");
 		return -2;
 	}
-	err = sysfs_create_group(&step_c_context_obj->mdev.this_device->kobj,
+	err = sensor_attr_create_group(&step_c_context_obj->mdev,
 				 &step_c_attribute_group);
 	if (err < 0) {
 		pr_err("unable to create step_c attribute file\n");

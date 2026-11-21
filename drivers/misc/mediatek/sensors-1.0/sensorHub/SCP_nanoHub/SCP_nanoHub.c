@@ -702,7 +702,6 @@ static void SCP_sensorHub_notify_cmd(union SCP_SENSOR_HUB_DATA *rsp,
 		if (READ_ONCE(scp_system_ready) && READ_ONCE(scp_chre_ready)) {
 			spin_unlock_irqrestore(&scp_state_lock, flags);
 			atomic_set(&power_status, SENSOR_POWER_UP);
-			scp_power_monitor_notify(SENSOR_POWER_UP, NULL);
 			/* schedule_work(&obj->power_up_work); */
 			wake_up(&power_reset_wait);
 		} else
@@ -2245,8 +2244,10 @@ void sensorHub_power_up_loop(void *data)
 	/* 3. wait for chre init done when don't support power reset feature */
 	msleep(2000);
 #endif
-	/* 4. send dram information to scp */
+	/* 4. send dram information to scp BEFORE notifying hub/sensorlist */
 	sensor_send_dram_info_to_hub();
+	if (atomic_read(&power_status) == SENSOR_POWER_UP)
+		scp_power_monitor_notify(SENSOR_POWER_UP, NULL);
 	/* secondly we enable sensor which sensor is enable by framework */
 	mutex_lock(&mSensorState_mtx);
 	for (handle = 0; handle < ID_SENSOR_MAX_HANDLE_PLUS_ONE; handle++)
@@ -2280,7 +2281,6 @@ static int sensorHub_ready_event(struct notifier_block *this,
 		if (READ_ONCE(scp_system_ready) && READ_ONCE(scp_chre_ready)) {
 			spin_unlock_irqrestore(&scp_state_lock, flags);
 			atomic_set(&power_status, SENSOR_POWER_UP);
-			scp_power_monitor_notify(SENSOR_POWER_UP, ptr);
 			/* schedule_work(&obj->power_up_work); */
 			wake_up(&power_reset_wait);
 		} else

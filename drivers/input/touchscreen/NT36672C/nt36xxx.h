@@ -148,6 +148,8 @@ struct nvt_ts_data {
 	uint8_t *xbuf;
 	struct mutex xbuf_lock;
 	bool irq_enabled;
+	bool irq_big_cores;
+	int spi_ctrl_irq;
 	bool game_mode_enabled;
 	bool hopping_fix_freq;
 	bool has_jitter_level;
@@ -275,6 +277,7 @@ void nvt_reapply_touch_modes(void);
 void nvt_set_micro_gain(uint8_t gain);
 void nvt_set_edge_guard(uint16_t px);
 void nvt_reset_touch_stats(void);
+void nvt_set_irq_big_cores(bool enable);
 void nvt_irq_enable(bool enable);
 extern uint8_t bTouchIsAwake;
 #if NVT_TOUCH_ESD_PROTECT

@@ -1156,7 +1156,7 @@ int acc_register_control_path(struct acc_control_path *ctl)
 		pr_err("unable to register acc misc device!!\n");
 		return -2;
 	}
-	err = sysfs_create_group(&acc_context_obj->mdev.this_device->kobj,
+	err = sensor_attr_create_group(&acc_context_obj->mdev,
 				 &acc_attribute_group);
 	if (err < 0) {
 		pr_err("unable to create acc attribute file\n");
@@ -1324,7 +1324,7 @@ int gyro_register_control_path(struct gyro_control_path *ctl)
 		pr_info("unable to register gyro misc device!!\n");
 		return -2;
 	}
-	err = sysfs_create_group(&gyro_context_obj->mdev.this_device->kobj,
+	err = sensor_attr_create_group(&gyro_context_obj->mdev,
 				 &gyro_attribute_group);
 	if (err < 0) {
 		pr_info("unable to create gyro attribute file\n");

@@ -546,7 +546,7 @@ int act_register_control_path(struct act_control_path *ctl)
 		pr_err("unable to register act misc device!!\n");
 		return -2;
 	}
-	err = sysfs_create_group(&act_context_obj->mdev.this_device->kobj,
+	err = sensor_attr_create_group(&act_context_obj->mdev,
 				 &act_attribute_group);
 	if (err < 0) {
 		pr_err("unable to create act attribute file\n");

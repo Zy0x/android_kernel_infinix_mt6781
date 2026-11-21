@@ -653,7 +653,7 @@ static int fusion_probe(void)
 		pr_err("unable to register fusion misc device!!\n");
 		goto real_driver_init_fail;
 	}
-	err = sysfs_create_group(&fusion_context_obj->mdev.this_device->kobj,
+	err = sensor_attr_create_group(&fusion_context_obj->mdev,
 		&fusion_attribute_group);
 	if (err < 0) {
 		pr_err("unable to create fusion attribute file\n");

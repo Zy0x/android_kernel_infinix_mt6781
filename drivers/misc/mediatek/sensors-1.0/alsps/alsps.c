@@ -1193,7 +1193,7 @@ int als_register_control_path(struct als_control_path *ctl)
 		pr_err("unable to register alsps misc device!!\n");
 		return -2;
 	}
-	err = sysfs_create_group(&alsps_context_obj->als_mdev.this_device->kobj,
+	err = sensor_attr_create_group(&alsps_context_obj->als_mdev,
 				 &als_attribute_group);
 	if (err < 0) {
 		pr_err("unable to create alsps attribute file\n");
@@ -1233,7 +1233,7 @@ int ps_register_control_path(struct ps_control_path *ctl)
 		pr_err("unable to register alsps misc device!!\n");
 		return -2;
 	}
-	err = sysfs_create_group(&alsps_context_obj->ps_mdev.this_device->kobj,
+	err = sensor_attr_create_group(&alsps_context_obj->ps_mdev,
 				 &ps_attribute_group);
 	if (err < 0) {
 		pr_err("unable to create alsps attribute file\n");

@@ -18,8 +18,11 @@
 #include <linux/types.h>
 #include <linux/workqueue.h>
 #include <linux/atomic.h>
+#include <linux/delay.h>
+#include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
+#include <linux/wait.h>
 
 #include "SCP_sensorHub.h"
 #include "sensor_list.h"
@@ -45,6 +48,8 @@ enum {
 static struct work_struct sensorlist_work;
 #endif
 static atomic_t first_ready_after_boot;
+static atomic_t sensorlist_info_ready = ATOMIC_INIT(0);
+static DECLARE_WAIT_QUEUE_HEAD(sensorlist_wait);
 static struct sensorlist_info_t sensorlist_info[maxhandle];
 static DEFINE_SPINLOCK(sensorlist_info_lock);
 
@@ -121,16 +126,23 @@ static void init_sensorlist_info(void)
 #ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
 static void sensorlist_get_deviceinfo(struct work_struct *work)
 {
-	int err = 0, handle = -1, sensor = -1;
+	int err = 0, handle = -1, sensor = -1, retry = 0;
 	struct sensorInfo_t devinfo;
 
 	for (handle = accel; handle < maxhandle; ++handle) {
 		sensor = handle_to_sensor(handle);
 		if (sensor < 0)
 			continue;
-		memset(&devinfo, 0, sizeof(struct sensorInfo_t));
-		err = sensor_set_cmd_to_hub(sensor,
-			CUST_ACTION_GET_SENSOR_INFO, &devinfo);
+		for (retry = 0; retry < 3; ++retry) {
+			memset(&devinfo, 0, sizeof(struct sensorInfo_t));
+			err = sensor_set_cmd_to_hub(sensor,
+				CUST_ACTION_GET_SENSOR_INFO, &devinfo);
+			if (err >= 0)
+				break;
+			if (handle == baro || handle == sar)
+				break;
+			msleep(20);
+		}
 		if (err < 0) {
 			pr_err("sensor(%d) not register\n", sensor);
 			continue;
@@ -141,6 +153,8 @@ static void sensorlist_get_deviceinfo(struct work_struct *work)
 			sizeof(sensorlist_info[handle].name));
 		spin_unlock(&sensorlist_info_lock);
 	}
+	atomic_set(&sensorlist_info_ready, 1);
+	wake_up_interruptible(&sensorlist_wait);
 }
 
 static int scp_ready_event(uint8_t event, void *ptr)
@@ -175,6 +189,8 @@ int sensorlist_register_deviceinfo(int sensor,
 		devinfo->name,
 		sizeof(sensorlist_info[handle].name));
 	spin_unlock(&sensorlist_info_lock);
+	atomic_set(&sensorlist_info_ready, 1);
+	wake_up_interruptible(&sensorlist_wait);
 	return 0;
 }
 
@@ -189,8 +205,18 @@ sensorlist_read(struct file *file, char __user *buf,
 {
 	struct sensorlist_info_t temp[maxhandle];
 
-	if (!atomic_read(&first_ready_after_boot))
-		return -EINVAL;
+	if (!atomic_read(&sensorlist_info_ready)) {
+		long wret;
+
+		wret = wait_event_interruptible_timeout(sensorlist_wait,
+			atomic_read(&sensorlist_info_ready) != 0,
+			msecs_to_jiffies(3500));
+		if (wret < 0)
+			return wret;
+		if (!atomic_read(&sensorlist_info_ready) &&
+		    !atomic_read(&first_ready_after_boot))
+			return -EAGAIN;
+	}
 	if (count == 0)
 		return -EINVAL;
 	if (count < sizeof(struct sensorlist_info_t))
@@ -217,6 +243,7 @@ static struct miscdevice sensorlist_miscdev = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = "sensorlist",
 	.fops = &sensorlist_fops,
+	.mode = 0444,
 };
 
 static int __init sensorlist_init(void)
@@ -228,6 +255,7 @@ static int __init sensorlist_init(void)
 	if (ret < 0)
 		return -1;
 	atomic_set(&first_ready_after_boot, 0);
+	atomic_set(&sensorlist_info_ready, 0);
 #ifdef CONFIG_CUSTOM_KERNEL_SENSORHUB
 	INIT_WORK(&sensorlist_work, sensorlist_get_deviceinfo);
 	scp_power_monitor_register(&scp_ready_notifier);

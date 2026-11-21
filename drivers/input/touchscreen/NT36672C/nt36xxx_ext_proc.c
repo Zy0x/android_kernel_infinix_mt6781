@@ -35,6 +35,7 @@
 #define NVT_TOUCH_STATS "nvt_touch_stats"
 #define NVT_MICRO_GAIN "nvt_micro_gain"
 #define NVT_EDGE_GUARD "nvt_edge_guard"
+#define NVT_IRQ_BIG_CORES "nvt_irq_big_cores"
 
 #define BUS_TRANSFER_LENGTH  256
 
@@ -58,6 +59,7 @@ static struct proc_dir_entry *NVT_proc_spi_speed_entry;
 static struct proc_dir_entry *NVT_proc_touch_stats_entry;
 static struct proc_dir_entry *NVT_proc_micro_gain_entry;
 static struct proc_dir_entry *NVT_proc_edge_guard_entry;
+static struct proc_dir_entry *NVT_proc_irq_big_cores_entry;
 
 /*******************************************************
 Description:
@@ -674,13 +676,14 @@ static int nvt_touch_stats_show(struct seq_file *m, void *v)
 
 	mutex_lock(&ts->lock);
 	ev_addr = ts->mmap ? ts->mmap->EVENT_BUF_ADDR : 0;
-	seq_printf(m, "awake=%u pid=0x%04X fw_ver=0x%02X ev_buf=0x%05X spi_hz=%u spi_req=%u game=%d hop_fix=%d jitter=%d(0x%02X) smooth=%d(0x%02X) gain=%u eg=%u qos=%d\n",
+	seq_printf(m, "awake=%u pid=0x%04X fw_ver=0x%02X ev_buf=0x%05X spi_hz=%u spi_req=%u game=%d hop_fix=%d jitter=%d(0x%02X) smooth=%d(0x%02X) gain=%u eg=%u qos=%d irq_big=%d\n",
 		   bTouchIsAwake, ts->nvt_pid, ts->fw_ver, ev_addr,
 		   ts->client->max_speed_hz, ts->spi_max_hz_req,
 		   ts->game_mode_enabled ? 1 : 0, ts->hopping_fix_freq ? 1 : 0,
 		   ts->has_jitter_level ? 1 : 0, ts->jitter_level,
 		   ts->has_smooth_level ? 1 : 0, ts->smooth_level,
-		   ts->micro_gain, ts->edge_guard_px, ts->touch_qos_active ? 1 : 0);
+		   ts->micro_gain, ts->edge_guard_px, ts->touch_qos_active ? 1 : 0,
+		   ts->irq_big_cores ? 1 : 0);
 	seq_printf(m, "irq=%llu frame=%llu spi_err=%llu csum_err=%llu dup_xy=%llu micro_move=%llu\n",
 		   ts->irq_cnt, ts->frame_cnt, ts->spi_err_cnt, ts->csum_err_cnt,
 		   ts->dup_xy_cnt, ts->micro_move_cnt);
@@ -789,6 +792,43 @@ static const struct file_operations nvt_edge_guard_fops = {
 	.release = single_release,
 };
 
+static int nvt_irq_big_cores_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%u\n", (ts && ts->irq_big_cores) ? 1 : 0);
+	return 0;
+}
+
+static int nvt_irq_big_cores_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, nvt_irq_big_cores_show, NULL);
+}
+
+static ssize_t nvt_irq_big_cores_write(struct file *file, const char __user *buf,
+				       size_t count, loff_t *ppos)
+{
+	char kbuf[16];
+	unsigned int val;
+
+	if (count == 0 || count >= sizeof(kbuf))
+		return -EINVAL;
+	if (copy_from_user(kbuf, buf, count))
+		return -EFAULT;
+	kbuf[count] = '\0';
+	if (kstrtouint(strim(kbuf), 10, &val) || val > 1)
+		return -EINVAL;
+	nvt_set_irq_big_cores(val != 0);
+	return (ssize_t)count;
+}
+
+static const struct file_operations nvt_irq_big_cores_fops = {
+	.owner = THIS_MODULE,
+	.open = nvt_irq_big_cores_open,
+	.read = seq_read,
+	.write = nvt_irq_big_cores_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 static const struct file_operations nvt_touch_stats_fops = {
 	.owner = THIS_MODULE,
 	.open = nvt_touch_stats_open,
@@ -865,6 +905,10 @@ int32_t nvt_extra_proc_init(void)
 	if (NVT_proc_edge_guard_entry == NULL)
 		NVT_ERR("create proc/%s Failed!\n", NVT_EDGE_GUARD);
 
+	NVT_proc_irq_big_cores_entry = proc_create(NVT_IRQ_BIG_CORES, 0664, NULL, &nvt_irq_big_cores_fops);
+	if (NVT_proc_irq_big_cores_entry == NULL)
+		NVT_ERR("create proc/%s Failed!\n", NVT_IRQ_BIG_CORES);
+
 	return 0;
 }
 
@@ -930,6 +974,11 @@ void nvt_extra_proc_deinit(void)
 	if (NVT_proc_edge_guard_entry != NULL) {
 		remove_proc_entry(NVT_EDGE_GUARD, NULL);
 		NVT_proc_edge_guard_entry = NULL;
+	}
+
+	if (NVT_proc_irq_big_cores_entry != NULL) {
+		remove_proc_entry(NVT_IRQ_BIG_CORES, NULL);
+		NVT_proc_irq_big_cores_entry = NULL;
 	}
 }
 #endif

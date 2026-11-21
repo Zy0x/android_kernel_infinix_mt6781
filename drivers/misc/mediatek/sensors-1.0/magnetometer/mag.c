@@ -630,7 +630,7 @@ int mag_register_control_path(struct mag_control_path *ctl)
 		pr_err("unable to register mag misc device!!\n");
 		return -2;
 	}
-	err = sysfs_create_group(&mag_context_obj->mdev.this_device->kobj,
+	err = sensor_attr_create_group(&mag_context_obj->mdev,
 				 &mag_attribute_group);
 	if (err < 0) {
 		pr_err("unable to create mag attribute file\n");

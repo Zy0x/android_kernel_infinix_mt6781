@@ -2334,8 +2334,12 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 	if (det->ops->get_freq_table)
 		det->ops->get_freq_table(det);
 
-	/* Empirical Sol-Kernel R1.081 safe undervolt margin (stacks cleanly with eem_offset) */
-	switch (det_id) {
+	/* Empirical Sol-Kernel R1.081 safe undervolt margin (active only when sol_perf=1) */
+	{
+		extern int sol_perf_mode;
+		if (!sol_perf_mode) {
+			det->high_temp_off = EXTRA_TEMP_OFF_L;
+		} else switch (det_id) {
 	case EEM_DET_L:
 	case EEM_DET_B:
 #if ENABLE_LOO_B
@@ -2352,6 +2356,7 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 		break;
 	default:
 		break;
+	}
 	}
 
 #if ENABLE_LOO_B

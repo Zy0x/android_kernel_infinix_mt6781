@@ -738,6 +738,18 @@ void cpufreq_get_imax_reg(unsigned int *imax_addr, unsigned int *reg_val)
 }
 #endif
 
+int sol_perf_mode __read_mostly = 1;
+static int __init sol_perf_setup(char *str)
+{
+	int v = 1;
+	if (str && kstrtoint(str, 0, &v) == 0)
+		sol_perf_mode = (v != 0);
+	pr_info("sol_perf: boot mode=%d (%s)\n", sol_perf_mode,
+		sol_perf_mode ? "OC+UV" : "Stock");
+	return 1;
+}
+__setup("sol_perf=", sol_perf_setup);
+
 extern unsigned int mt_get_abist_freq(unsigned int ID);
 
 int mt_cpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)

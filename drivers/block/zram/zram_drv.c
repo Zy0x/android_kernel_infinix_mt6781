@@ -34,12 +34,24 @@
 #include <linux/sysfs.h>
 #include <linux/debugfs.h>
 #include <linux/cpuhotplug.h>
+#include <linux/init.h>
 
 #include "zram_drv.h"
 #include "zram_drv_internal.h"
 #ifdef CONFIG_HYBRIDSWAP
 #include "hybridswap/hybridswap.h"
 #endif
+
+static unsigned int sol_zram_mb __read_mostly = 0;
+static int __init sol_zram_setup(char *str)
+{
+	unsigned int val = 0;
+	if (str && kstrtouint(str, 0, &val) == 0 && val <= 8192)
+		sol_zram_mb = val;
+	pr_info("sol_zram: zram0 override=%u MB\n", sol_zram_mb);
+	return 1;
+}
+__setup("sol_zram_mb=", sol_zram_setup);
 
 static DEFINE_IDR(zram_index_idr);
 /* idr index must be protected */
@@ -1842,6 +1854,12 @@ static ssize_t disksize_store(struct device *dev,
 	disksize = memparse(buf, NULL);
 	if (!disksize)
 		return -EINVAL;
+
+	if (sol_zram_mb > 0 && strcmp(dev_name(dev), "zram0") == 0) {
+		disksize = (u64)sol_zram_mb << 20;
+		pr_info("sol_zram: enforcing zram0 disksize=%llu bytes (%u MB)\n",
+			disksize, sol_zram_mb);
+	}
 
 	down_write(&zram->init_lock);
 	if (init_done(zram)) {

@@ -39,9 +39,6 @@ static void crown_manager(const char *apk, struct list_head *uid_data)
 	struct uid_data *np;
 	const char *target_pkg;
 
-#ifdef KSU_MANAGER_PACKAGE
-	target_pkg = KSU_MANAGER_PACKAGE;
-#else
 	char pkg[KSU_MAX_PACKAGE_NAME];
 	char dir_path[DATA_PATH_LEN];
 	char *last_slash;
@@ -52,12 +49,16 @@ static void crown_manager(const char *apk, struct list_head *uid_data)
 		*last_slash = '\0'; // strip /base.apk
 
 	if (get_pkg_from_apk_dir_path(pkg, dir_path) < 0) {
+#ifdef KSU_MANAGER_PACKAGE
+		target_pkg = KSU_MANAGER_PACKAGE;
+#else
 		pr_err("Failed to get package name from apk dir path: %s\n", dir_path);
 		return;
-	}
-	pr_info("manager pkg: %s\n", pkg);
-	target_pkg = pkg;
 #endif
+	} else {
+		pr_info("manager pkg: %s\n", pkg);
+		target_pkg = pkg;
+	}
 
 	list_for_each_entry (np, list, list) {
 		if (strncmp(np->package, target_pkg, KSU_MAX_PACKAGE_NAME) == 0) {
@@ -114,8 +115,10 @@ static bool maybe_manager_apk_dir(const char *path)
 		return false;
 	}
 
-	// pkg is `<real package>`
-	return strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE)) == 0;
+	// Accept both spoofed KSUN package and official unspoofed KSUN / Official KSU
+	return strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE)) == 0 ||
+	       strcmp(pkg, "com.rifsxd.ksunext") == 0 ||
+	       strcmp(pkg, "me.weishu.kernelsu") == 0;
 #else
 	return true;
 #endif
@@ -350,7 +353,7 @@ void track_throne(bool prune_only)
 	bool need_rescan = false;
 	list_for_each_entry (np, &uid_list, list) {
 #ifdef KSU_MANAGER_PACKAGE
-		if (strcmp(np->package, KSU_MANAGER_PACKAGE) == 0 || strcmp(np->package, "kqvdie.zeykvw.hpbcyd") == 0 || strcmp(np->package, "me.weishu.kernelsu") == 0) {
+		if (strcmp(np->package, KSU_MANAGER_PACKAGE) == 0 || strcmp(np->package, "kqvdie.zeykvw.hpbcyd") == 0 || strcmp(np->package, "com.rifsxd.ksunext") == 0 || strcmp(np->package, "me.weishu.kernelsu") == 0) {
 			manager_package_uid = np->uid;
 			break;
 		}

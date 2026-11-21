@@ -1247,6 +1247,31 @@ static int _mt_cpufreq_target(struct cpufreq_policy *policy,
 	return 0;
 }
 
+extern int sol_perf_mode;
+static bool sol_cpu_opp_normalized;
+
+static void sol_cpufreq_apply_perf_mode(void)
+{
+	if (sol_perf_mode || sol_cpu_opp_normalized)
+		return;
+	sol_cpu_opp_normalized = true;
+	/* Restore factory MT6781T VPROC1 (L/LL) & CCI table when sol_perf=0 */
+	opp_tbl_LL_e0_0[0].cpufreq_volt = 103125;
+	opp_tbl_LL_e0_0[1].cpufreq_volt = 100625;
+	opp_tbl_LL_e0_0[2].cpufreq_volt = 98125;
+	opp_tbl_CCI_e0_0[0].cpufreq_khz = 1400000;
+	opp_tbl_CCI_e0_0[0].cpufreq_volt = 103125;
+	opp_tbl_CCI_e0_0[1].cpufreq_khz = 1330000;
+	opp_tbl_CCI_e0_0[1].cpufreq_volt = 99375;
+	opp_tbl_CCI_e0_0[2].cpufreq_khz = 1260000;
+	opp_tbl_CCI_e0_0[2].cpufreq_volt = 95000;
+	opp_tbl_CCI_e0_0[3].cpufreq_khz = 1190000;
+	opp_tbl_CCI_e0_0[3].cpufreq_volt = 90625;
+	opp_tbl_CCI_e0_0[4].cpufreq_khz = 1155000;
+	opp_tbl_CCI_e0_0[4].cpufreq_volt = 88750;
+	pr_info("sol_perf: applied stock MT6781 CPU/CCI OPP table\n");
+}
+
 #ifndef ONE_CLUSTER
 int cci_is_inited;
 #endif
@@ -1281,6 +1306,7 @@ static int _mt_cpufreq_init(struct cpufreq_policy *policy)
 		cpufreq_ver("DVFS: @%s: %s(cpu_id = %d)\n",
 			__func__, cpu_dvfs_get_name(p), p->cpu_id);
 
+		sol_cpufreq_apply_perf_mode();
 		opp_tbl_info = &opp_tbls[id][lv];
 #ifdef ENABLE_DOE
 		modify_kernel_opp_table_by_doe(opp_tbl_info->opp_tbl, p, id);
@@ -1799,6 +1825,8 @@ static int __init _mt_cpufreq_tbl_init(void)
 #ifdef CPU_DVFS_NOT_READY
 	return 0;
 #endif
+
+	sol_cpufreq_apply_perf_mode();
 
 	/* Prepare OPP table for EEM */
 	for_each_cpu_dvfs(j, p) {

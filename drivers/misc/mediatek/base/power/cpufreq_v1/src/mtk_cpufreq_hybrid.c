@@ -1727,6 +1727,19 @@ void cpuhvfs_pvt_tbl_create(void)
 	tag_pr_info("DVFS - @(Record)%s----->(%p)\n", __func__, recordRef);
 	memset_io((u8 *)recordRef, 0x00, PVT_TBL_SIZE);
 
+	{
+		extern int sol_perf_mode;
+		if (!sol_perf_mode) {
+			static const unsigned int stock_cci[5][4] = {
+				{ 1400, 85, 2, 1 },
+				{ 1330, 79, 2, 1 },
+				{ 1260, 72, 2, 1 },
+				{ 1190, 65, 2, 1 },
+				{ 1155, 62, 2, 1 },
+			};
+			memcpy(&OPP_6781T_Tbl[NR_FREQ * 2][0], stock_cci, sizeof(stock_cci));
+		}
+	}
 	recordTbl = xrecordTbl[lv];
 #ifdef ENABLE_DOE
 	update_pvt_tbl_by_doe();

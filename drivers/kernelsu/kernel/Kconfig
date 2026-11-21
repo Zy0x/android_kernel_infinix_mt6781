@@ -40,6 +40,15 @@ config KSU_ALLOWLIST_WORKAROUND
 	help
 	  Enable workaround for broken allowlist save
 
+config KSU_UNIVERSAL_MANAGER
+	bool "Enable Universal Multi-Manager APK signature trust"
+	depends on KSU && !KSU_DISABLE_MANAGER
+	default n
+	help
+	  Accept official manager signatures from KernelSU-Next, Official KernelSU,
+	  SukiSU-Ultra, ReSukiSU/BakaSU, KowSU, Wild KSU, and custom builds,
+	  with dynamic /data/app package discovery.
+
 # For easier extern ifdef handling
 config KSU_MANUAL_HOOK
 	bool "KernelSU manual hook mode."

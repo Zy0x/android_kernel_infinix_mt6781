@@ -244,6 +244,7 @@ static int g_opp_sb_idx_down[NUM_OF_OPP_IDX] = { 0 };
 static DEFINE_MUTEX(mt_gpufreq_lock);
 
 extern bool g_lynx_thermal_silencer;
+extern int sol_perf_mode;
 static unsigned int g_lynx_oc_max_khz = 950000;
 static DEFINE_MUTEX(mt_gpufreq_power_lock);
 static DEFINE_MUTEX(mt_gpufreq_limit_table_lock);
@@ -3597,6 +3598,8 @@ int mt_gpufreq_lynx_set_oc_khz(unsigned int max_khz)
 
 	if (max_khz == 0)
 		max_khz = 950000;
+	if (!sol_perf_mode && max_khz > 950000)
+		max_khz = 950000;
 
 	target_idx = g_max_opp_idx_num - 1;
 	for (i = 0; i < g_max_opp_idx_num; i++) {
@@ -3770,10 +3773,12 @@ static int __mt_gpufreq_pdrv_probe(struct platform_device *pdev)
 #endif
 
 	{
-		int stock_idx = __mt_gpufreq_get_stock_max_idx();
-		mt_gpufreq_update_limit_idx(KIR_LYNX_OC, stock_idx, LIMIT_IDX_DEFAULT);
-		g_lynx_oc_max_khz = (g_opp_table && g_max_opp_idx_num > stock_idx) ?
-			g_opp_table[stock_idx].gpufreq_khz : 950000;
+		int init_idx = sol_perf_mode ? 0 : __mt_gpufreq_get_stock_max_idx();
+		mt_gpufreq_update_limit_idx(KIR_LYNX_OC, init_idx, LIMIT_IDX_DEFAULT);
+		g_lynx_oc_max_khz = (g_opp_table && g_max_opp_idx_num > init_idx) ?
+			g_opp_table[init_idx].gpufreq_khz : 950000;
+		gpufreq_pr_info("@%s: sol_perf_mode=%d max_khz=%u (idx=%d)\n",
+				__func__, sol_perf_mode, g_lynx_oc_max_khz, init_idx);
 	}
 
 	g_probe_done = true;

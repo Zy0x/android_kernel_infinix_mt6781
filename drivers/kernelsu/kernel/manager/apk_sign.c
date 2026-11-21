@@ -367,10 +367,39 @@ int get_pkg_from_apk_dir_path(char *pkg, const char *path)
 
 bool is_manager_apk(char *path)
 {
+#ifdef CONFIG_KSU_UNIVERSAL_MANAGER
+	static const struct {
+		unsigned int size;
+		const char *hash;
+	} universal_keys[] = {
+		/* KernelSU-Next */
+		{ 0x03e6, "79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7" },
+		/* Official KernelSU (tiann) */
+		{ 0x033b, "c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6" },
+		/* SukiSU-Ultra */
+		{ 0x035c, "947ae944f3de4ed4c21a7e4f7953ecf351bfa2b36239da37a34111ad29993eef" },
+		/* ReSukiSU / BakaSU */
+		{ 0x0377, "d3469712b6214462764a1d8d3e5cbe1d6819a0b629791b9f4101867821f1df64" },
+		/* KowSU (KOWX712) */
+		{ 0x0375, "484fcba6e6c43b1fb09700633bf2fb4758f13cb0b2f4457b80d075084b26c588" },
+		/* Wild KSU */
+		{ 0x0381, "52d52d8c8bfbe53dc2b6ff1c613184e2c03013e090fe8905d8e3d5dc2658c2e4" },
+		/* Custom / Spoofed X698 Manager */
+		{ 0x0443, "a9342f305e5d7ecc0245f86c931226267389358c48139f5d7ed6a80cd4329629" },
+	};
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(universal_keys); i++) {
+		if (check_v2_signature(path, universal_keys[i].size, universal_keys[i].hash))
+			return true;
+	}
+	return false;
+#else
 	if (check_v2_signature(path, EXPECTED_MANAGER_SIZE, EXPECTED_MANAGER_HASH))
 		return true;
 	// Also accept official KernelSU Manager (tiann)
 	if (check_v2_signature(path, 0x033b, "c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6"))
 		return true;
 	return false;
+#endif
 }

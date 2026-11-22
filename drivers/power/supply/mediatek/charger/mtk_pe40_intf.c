@@ -22,6 +22,7 @@
 #include <upmu_common.h>
 #include "mtk_charger_intf.h"
 #include "mtk_charger_init.h"
+extern bool g_lynx_hyper_charge;
 #include "mtk_switch_charging.h"
 
 #define PE40_VBUS_STEP 50
@@ -486,6 +487,8 @@ bool mtk_pe40_is_ready(struct charger_manager *pinfo)
 	int tmp;
 	int ibus;
 	int ret;
+	int high_temp;
+	int stop_soc;
 
 	tmp = battery_get_bat_temperature();
 	pdata = &pinfo->chg1_data;
@@ -505,17 +508,20 @@ bool mtk_pe40_is_ready(struct charger_manager *pinfo)
 		ret,
 		pinfo->data.pe40_stop_battery_soc);
 
+	high_temp = (g_lynx_hyper_charge ? 47 : pinfo->data.high_temp_to_enter_pe40);
+	stop_soc = (g_lynx_hyper_charge ? 96 : pinfo->data.pe40_stop_battery_soc);
+
 	if (pinfo->enable_pe_4 == false ||
 		pinfo->enable_hv_charging == false ||
 		pdata->thermal_charging_current_limit != -1 ||
 		pdata->thermal_input_current_limit != -1 ||
-		tmp > pinfo->data.high_temp_to_enter_pe40 ||
+		tmp > high_temp ||
 		tmp < pinfo->data.low_temp_to_enter_pe40 ||
 		ret == -ENOTSUPP)
 		return false;
 
 	if (is_dual_charger_supported(pinfo) == true &&
-		(battery_get_soc() >= pinfo->data.pe40_stop_battery_soc ||
+		(battery_get_soc() >= stop_soc ||
 		battery_get_uisoc() == -1))
 		return false;
 

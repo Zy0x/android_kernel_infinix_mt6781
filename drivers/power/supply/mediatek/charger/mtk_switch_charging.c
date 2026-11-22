@@ -769,6 +769,7 @@ static int mtk_switch_chr_cc(struct charger_manager *info)
 	charger_dev_is_charging_done(info->chg1_dev, &chg_done);
 	if (!chg_done) {
 		static int full_sat_cnt;
+		static unsigned long sat_99_start_jiffies;
 		int uisoc = battery_get_uisoc();
 		int real_soc = battery_get_soc();
 		int vbat = battery_get_bat_voltage();
@@ -777,17 +778,28 @@ static int mtk_switch_chr_cc(struct charger_manager *info)
 		if (real_soc >= 0 && real_soc <= 100)
 			real_soc *= 100;
 
+		if (uisoc >= 99 && vbat >= 4430) {
+			if (!sat_99_start_jiffies)
+				sat_99_start_jiffies = jiffies;
+		} else {
+			sat_99_start_jiffies = 0;
+		}
+
 		if (uisoc >= 99 &&
-		    ((real_soc >= 9800 &&
-		      ((vbat >= 4430 && ibat_ma <= 220) ||
-		       (vbat >= 4440 && ibat_ma <= 260))) ||
-		     (vbat >= 4440 && ibat_ma <= 200))) {
+		    (((real_soc >= 9800 &&
+		       ((vbat >= 4430 && ibat_ma <= 220) ||
+		        (vbat >= 4440 && ibat_ma <= 260))) ||
+		      (vbat >= 4440 && ibat_ma <= 200)) ||
+		     (sat_99_start_jiffies &&
+		      time_after(jiffies, sat_99_start_jiffies + 300 * HZ)))) {
 			full_sat_cnt++;
-			chr_err("kernel_autocut: saturation (%d/3) uisoc=%d%% real=%d vbat=%dmV ibat=%dmA\n",
-				full_sat_cnt, uisoc, real_soc, vbat, ibat_ma);
+			chr_err("kernel_autocut: saturation (%d/3) uisoc=%d%% real=%d vbat=%dmV ibat=%dmA watchdog=%d\n",
+				full_sat_cnt, uisoc, real_soc, vbat, ibat_ma,
+				sat_99_start_jiffies && time_after(jiffies, sat_99_start_jiffies + 300 * HZ));
 			if (full_sat_cnt >= 3) {
 				chg_done = true;
 				full_sat_cnt = 0;
+				sat_99_start_jiffies = 0;
 			}
 		} else {
 			full_sat_cnt = 0;

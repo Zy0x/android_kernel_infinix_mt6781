@@ -867,6 +867,14 @@ static inline void __dv2_calculate_vbat_ircmp(struct dv2_algo_info *info)
 	 */
 	if (data->state == DV2_ALGO_CC_CV)
 		ircmp = min(data->vbat_ircmp, ircmp);
+	/* Dynamic Turbo IR Headroom: +45mV clamp under 5.7A for 0-89% */
+	if (g_lynx_hyper_charge) {
+		int uisoc = battery_get_uisoc();
+		if (uisoc > 0 && uisoc < 90)
+			desc->ircmp_vclamp = 45;
+		else
+			desc->ircmp_vclamp = 0;
+	}
 	data->vbat_ircmp = min(desc->ircmp_vclamp, ircmp);
 	PCA_INFO("vbat_ircmp(vclamp,ibat,rbat)=%d(%d,%d,%d)\n",
 		 data->vbat_ircmp, desc->ircmp_vclamp, ibat, data->r_bat);
@@ -970,19 +978,25 @@ static inline int __dv2_get_ita_lmt(struct dv2_algo_info *info)
 		else
 			prop_chgalgo_get_soc(data->pca_swchg, &cur_soc);
 
+		/*
+		 * Turbo Hyper Charge Ladder (0-100% in <= 50-55 mins):
+		 * - 0% - 89%: Full Direct Charge Pump (up to 3000mA ITA / ~5.7A IBAT)
+		 * - 90% - 95%: Fast Linear Tapering Down (2200mA -> 1500mA ITA)
+		 * - 96% - 100%: Precision CV Saturation & Clean AutoCut Hand-off
+		 */
 		if ((cur_soc >= 100 && (real_soc >= 9800 || battery_get_bat_voltage() >= 4430)) ||
 		    (cur_soc >= 99 && real_soc >= 9800 &&
 		     battery_get_bat_voltage() >= 4430 &&
 		     (battery_get_bat_current() / 10) <= 550))
 			ita = 0U;
 		else if (cur_soc >= 98)
-			ita = min_t(u32, ita, 750U);
-		else if (cur_soc >= 95)
+			ita = min_t(u32, ita, 650U);
+		else if (cur_soc >= 96)
 			ita = min_t(u32, ita, 1000U);
+		else if (cur_soc >= 93)
+			ita = min_t(u32, ita, 1500U);
 		else if (cur_soc >= 90)
-			ita = min_t(u32, ita, 1300U);
-		else if (cur_soc >= 85)
-			ita = min_t(u32, ita, 1800U);
+			ita = min_t(u32, ita, 2200U);
 	}
 	PCA_INFO("ita(org,tta,tbat,tdvchg,prlmt,throt)=%d(%d,%d,%d,%d,%d,%d)\n",
 		 ita, data->ita_lmt, desc->tta_curlmt[data->tta_level],

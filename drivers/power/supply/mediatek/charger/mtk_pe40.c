@@ -17,6 +17,7 @@
 #include <linux/time.h>
 #include <linux/slab.h>
 #include "mtk_intf.h"
+extern bool g_lynx_hyper_charge;
 
 #define PE40_VBUS_STEP 50
 #define PE40_MIN_WATT 5000000
@@ -292,11 +293,13 @@ int pe40_get_setting_by_watt(int *voltage,
 bool pe40_is_ready(void)
 {
 	int tmp;
+	int high_temp;
 
 	tmp = battery_get_bat_temperature();
+	high_temp = (g_lynx_hyper_charge ? 47 : pe4->data.high_temp_to_enter_pe40);
 
 	if (!adapter_is_support_pd_pps() ||
-		tmp > pe4->data.high_temp_to_enter_pe40 ||
+		tmp > high_temp ||
 		tmp < pe4->data.low_temp_to_enter_pe40)
 		return false;
 

@@ -272,3 +272,9 @@ obj-$(CONFIG_VMALLOC_DEBUG) += memleak_debug_stackdepot.o
 obj-$(CONFIG_SBITMAP) += sbitmap.o
 
 obj-$(CONFIG_PARMAN) += parman.o
+
+# Sol-Kernel-Arise E-Sports Compiler Hotspot Optimization
+CFLAGS_string.o += -O3
+CFLAGS_find_bit.o += -O3
+CFLAGS_rbtree.o += -O3
+CFLAGS_radix-tree.o += -O3

@@ -448,6 +448,7 @@ KBUILD_CPPFLAGS := -D__KERNEL__
 
 # Flags to tune generated code for DynamIQ Cortex-A76 + Cortex-A55 (ARMv8.2-A)
 KBUILD_CFLAGS += -march=armv8.2-a+crypto+fp16+dotprod -mtune=cortex-a76
+KBUILD_CFLAGS += $(call cc-option,-falign-functions=32)
 KBUILD_AFLAGS += -march=armv8.2-a+crypto+fp16+dotprod
 
 KBUILD_AFLAGS_KERNEL :=

@@ -5774,8 +5774,9 @@ static int zone_batchsize(struct zone *zone)
 		batch = zone->present_pages / 1024;
 	else
 		batch = zone->managed_pages / 1024;
-	if (batch * PAGE_SIZE > 512 * 1024)
-		batch = (512 * 1024) / PAGE_SIZE;
+	/* E-Sports & Gaming Burst Allocation: Raise per-cpu batch cap to 2MB (batch=127) */
+	if (batch * PAGE_SIZE > 2048 * 1024)
+		batch = (2048 * 1024) / PAGE_SIZE;
 	batch /= 4;		/* We effectively *= 4 below */
 	if (batch < 1)
 		batch = 1;

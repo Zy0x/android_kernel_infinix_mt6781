@@ -401,10 +401,19 @@ int sdcard_hw_reset(struct mmc_host *mmc)
  * HS card
  *    50MHz --> 25MHz --> 12.5MHz --> 6.25MHz
  */
+static u8 sd_reset_retry_cnt[HOST_MAX_NUM];
+
+void msdc_reset_tune_retry(struct msdc_host *host)
+{
+	if (host && host->id < HOST_MAX_NUM)
+		sd_reset_retry_cnt[host->id] = 0;
+}
+
 int sdcard_reset_tuning(struct mmc_host *mmc)
 {
 	struct msdc_host *host = mmc_priv(mmc);
 	char *remove_cap;
+	u8 retry = (host->id < HOST_MAX_NUM) ? sd_reset_retry_cnt[host->id]++ : 0;
 	int ret = 0;
 
 	if (!mmc->card) {
@@ -412,13 +421,64 @@ int sdcard_reset_tuning(struct mmc_host *mmc)
 		return -1;
 	}
 
+	/* Force fresh autok delay-tap calibration after power cycle or tier step-down */
+	host->is_autok_done = 0;
+
 	if (mmc_card_uhs(mmc->card)) {
-		/* Preserve full SDR104 capability - do not strip bus modes on tuning retries */
-		remove_cap = "none (preserved)";
-		pr_notice("msdc%d: reset tuning preserving UHS bus modes then reinit card\n", host->id);
+		u32 mode = mmc->card->sw_caps.sd3_bus_mode & ~mmc->sd_uhs_skip_mask;
+
+		if (mode & SD_MODE_UHS_SDR104) {
+			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR104;
+			mmc->sd_uhs_skip_mask |= SD_MODE_UHS_SDR104;
+			remove_cap = "UHS_SDR104";
+			pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+		} else if (mode & SD_MODE_UHS_SDR50) {
+			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR50;
+			mmc->sd_uhs_skip_mask |= SD_MODE_UHS_SDR50;
+			remove_cap = "UHS_SDR50";
+			pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+		} else if (mode & SD_MODE_UHS_DDR50) {
+			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_DDR50;
+			mmc->sd_uhs_skip_mask |= SD_MODE_UHS_DDR50;
+			remove_cap = "UHS_DDR50";
+			pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+		} else if (mode & SD_MODE_UHS_SDR25) {
+			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR25;
+			mmc->sd_uhs_skip_mask |= SD_MODE_UHS_SDR25;
+			if (!(mmc->sd_uhs_skip_mask & MMC_SD_SKIP_3V_HS)) {
+				mmc->sd_uhs_skip_mask |= MMC_SD_SKIP_1V8;
+				remove_cap = "UHS_SDR25 -> 3.0V SD_HS";
+			} else {
+				remove_cap = "UHS_SDR25";
+			}
+			pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+		} else if (mode & SD_MODE_UHS_SDR12) {
+			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR12;
+			mmc->sd_uhs_skip_mask |= SD_MODE_UHS_SDR12;
+			if (!(mmc->sd_uhs_skip_mask & MMC_SD_SKIP_3V_HS)) {
+				mmc->sd_uhs_skip_mask |= MMC_SD_SKIP_1V8;
+				remove_cap = "UHS_SDR12 -> 3.0V SD_HS";
+			} else {
+				remove_cap = "UHS_SDR12";
+			}
+			pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+		} else {
+			remove_cap = "none";
+		}
+		(void)retry;
 	} else if (mmc_card_hs(mmc->card)) {
-		/* Preserve full HS speed - do not divide frequency */
-		pr_notice("msdc%d: reset tuning preserving hs speed %dhz then reinit card\n", host->id, mmc->card->sw_caps.hs_max_dtr);
+		mmc->sd_uhs_skip_mask |= MMC_SD_SKIP_3V_HS;
+		if (mmc->card->sw_caps.hs_max_dtr > 91000000)
+			mmc->card->sw_caps.hs_max_dtr = 91000000;
+		else if (mmc->card->sw_caps.hs_max_dtr > 78000000)
+			mmc->card->sw_caps.hs_max_dtr = 78000000;
+		else if (mmc->card->sw_caps.hs_max_dtr > 52000000)
+			mmc->card->sw_caps.hs_max_dtr = 52000000;
+		else if (mmc->card->sw_caps.hs_max_dtr > HIGH_SPEED_MAX_DTR)
+			mmc->card->sw_caps.hs_max_dtr = HIGH_SPEED_MAX_DTR;
+		else if (mmc->card->sw_caps.hs_max_dtr >= HIGH_SPEED_MAX_DTR / 4)
+			mmc->card->sw_caps.hs_max_dtr /= 2;
+		pr_notice("msdc%d: step down hs speed %dhz then reinit card\n", host->id, mmc->card->sw_caps.hs_max_dtr);
 	} else {
 		pr_notice("msdc%d: ds card just reinit card\n", host->id);
 	}

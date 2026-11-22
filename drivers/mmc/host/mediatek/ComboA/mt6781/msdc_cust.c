@@ -24,6 +24,7 @@
 #include <linux/of_irq.h>
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/slab.h>
 #include <linux/of_gpio.h>
 
@@ -272,11 +273,13 @@ void msdc_sd_power(struct msdc_host *host, u32 on)
 
 	switch (host->id) {
 	case 1:
-		msdc_set_driving(host, &host->hw->driving);
-		msdc_set_tdsel(host, MSDC_TDRDSEL_CUST, 0);
-		msdc_set_rdsel(host, MSDC_TDRDSEL_CUST, 0);
-		/* Always keep MicroSD powered during runtime to eliminate 224ms LDO re-init latency */
-		card_on = 1;
+		if (on) {
+			msdc_set_driving(host, &host->hw->driving);
+			msdc_set_tdsel(host, MSDC_TDRDSEL_CUST, 0);
+			msdc_set_rdsel(host, MSDC_TDRDSEL_CUST, 0);
+		}
+		if (host->hw->flags & MSDC_SD_NEED_POWER)
+			card_on = 1;
 
 		/* soft start, when power on */
 		if (card_on) {
@@ -311,12 +314,12 @@ void msdc_sd_power(struct msdc_host *host, u32 on)
 		msdc_ldo_power(card_on, host->mmc->supply.vmmc, VOL_3000,
 			&host->power_flash);
 
-		/* VMC VOLSEL - maintain I/O line power on active MicroSD */
+		/* VMC VOLSEL: gate off during reset/power_cycle so UHS-I 1.8V POR succeeds */
 #ifdef NMCARD_SUPPORT
-		msdc_ldo_power(1, host->mmc->supply.vqmmc, VOL_1800,
+		msdc_ldo_power(on, host->mmc->supply.vqmmc, VOL_1800,
 			&host->power_io);
 #else
-		msdc_ldo_power(1, host->mmc->supply.vqmmc, VOL_3000,
+		msdc_ldo_power(on, host->mmc->supply.vqmmc, VOL_3000,
 			&host->power_io);
 #endif
 
@@ -628,6 +631,47 @@ int msdc_get_ccf_clk_pointer(struct platform_device *pdev,
 		host->clk_ctl, host->hclk_ctl);
 
 	return 0;
+}
+
+void msdc1_select_oc_parent(struct msdc_host *host, unsigned char timing, u32 hz)
+{
+	struct clk *mux_clk;
+	struct clk *target_parent;
+	const char *parent_name;
+	unsigned long rate;
+
+	if (!host || host->hw->host_function != MSDC_SD || !host->clk_ctl || !hz)
+		return;
+
+	if (timing == MMC_TIMING_SD_HS && hz == 91000000)
+		parent_name = "mainpll_d3_d2"; /* 364 MHz -> /4 = 91 MHz */
+	else if (timing == MMC_TIMING_SD_HS && hz == 78000000)
+		parent_name = "mainpll_d7";    /* 312 MHz -> /4 = 78 MHz */
+	else if (timing == MMC_TIMING_SD_HS && hz == 52000000)
+		parent_name = "univpll_d3_d2"; /* 208 MHz -> /4 = 52 MHz */
+	else
+		parent_name = "msdcpll_d2";    /* 192 MHz -> /4=48M, /2=96M, /1=192M */
+
+	mux_clk = clk_get_parent(host->clk_ctl);
+	if (IS_ERR_OR_NULL(mux_clk))
+		mux_clk = __clk_lookup("msdc30_1_sel");
+	target_parent = __clk_lookup(parent_name);
+	if (IS_ERR_OR_NULL(mux_clk) || IS_ERR_OR_NULL(target_parent))
+		return;
+
+	if (clk_get_parent(mux_clk) != target_parent) {
+		if (clk_set_parent(mux_clk, target_parent) == 0) {
+			rate = clk_get_rate(host->clk_ctl);
+			if (rate > 0)
+				host->hclk = rate;
+			pr_info("[msdc%d] OC mux -> %s (hclk=%u Hz, req=%u Hz)\n",
+				host->id, parent_name, host->hclk, hz);
+		}
+	} else {
+		rate = clk_get_rate(host->clk_ctl);
+		if (rate > 0)
+			host->hclk = rate;
+	}
 }
 
 #include <linux/seq_file.h>
@@ -1328,6 +1372,35 @@ static int msdc_get_pinctl_settings(struct msdc_host *host,
 					"drive-strength", pin_drv);
 			pin_drv++;
 		}
+	}
+
+	if (host->id == 1) {
+		struct msdc_hw_driving *uhs_drv[] = {
+			&host->hw->driving_sdr104,
+			&host->hw->driving_sdr50,
+			&host->hw->driving_ddr50,
+		};
+		if (host->hw->driving.clk_drv < 5)
+			host->hw->driving.clk_drv = 5;
+		if (host->hw->driving.cmd_drv < 5)
+			host->hw->driving.cmd_drv = 5;
+		if (host->hw->driving.dat_drv < 5)
+			host->hw->driving.dat_drv = 5;
+		for (i = 0; i < ARRAY_SIZE(uhs_drv); i++) {
+			if (uhs_drv[i]->clk_drv < 6)
+				uhs_drv[i]->clk_drv = 6;
+			if (uhs_drv[i]->cmd_drv < 6)
+				uhs_drv[i]->cmd_drv = 6;
+			if (uhs_drv[i]->dat_drv < 6)
+				uhs_drv[i]->dat_drv = 6;
+		}
+		pr_info("[msdc1] driving tuned: 3.0V=%u/%u/%u, 1.8V=%u/%u/%u\n",
+			host->hw->driving.clk_drv,
+			host->hw->driving.cmd_drv,
+			host->hw->driving.dat_drv,
+			host->hw->driving_sdr104.clk_drv,
+			host->hw->driving_sdr104.cmd_drv,
+			host->hw->driving_sdr104.dat_drv);
 	}
 
 	return 0;

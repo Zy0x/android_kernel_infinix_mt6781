@@ -3788,7 +3788,7 @@ recovery:
 		 */
 		if (host->hw->host_function == MSDC_SD)
 			ret = sdcard_reset_tuning(mmc);
-	} else if (!tune_smpl) {
+	} else if (!tune_smpl && !ret) {
 		pr_info("msdc%d autok pass\n", host->id);
 		host->need_tune |= TUNE_AUTOK_PASS;
 	}
@@ -4432,6 +4432,8 @@ void msdc_ops_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 			} else if (host->timing == MMC_TIMING_MMC_HS200) {
 				host->hw->driving_applied =
 					&host->hw->driving_hs200;
+			} else {
+				host->hw->driving_applied = &host->hw->driving;
 			}
 			msdc_set_driving(host, host->hw->driving_applied);
 		}
@@ -4443,9 +4445,15 @@ void msdc_ops_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	if (host->mclk != ios->clock) {
 		if ((host->mclk > ios->clock)
-		 && (ios->clock <= 52000000)
+		 && (ios->clock <= 52000000 || ios->timing == MMC_TIMING_SD_HS)
 		 && (ios->clock > 0))
 			msdc_init_tune_setting(host);
+
+		if (host->hw->host_function == MSDC_SD && ios->clock > 0) {
+			spin_unlock(&host->lock);
+			msdc1_select_oc_parent(host, ios->timing, ios->clock);
+			spin_lock(&host->lock);
+		}
 
 		msdc_set_mclk(host, ios->timing, ios->clock);
 
@@ -4533,6 +4541,8 @@ static void msdc_ops_card_event(struct mmc_host *mmc)
 	msdc_reset_bad_sd_detecter(host);
 
 	host->is_autok_done = 0;
+	mmc->sd_uhs_skip_mask = 0;
+	msdc_reset_tune_retry(host);
 	msdc_ops_get_cd(mmc);
 	/* when detect card, timeout log log is not needed */
 	sd_register_zone[host->id] = 0;
@@ -4858,6 +4868,7 @@ skip:
 			host->need_tune = TUNE_NONE;
 			host->reautok_times = 0;
 			host->tune_smpl_times = 0;
+			msdc_reset_tune_retry(host);
 			host->err_cmd = -1;
 			host->prev_cmd_cause_dump = 0;
 		}
@@ -5326,7 +5337,14 @@ static int msdc_drv_probe(struct platform_device *pdev)
 		mmc->caps |= MMC_CAP_CMD23;
 #endif
 	if (host->hw->host_function == MSDC_SD) {
-		mmc->caps |= MMC_CAP_AGGRESSIVE_PM;
+		/* Expose XPC current budget (up to 600mA under 800mA LDO VMCH) */
+		if (!mmc->max_current_180)
+			mmc->max_current_180 = 600;
+		if (!mmc->max_current_300)
+			mmc->max_current_300 = 600;
+		if (!mmc->max_current_330)
+			mmc->max_current_330 = 600;
+		/* Keep runtime idle power continuous without breaking hardware reset/POR */
 #ifdef NMCARD_SUPPORT
 		mmc->caps2 |= MMC_CAP2_NMCARD;
 #endif

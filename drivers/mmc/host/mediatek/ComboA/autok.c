@@ -5032,8 +5032,14 @@ void autok_low_speed_switch_edge(struct msdc_host *host,
 			} else {
 				MSDC_SET_FIELD(MSDC_IOCON,
 					MSDC_IOCON_R_D_SMPL_SEL, 0);
-				MSDC_SET_FIELD(MSDC_IOCON,
-					MSDC_IOCON_R_D_SMPL, 0);
+				if ((host->tune_smpl_times & 0x1) == 0) {
+					MSDC_GET_FIELD(MSDC_IOCON,
+						MSDC_IOCON_R_D_SMPL,
+						orig_read_edge);
+					MSDC_SET_FIELD(MSDC_IOCON,
+						MSDC_IOCON_R_D_SMPL,
+						orig_read_edge ^ 0x1);
+				}
 				MSDC_GET_FIELD(MSDC_PATCH_BIT0,
 					MSDC_PB0_RD_DAT_SEL,
 					orig_read_fifo_edge);
@@ -6503,6 +6509,9 @@ int autok_execute_tuning(struct msdc_host *host, u8 *res)
 	MSDC_GET_FIELD(MSDC_CFG, MSDC_CFG_DVFS_EN, dvfs_en);
 	MSDC_GET_FIELD(MSDC_CFG, MSDC_CFG_DVFS_HW, dvfs_hw);
 	MSDC_GET_FIELD(SDC_CFG, SDC_CFG_DTOC, dtoc);
+	autok_msdc_reset();
+	msdc_clear_fifo();
+	MSDC_WRITE32(MSDC_INT, 0xffffffff);
 	MSDC_SET_FIELD(MSDC_CFG, MSDC_CFG_CKPDN, 1);
 	MSDC_SET_FIELD(MSDC_CFG, MSDC_CFG_DVFS_EN, 0);
 	MSDC_SET_FIELD(MSDC_CFG, MSDC_CFG_DVFS_HW, 0);

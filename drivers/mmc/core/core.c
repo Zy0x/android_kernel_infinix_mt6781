@@ -2831,8 +2831,8 @@ void mmc_power_off(struct mmc_host *host)
 void mmc_power_cycle(struct mmc_host *host, u32 ocr)
 {
 	mmc_power_off(host);
-	/* Wait at least 1 ms according to SD spec */
-	mmc_delay(1);
+	/* Allow removable SD VMMC/VQMMC bypass caps to discharge cleanly below POR */
+	mmc_delay((host->caps & MMC_CAP_NONREMOVABLE) ? 1 : 15);
 	mmc_power_up(host, ocr);
 }
 

@@ -438,10 +438,15 @@ int sd_execute_dvfs_autok(struct msdc_host *host, u32 opcode)
 		if (host->is_autok_done == 0) {
 			pr_notice("[AUTOK]SDcard autok\n");
 			ret = autok_execute_tuning(host, res);
-			memcpy(host->autok_res[AUTOK_VCORE_LEVEL0],
-					host->autok_res[AUTOK_VCORE_MERGE],
-					TUNING_PARA_SCAN_COUNT);
-			host->is_autok_done = 1;
+			if (!ret) {
+				memcpy(host->autok_res[AUTOK_VCORE_LEVEL0],
+						host->autok_res[AUTOK_VCORE_MERGE],
+						TUNING_PARA_SCAN_COUNT);
+				host->is_autok_done = 1;
+			} else {
+				host->is_autok_done = 0;
+				pr_notice("[AUTOK]SDcard autok failed (%d)\n", ret);
+			}
 		} else {
 			autok_init_sdr104(host);
 			autok_tuning_parameter_init(host, res);
@@ -909,6 +914,11 @@ int sd_runtime_autok_merge(struct msdc_host *host)
 	u8 *res = host->autok_res[AUTOK_VCORE_LEVEL1];
 
 	ret = autok_execute_tuning(host, res);
+	if (ret) {
+		pr_notice("[AUTOK]%s: autok failed (%d), skip merge\n",
+			__func__, ret);
+		return ret;
+	}
 
 	merge_mode = MERGE_HS200_SDR104;
 	merge_result = autok_vcore_merge_sel(host, merge_mode);

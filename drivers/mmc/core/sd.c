@@ -330,8 +330,13 @@ static int mmc_read_switch(struct mmc_card *card)
 		goto out;
 	}
 
-	if (status[13] & SD_MODE_HIGH_SPEED)
-		card->sw_caps.hs_max_dtr = HIGH_SPEED_MAX_DTR;
+	if (status[13] & SD_MODE_HIGH_SPEED) {
+		if (card->scr.sda_spec3 &&
+		    (card->host->caps & MMC_CAP_UHS_SDR50))
+			card->sw_caps.hs_max_dtr = 96000000;
+		else
+			card->sw_caps.hs_max_dtr = HIGH_SPEED_MAX_DTR;
+	}
 
 	if (card->scr.sda_spec3) {
 		card->sw_caps.sd3_bus_mode = status[13];
@@ -421,6 +426,8 @@ static int sd_select_driver_type(struct mmc_card *card, u8 *status)
 
 static void sd_update_bus_speed_mode(struct mmc_card *card)
 {
+	u32 mode = card->sw_caps.sd3_bus_mode & ~card->host->sd_uhs_skip_mask;
+
 	/*
 	 * If the host doesn't support any of the UHS-I modes, fallback on
 	 * default speed.
@@ -430,24 +437,30 @@ static void sd_update_bus_speed_mode(struct mmc_card *card)
 		return;
 	}
 
+	/*
+	 * Try SDR50 (96 MHz single-edge w/ CMD19 AUTOK) before DDR50
+	 * (48 MHz dual-edge without CMD19 tuning on this controller).
+	 */
 	if ((card->host->caps & MMC_CAP_UHS_SDR104) &&
-	    (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR104)) {
+	    (mode & SD_MODE_UHS_SDR104)) {
 			card->sd_bus_speed = UHS_SDR104_BUS_SPEED;
+	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
+		    MMC_CAP_UHS_SDR50)) &&
+		   (mode & SD_MODE_UHS_SDR50)) {
+			card->sd_bus_speed = UHS_SDR50_BUS_SPEED;
 	} else if ((card->host->caps & MMC_CAP_UHS_DDR50) &&
-		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_DDR50)) {
+		   (mode & SD_MODE_UHS_DDR50)) {
 			card->sd_bus_speed = UHS_DDR50_BUS_SPEED;
 	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
-		    MMC_CAP_UHS_SDR50)) && (card->sw_caps.sd3_bus_mode &
-		    SD_MODE_UHS_SDR50)) {
-			card->sd_bus_speed = UHS_SDR50_BUS_SPEED;
-	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
 		    MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR25)) &&
-		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR25)) {
+		   (mode & SD_MODE_UHS_SDR25)) {
 			card->sd_bus_speed = UHS_SDR25_BUS_SPEED;
 	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
 		    MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR25 |
-		    MMC_CAP_UHS_SDR12)) && (card->sw_caps.sd3_bus_mode &
-		    SD_MODE_UHS_SDR12)) {
+		    MMC_CAP_UHS_SDR12)) &&
+		   (mode & SD_MODE_UHS_SDR12)) {
+			card->sd_bus_speed = UHS_SDR12_BUS_SPEED;
+	} else {
 			card->sd_bus_speed = UHS_SDR12_BUS_SPEED;
 	}
 }
@@ -660,6 +673,20 @@ static int mmc_sd_init_uhs_card(struct mmc_card *card)
 	}
 
 out:
+	if (err) {
+		u32 avail;
+
+		card->host->sd_uhs_skip_mask |= (1U << card->sd_bus_speed);
+		avail = card->sw_caps.sd3_bus_mode &
+			~card->host->sd_uhs_skip_mask;
+		if (!(avail & (SD_MODE_UHS_SDR104 | SD_MODE_UHS_SDR50 |
+			       SD_MODE_UHS_DDR50 | SD_MODE_UHS_SDR25)) &&
+		    !(card->host->sd_uhs_skip_mask & MMC_SD_SKIP_3V_HS))
+			card->host->sd_uhs_skip_mask |= MMC_SD_SKIP_1V8;
+		pr_warn("%s: UHS speed %u failed (%d), skip mask=0x%x\n",
+			mmc_hostname(card->host), card->sd_bus_speed, err,
+			card->host->sd_uhs_skip_mask);
+	}
 	kfree(status);
 
 	return err;
@@ -769,7 +796,8 @@ try_again:
 	 * to switch to 1.8V signaling level. If the card has failed
 	 * repeatedly to switch however, skip this.
 	 */
-	if (retries && mmc_host_uhs(host))
+	if (retries && mmc_host_uhs(host) &&
+	    !(host->sd_uhs_skip_mask & MMC_SD_SKIP_1V8))
 		ocr |= SD_OCR_S18R;
 
 	/*
@@ -1337,10 +1365,12 @@ int mmc_attach_sd(struct mmc_host *host)
 	 * Detect and init the card.
 	 */
 #ifdef CONFIG_MMC_PARANOID_SD_INIT
-	retries = 5;
+	retries = 8;
 	while (retries) {
 		err = mmc_sd_init_card(host, rocr, NULL);
 		if (err) {
+			if (retries > 1)
+				mmc_power_cycle(host, rocr);
 			retries--;
 			continue;
 		}

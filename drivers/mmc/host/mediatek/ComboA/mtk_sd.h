@@ -721,6 +721,8 @@ u32 msdc_get_other_capacity(struct msdc_host *host, char *name);
 /* Function provided by msdc_tune.c */
 int sdcard_hw_reset(struct mmc_host *mmc);
 int sdcard_reset_tuning(struct mmc_host *mmc);
+void msdc1_select_oc_parent(struct msdc_host *host, unsigned char timing, u32 hz);
+void msdc_reset_tune_retry(struct msdc_host *host);
 int emmc_reinit_tuning(struct mmc_host *mmc);
 void msdc_init_tune_setting(struct msdc_host *host);
 void msdc_ios_tune_setting(struct msdc_host *host, struct mmc_ios *ios);

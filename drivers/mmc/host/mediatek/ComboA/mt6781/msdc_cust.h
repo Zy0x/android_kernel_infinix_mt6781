@@ -510,7 +510,7 @@
 
 /* if continuous power cycle fail reach the limit */
 /* driver will force remove card */
-#define MSDC_MAX_POWER_CYCLE_FAIL_CONTINUOUS (3)
+#define MSDC_MAX_POWER_CYCLE_FAIL_CONTINUOUS (12)
 
 /* sdcard esd recovery */
 /* power reset sdcard when sdcard hang from esd */

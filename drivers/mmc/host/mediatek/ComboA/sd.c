@@ -3694,8 +3694,8 @@ int msdc_error_tuning(struct mmc_host *mmc,  struct mmc_request *mrq)
 	}
 
 	if (host->hw->host_function == MSDC_SD) {
-		if (autok_err_type == CRC_STATUS_ERROR) {
-			pr_notice("%s: reset sdcard\n",
+		if (autok_err_type == CRC_STATUS_ERROR && host->tune_smpl_times >= 1) {
+			pr_notice("%s: reset sdcard after edge retry\n",
 				__func__);
 			(void)sdcard_hw_reset(mmc);
 			goto start_tune;
@@ -3752,7 +3752,21 @@ start_tune:
 			break;
 		}
 		/* fall through */
-		/* Other speed mode will tune smpl */
+	case MMC_TIMING_SD_HS:
+	case MMC_TIMING_UHS_DDR50:
+		if (host->hw->host_function == MSDC_SD &&
+		    (mmc->ios.timing == MMC_TIMING_UHS_DDR50 ||
+		     mmc->ios.clock >= 39000000) &&
+		    host->reautok_times < 2 &&
+		    autok_err_type != CRC_STATUS_ERROR) {
+			pr_notice("msdc%d: SD_HS/DDR50 re-eye-tune %d (clk=%u)\n",
+				host->id, ++host->reautok_times, mmc->ios.clock);
+			ret = autok_execute_tuning_op(host, NULL,
+				MMC_SEND_STATUS, MMC_READ_SINGLE_BLOCK);
+			if (!ret)
+				break;
+		}
+		/* Fall through to sample edge toggle only if fine eye tune exhausted */
 	default:
 		tune_smpl = 1;
 		pr_notice("msdc%d: tune smpl %d times timing:%d err: %d\n",
@@ -4164,8 +4178,13 @@ static void msdc_ops_request_legacy(struct mmc_host *mmc,
 			host->tune_smpl_times = 0;
 			host->need_tune = TUNE_NONE;
 		}
-		if (host->need_tune == TUNE_NONE)
+		if (host->need_tune == TUNE_NONE) {
 			host->err_cmd = -1;
+			if (mrq->cmd->data && !host->tuning_in_progress) {
+				host->reautok_times = 0;
+				host->tune_smpl_times = 0;
+			}
+		}
 	}
 
 #ifdef CONFIG_MTK_EMMC_CQ_SUPPORT
@@ -4445,9 +4464,13 @@ void msdc_ops_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	if (host->mclk != ios->clock) {
 		if ((host->mclk > ios->clock)
-		 && (ios->clock <= 52000000 || ios->timing == MMC_TIMING_SD_HS)
-		 && (ios->clock > 0))
+		 && (ios->clock <= 52000000 ||
+		     host->hw->host_function == MSDC_SD)
+		 && (ios->clock > 0)) {
 			msdc_init_tune_setting(host);
+			if (host->hw->host_function == MSDC_SD)
+				host->is_autok_done = 0;
+		}
 
 		if (host->hw->host_function == MSDC_SD && ios->clock > 0) {
 			spin_unlock(&host->lock);
@@ -4542,6 +4565,9 @@ static void msdc_ops_card_event(struct mmc_host *mmc)
 
 	host->is_autok_done = 0;
 	mmc->sd_uhs_skip_mask = 0;
+	mmc->sd_sdr104_max_dtr = 0;
+	mmc->sd_sdr50_max_dtr = 0;
+	mmc->sd_ddr50_max_dtr = 0;
 	msdc_reset_tune_retry(host);
 	msdc_ops_get_cd(mmc);
 	/* when detect card, timeout log log is not needed */
@@ -5329,11 +5355,14 @@ static int msdc_drv_probe(struct platform_device *pdev)
 		mmc->f_min = HOST_MIN_MCLK;
 	if (!mmc->f_max)
 		mmc->f_max = HOST_MAX_MCLK;
+	if (host->hw->host_function == MSDC_SD && mmc->f_max < HOST_MAX_MCLK)
+		mmc->f_max = HOST_MAX_MCLK;
 
 	if ((hw->flags & MSDC_SDIO_IRQ) || (hw->flags & MSDC_EXT_SDIO_IRQ))
 		mmc->caps |= MMC_CAP_SDIO_IRQ;  /* yes for sdio */
 #ifdef MTK_MSDC_USE_CMD23
-	if (host->hw->host_function == MSDC_EMMC)
+	if (host->hw->host_function == MSDC_EMMC ||
+	    host->hw->host_function == MSDC_SD)
 		mmc->caps |= MMC_CAP_CMD23;
 #endif
 	if (host->hw->host_function == MSDC_SD) {
@@ -5426,7 +5455,8 @@ static int msdc_drv_probe(struct platform_device *pdev)
 		host->mmc->caps & MMC_CAP_NONREMOVABLE ? 1 : 0;
 	host->timeout_clks = DEFAULT_DTOC * 1048576;
 
-	if (host->hw->host_function == MSDC_EMMC) {
+	if (host->hw->host_function == MSDC_EMMC ||
+	    host->hw->host_function == MSDC_SD) {
 #ifdef MTK_MSDC_USE_CMD23
 		host->autocmd &= ~MSDC_AUTOCMD12;
 #if (MSDC_USE_AUTO_CMD23 == 1)
@@ -5435,8 +5465,6 @@ static int msdc_drv_probe(struct platform_device *pdev)
 #else
 		host->autocmd |= MSDC_AUTOCMD12;
 #endif
-	} else if (host->hw->host_function == MSDC_SD) {
-		host->autocmd |= MSDC_AUTOCMD12;
 	} else {
 		host->autocmd &= ~MSDC_AUTOCMD12;
 	}

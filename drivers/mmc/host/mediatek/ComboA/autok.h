@@ -389,6 +389,8 @@ extern void autok_low_speed_switch_edge(struct msdc_host *host,
 extern void autok_tuning_parameter_init(struct msdc_host *host, u8 *res);
 extern int autok_sdio30_plus_tuning(struct msdc_host *host, u8 *res);
 extern int autok_execute_tuning(struct msdc_host *host, u8 *res);
+extern int autok_execute_tuning_op(struct msdc_host *host, u8 *res,
+	unsigned int cmd_opcode, unsigned int dat_opcode);
 extern int hs200_execute_tuning(struct msdc_host *host, u8 *res);
 extern int hs200_execute_tuning_cmd(struct msdc_host *host, u8 *res);
 extern int hs400_execute_tuning(struct msdc_host *host, u8 *res);

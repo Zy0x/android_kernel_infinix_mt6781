@@ -333,7 +333,7 @@ static int mmc_read_switch(struct mmc_card *card)
 	if (status[13] & SD_MODE_HIGH_SPEED) {
 		if (card->scr.sda_spec3 &&
 		    (card->host->caps & MMC_CAP_UHS_SDR50))
-			card->sw_caps.hs_max_dtr = 96000000;
+			card->sw_caps.hs_max_dtr = 104000000;
 		else
 			card->sw_caps.hs_max_dtr = HIGH_SPEED_MAX_DTR;
 	}
@@ -473,15 +473,28 @@ static int sd_set_bus_speed_mode(struct mmc_card *card, u8 *status)
 	switch (card->sd_bus_speed) {
 	case UHS_SDR104_BUS_SPEED:
 		timing = MMC_TIMING_UHS_SDR104;
-		card->sw_caps.uhs_max_dtr = UHS_SDR104_MAX_DTR;
+		if (card->host->sd_sdr104_max_dtr)
+			card->sw_caps.uhs_max_dtr = card->host->sd_sdr104_max_dtr;
+		else if (card->host->f_max >= 221000000)
+			card->sw_caps.uhs_max_dtr = 221000000;
+		else
+			card->sw_caps.uhs_max_dtr = UHS_SDR104_MAX_DTR;
 		break;
 	case UHS_DDR50_BUS_SPEED:
 		timing = MMC_TIMING_UHS_DDR50;
-		card->sw_caps.uhs_max_dtr = UHS_DDR50_MAX_DTR;
+		if (card->host->sd_ddr50_max_dtr)
+			card->sw_caps.uhs_max_dtr = card->host->sd_ddr50_max_dtr;
+		else
+			card->sw_caps.uhs_max_dtr = 52000000;
 		break;
 	case UHS_SDR50_BUS_SPEED:
 		timing = MMC_TIMING_UHS_SDR50;
-		card->sw_caps.uhs_max_dtr = UHS_SDR50_MAX_DTR;
+		if (card->host->sd_sdr50_max_dtr)
+			card->sw_caps.uhs_max_dtr = card->host->sd_sdr50_max_dtr;
+		else if (card->host->f_max >= 104000000)
+			card->sw_caps.uhs_max_dtr = 104000000;
+		else
+			card->sw_caps.uhs_max_dtr = UHS_SDR50_MAX_DTR;
 		break;
 	case UHS_SDR25_BUS_SPEED:
 		timing = MMC_TIMING_UHS_SDR25;
@@ -656,7 +669,51 @@ static int mmc_sd_init_uhs_card(struct mmc_card *card)
 		(card->host->ios.timing == MMC_TIMING_UHS_SDR50 ||
 		 card->host->ios.timing == MMC_TIMING_UHS_DDR50 ||
 		 card->host->ios.timing == MMC_TIMING_UHS_SDR104)) {
-		err = mmc_execute_tuning(card);
+		for (;;) {
+			u32 cur = card->sw_caps.uhs_max_dtr;
+			u32 next = 0;
+
+			err = mmc_execute_tuning(card);
+			if (!err)
+				break;
+
+			if (card->host->ios.timing == MMC_TIMING_UHS_SDR104) {
+				if (cur > 208000000)
+					next = 208000000;
+				else if (cur > 192000000)
+					next = 192000000;
+				else if (cur > 182000000)
+					next = 182000000;
+				else if (cur > 156000000)
+					next = 156000000;
+				else if (cur > 130000000)
+					next = 130000000;
+				if (next)
+					card->host->sd_sdr104_max_dtr = next;
+			} else if (card->host->ios.timing == MMC_TIMING_UHS_SDR50) {
+				if (cur > 96000000)
+					next = 96000000;
+				else if (cur > 91000000)
+					next = 91000000;
+				else if (cur > 78000000)
+					next = 78000000;
+				if (next)
+					card->host->sd_sdr50_max_dtr = next;
+			} else if (card->host->ios.timing == MMC_TIMING_UHS_DDR50) {
+				if (cur > 48000000) {
+					next = 48000000;
+					card->host->sd_ddr50_max_dtr = next;
+				}
+			}
+
+			if (!next)
+				break;
+
+			pr_info("%s: adaptive UHS eye-lock step %u -> %u Hz\n",
+				mmc_hostname(card->host), cur, next);
+			card->sw_caps.uhs_max_dtr = next;
+			mmc_set_clock(card->host, next);
+		}
 
 		/*
 		 * As SD Specifications Part1 Physical Layer Specification
@@ -1081,6 +1138,40 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 				goto free_card;
 
 			mmc_set_bus_width(host, MMC_BUS_WIDTH_4);
+		}
+
+		while (!mmc_host_is_spi(host) &&
+		       host->ios.timing == MMC_TIMING_SD_HS &&
+		       host->ios.clock >= 39000000) {
+			u32 cur = card->sw_caps.hs_max_dtr;
+			u32 next = 0;
+
+			if (mmc_execute_tuning(card) == 0)
+				break;
+
+			if (cur > 96000000)
+				next = 96000000;
+			else if (cur > 91000000)
+				next = 91000000;
+			else if (cur > 78000000)
+				next = 78000000;
+			else if (cur > 65000000)
+				next = 65000000;
+			else if (cur > 52000000)
+				next = 52000000;
+			else if (cur > 48000000)
+				next = 48000000;
+			else if (cur > 45500000)
+				next = 45500000;
+			else if (cur > 39000000)
+				next = 39000000;
+			else
+				next = 24000000;
+
+			pr_info("%s: adaptive SD_HS eye-lock step %u -> %u Hz\n",
+				mmc_hostname(host), cur, next);
+			card->sw_caps.hs_max_dtr = next;
+			mmc_set_clock(host, next);
 		}
 	}
 

@@ -428,20 +428,70 @@ int sdcard_reset_tuning(struct mmc_host *mmc)
 		u32 mode = mmc->card->sw_caps.sd3_bus_mode & ~mmc->sd_uhs_skip_mask;
 
 		if (mode & SD_MODE_UHS_SDR104) {
-			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR104;
-			mmc->sd_uhs_skip_mask |= SD_MODE_UHS_SDR104;
-			remove_cap = "UHS_SDR104";
-			pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+			u32 cur = mmc->sd_sdr104_max_dtr ?
+				  mmc->sd_sdr104_max_dtr : mmc->card->sw_caps.uhs_max_dtr;
+			u32 next = 0;
+
+			if (cur > 208000000)
+				next = 208000000;
+			else if (cur > 192000000)
+				next = 192000000;
+			else if (cur > 182000000)
+				next = 182000000;
+			else if (cur > 156000000)
+				next = 156000000;
+			else if (cur > 130000000)
+				next = 130000000;
+
+			if (next) {
+				mmc->sd_sdr104_max_dtr = next;
+				mmc->card->sw_caps.uhs_max_dtr = next;
+				pr_notice("msdc%d: step down UHS_SDR104 %u -> %u Hz then reinit\n",
+					host->id, cur, next);
+			} else {
+				mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR104;
+				mmc->sd_uhs_skip_mask |= SD_MODE_UHS_SDR104;
+				remove_cap = "UHS_SDR104";
+				pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+			}
 		} else if (mode & SD_MODE_UHS_SDR50) {
-			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR50;
-			mmc->sd_uhs_skip_mask |= SD_MODE_UHS_SDR50;
-			remove_cap = "UHS_SDR50";
-			pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+			u32 cur = mmc->sd_sdr50_max_dtr ?
+				  mmc->sd_sdr50_max_dtr : mmc->card->sw_caps.uhs_max_dtr;
+			u32 next = 0;
+
+			if (cur > 96000000)
+				next = 96000000;
+			else if (cur > 91000000)
+				next = 91000000;
+			else if (cur > 78000000)
+				next = 78000000;
+
+			if (next) {
+				mmc->sd_sdr50_max_dtr = next;
+				mmc->card->sw_caps.uhs_max_dtr = next;
+				pr_notice("msdc%d: step down UHS_SDR50 %u -> %u Hz then reinit\n",
+					host->id, cur, next);
+			} else {
+				mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR50;
+				mmc->sd_uhs_skip_mask |= SD_MODE_UHS_SDR50;
+				remove_cap = "UHS_SDR50";
+				pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+			}
 		} else if (mode & SD_MODE_UHS_DDR50) {
-			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_DDR50;
-			mmc->sd_uhs_skip_mask |= SD_MODE_UHS_DDR50;
-			remove_cap = "UHS_DDR50";
-			pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+			u32 cur = mmc->sd_ddr50_max_dtr ?
+				  mmc->sd_ddr50_max_dtr : mmc->card->sw_caps.uhs_max_dtr;
+
+			if (cur > 48000000) {
+				mmc->sd_ddr50_max_dtr = 48000000;
+				mmc->card->sw_caps.uhs_max_dtr = 48000000;
+				pr_notice("msdc%d: step down UHS_DDR50 %u -> 48000000 Hz then reinit\n",
+					host->id, cur);
+			} else {
+				mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_DDR50;
+				mmc->sd_uhs_skip_mask |= SD_MODE_UHS_DDR50;
+				remove_cap = "UHS_DDR50";
+				pr_notice("msdc%d: step down %s then reinit card\n", host->id, remove_cap);
+			}
 		} else if (mode & SD_MODE_UHS_SDR25) {
 			mmc->card->sw_caps.sd3_bus_mode &= ~SD_MODE_UHS_SDR25;
 			mmc->sd_uhs_skip_mask |= SD_MODE_UHS_SDR25;
@@ -468,14 +518,22 @@ int sdcard_reset_tuning(struct mmc_host *mmc)
 		(void)retry;
 	} else if (mmc_card_hs(mmc->card)) {
 		mmc->sd_uhs_skip_mask |= MMC_SD_SKIP_3V_HS;
-		if (mmc->card->sw_caps.hs_max_dtr > 91000000)
+		if (mmc->card->sw_caps.hs_max_dtr > 96000000)
+			mmc->card->sw_caps.hs_max_dtr = 96000000;
+		else if (mmc->card->sw_caps.hs_max_dtr > 91000000)
 			mmc->card->sw_caps.hs_max_dtr = 91000000;
 		else if (mmc->card->sw_caps.hs_max_dtr > 78000000)
 			mmc->card->sw_caps.hs_max_dtr = 78000000;
+		else if (mmc->card->sw_caps.hs_max_dtr > 65000000)
+			mmc->card->sw_caps.hs_max_dtr = 65000000;
 		else if (mmc->card->sw_caps.hs_max_dtr > 52000000)
 			mmc->card->sw_caps.hs_max_dtr = 52000000;
-		else if (mmc->card->sw_caps.hs_max_dtr > HIGH_SPEED_MAX_DTR)
-			mmc->card->sw_caps.hs_max_dtr = HIGH_SPEED_MAX_DTR;
+		else if (mmc->card->sw_caps.hs_max_dtr > 48000000)
+			mmc->card->sw_caps.hs_max_dtr = 48000000;
+		else if (mmc->card->sw_caps.hs_max_dtr > 45500000)
+			mmc->card->sw_caps.hs_max_dtr = 45500000;
+		else if (mmc->card->sw_caps.hs_max_dtr > 39000000)
+			mmc->card->sw_caps.hs_max_dtr = 39000000;
 		else if (mmc->card->sw_caps.hs_max_dtr >= HIGH_SPEED_MAX_DTR / 4)
 			mmc->card->sw_caps.hs_max_dtr /= 2;
 		pr_notice("msdc%d: step down hs speed %dhz then reinit card\n", host->id, mmc->card->sw_caps.hs_max_dtr);

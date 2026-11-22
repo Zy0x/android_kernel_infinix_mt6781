@@ -510,6 +510,9 @@ struct mmc_host {
 	u32			sd_uhs_skip_mask;	/* Bitmask of failed SD modes */
 #define MMC_SD_SKIP_1V8		(1U << 31)
 #define MMC_SD_SKIP_3V_HS	(1U << 30)
+	u32			sd_sdr104_max_dtr;	/* Adaptive SDR104 clock ceiling */
+	u32			sd_sdr50_max_dtr;	/* Adaptive SDR50 clock ceiling */
+	u32			sd_ddr50_max_dtr;	/* Adaptive DDR50 clock ceiling */
 
 #define MMC_CAP2_BOOTPART_NOACC	(1 << 0)	/* Boot partition no access */
 #define MMC_CAP2_FULL_PWR_CYCLE	(1 << 2)	/* Can do full power cycle */

@@ -457,7 +457,8 @@ static int autok_send_tune_cmd(struct msdc_host *host, unsigned int opcode,
 		break;
 	case MMC_SEND_STATUS:
 		rawcmd = (1 << 7) | (13);
-		arg = (1 << 16);
+		arg = (host->mmc && host->mmc->card && host->mmc->card->rca)
+			? (host->mmc->card->rca << 16) : (1 << 16);
 		break;
 	case CHECK_QSR:
 		rawcmd = (1 << 7) | (13);
@@ -717,6 +718,10 @@ static int autok_send_tune_cmd(struct msdc_host *host, unsigned int opcode,
 						rx_read(host, value);
 				}
 			}
+		} else if ((tune_type_value == TUNE_DATA)
+		&& (opcode == MMC_READ_SINGLE_BLOCK)) {
+			while (msdc_rxfifocnt() >= 4)
+				value = MSDC_READ32(MSDC_RXDATA);
 		} else if ((tune_type_value == TUNE_SDIO_PLUS)
 		&& (opcode == SD_IO_RW_EXTENDED)) {
 			MSDC_WRITE32(MSDC_TXDATA, 0x5a5a5a5a);
@@ -4558,8 +4563,9 @@ fail:
 	return -1;
 }
 
-/* online tuning for SDIO/SD */
-int execute_online_tuning(struct msdc_host *host, u8 *res)
+/* online tuning for SDIO/SD with configurable CMD/DAT probe opcodes */
+static int execute_online_tuning_op(struct msdc_host *host, u8 *res,
+	unsigned int cmd_opcode, unsigned int dat_opcode)
 {
 	void __iomem *base = host->base;
 	unsigned int ret = 0;
@@ -4569,7 +4575,7 @@ int execute_online_tuning(struct msdc_host *host, u8 *res)
 	u64 RawData64 = 0LL;
 	unsigned int score = 0;
 	unsigned int j, k;
-	unsigned int opcode = MMC_SEND_TUNING_BLOCK;
+	unsigned int opcode = cmd_opcode;
 	struct AUTOK_REF_INFO *pBdInfo;
 	char tune_result_str64[65];
 	u8 p_autok_tune_res[TUNING_PARA_SCAN_COUNT];
@@ -4664,6 +4670,7 @@ int execute_online_tuning(struct msdc_host *host, u8 *res)
 		p_autok_tune_res);
 
 	/* Step2 : Tuning Data Path */
+	opcode = dat_opcode;
 	autok_tuning_parameter_init(host, p_autok_tune_res);
 	memset(pBdInfo, 0, sizeof(struct AUTOK_REF_INFO));
 
@@ -4719,8 +4726,9 @@ int execute_online_tuning(struct msdc_host *host, u8 *res)
 		p_autok_tune_res);
 	autok_paddly_update(DAT_PAD_RDLY, pBdInfo->opt_dly_cnt,
 		p_autok_tune_res);
-	autok_param_update(WD_FIFO_EDGE, pBdInfo->opt_edge_sel,
-		p_autok_tune_res);
+	if (dat_opcode == MMC_SEND_TUNING_BLOCK)
+		autok_param_update(WD_FIFO_EDGE, pBdInfo->opt_edge_sel,
+			p_autok_tune_res);
 
 	autok_tuning_parameter_init(host, p_autok_tune_res);
 
@@ -4748,6 +4756,12 @@ int execute_online_tuning(struct msdc_host *host, u8 *res)
 fail:
 	kfree(pBdInfo);
 	return -1;
+}
+
+int execute_online_tuning(struct msdc_host *host, u8 *res)
+{
+	return execute_online_tuning_op(host, res,
+		MMC_SEND_TUNING_BLOCK, MMC_SEND_TUNING_BLOCK);
 }
 
 void autok_msdc_tx_setting(struct msdc_host *host, struct mmc_ios *ios)
@@ -6486,7 +6500,8 @@ int autok_sdio30_plus_tuning(struct msdc_host *host, u8 *res)
 }
 EXPORT_SYMBOL(autok_sdio30_plus_tuning);
 
-int autok_execute_tuning(struct msdc_host *host, u8 *res)
+static int autok_execute_tuning_core(struct msdc_host *host, u8 *res,
+	unsigned int cmd_opcode, unsigned int dat_opcode)
 {
 	int ret = 0;
 	struct timeval tm_s, tm_e;
@@ -6523,7 +6538,7 @@ int autok_execute_tuning(struct msdc_host *host, u8 *res)
 		autok_tune_res[i] = value;
 	}
 
-	ret = execute_online_tuning(host, res);
+	ret = execute_online_tuning_op(host, res, cmd_opcode, dat_opcode);
 	if (ret != 0) {
 		AUTOK_RAWPRINT("[AUTOK] ======Autok Failed======\r\n");
 		AUTOK_RAWPRINT("[AUTOK] ======restore pre paras======\r\n");
@@ -6552,6 +6567,19 @@ int autok_execute_tuning(struct msdc_host *host, u8 *res)
 	AUTOK_RAWPRINT("[AUTOK]======Cost:%d ms======\r\n", tm_val);
 
 	return ret;
+}
+
+int autok_execute_tuning_op(struct msdc_host *host, u8 *res,
+	unsigned int cmd_opcode, unsigned int dat_opcode)
+{
+	return autok_execute_tuning_core(host, res, cmd_opcode, dat_opcode);
+}
+EXPORT_SYMBOL(autok_execute_tuning_op);
+
+int autok_execute_tuning(struct msdc_host *host, u8 *res)
+{
+	return autok_execute_tuning_core(host, res,
+		MMC_SEND_TUNING_BLOCK, MMC_SEND_TUNING_BLOCK);
 }
 EXPORT_SYMBOL(autok_execute_tuning);
 

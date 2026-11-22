@@ -434,10 +434,19 @@ int sd_execute_dvfs_autok(struct msdc_host *host, u32 opcode)
 	res = host->autok_res[vcore];
 
 	if (host->mmc->ios.timing == MMC_TIMING_UHS_SDR104 ||
-	    host->mmc->ios.timing == MMC_TIMING_UHS_SDR50) {
+	    host->mmc->ios.timing == MMC_TIMING_UHS_SDR50 ||
+	    host->mmc->ios.timing == MMC_TIMING_UHS_DDR50 ||
+	    (host->mmc->ios.timing == MMC_TIMING_SD_HS &&
+	     host->mmc->ios.clock >= 39000000)) {
 		if (host->is_autok_done == 0) {
-			pr_notice("[AUTOK]SDcard autok\n");
-			ret = autok_execute_tuning(host, res);
+			pr_notice("[AUTOK]SDcard autok timing=%u clk=%u\n",
+				host->mmc->ios.timing, host->mmc->ios.clock);
+			if (host->mmc->ios.timing == MMC_TIMING_UHS_DDR50 ||
+			    host->mmc->ios.timing == MMC_TIMING_SD_HS)
+				ret = autok_execute_tuning_op(host, res,
+					MMC_SEND_STATUS, MMC_READ_SINGLE_BLOCK);
+			else
+				ret = autok_execute_tuning(host, res);
 			if (!ret) {
 				memcpy(host->autok_res[AUTOK_VCORE_LEVEL0],
 						host->autok_res[AUTOK_VCORE_MERGE],

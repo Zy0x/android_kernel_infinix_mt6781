@@ -310,8 +310,8 @@ void msdc_sd_power(struct msdc_host *host, u32 on)
 			sd_oc.reg_status = 0;
 		}
 
-		/* VMCH VOLSEL */
-		msdc_ldo_power(card_on, host->mmc->supply.vmmc, VOL_3000,
+		/* VMCH VOLSEL: SDXC nominal 3.30V for burst droop headroom */
+		msdc_ldo_power(card_on, host->mmc->supply.vmmc, SD_VOL_ACTUAL,
 			&host->power_flash);
 
 		/* VMC VOLSEL: gate off during reset/power_cycle so UHS-I 1.8V POR succeeds */
@@ -319,7 +319,7 @@ void msdc_sd_power(struct msdc_host *host, u32 on)
 		msdc_ldo_power(on, host->mmc->supply.vqmmc, VOL_1800,
 			&host->power_io);
 #else
-		msdc_ldo_power(on, host->mmc->supply.vqmmc, VOL_3000,
+		msdc_ldo_power(on, host->mmc->supply.vqmmc, SD_VOL_ACTUAL,
 			&host->power_io);
 #endif
 
@@ -376,8 +376,8 @@ void msdc_sd_power_off(void)
 		pr_notice("Power Off, SD card\n");
 
 		/* power must be on */
-		host->power_io = VOL_3000 * 1000;
-		host->power_flash = VOL_3000 * 1000;
+		host->power_io = SD_VOL_ACTUAL * 1000;
+		host->power_flash = SD_VOL_ACTUAL * 1000;
 
 		host->power_control(host, 0);
 
@@ -637,20 +637,39 @@ void msdc1_select_oc_parent(struct msdc_host *host, unsigned char timing, u32 hz
 {
 	struct clk *mux_clk;
 	struct clk *target_parent;
+	struct clk *msdcpll_clk;
+	struct clk *safe_parent;
 	const char *parent_name;
+	unsigned long want_pll_rate = 0;
+	unsigned long cur_pll_rate;
 	unsigned long rate;
 
 	if (!host || host->hw->host_function != MSDC_SD || !host->clk_ctl || !hz)
 		return;
 
-	if (timing == MMC_TIMING_SD_HS && hz == 91000000)
-		parent_name = "mainpll_d3_d2"; /* 364 MHz -> /4 = 91 MHz */
-	else if (timing == MMC_TIMING_SD_HS && hz == 78000000)
-		parent_name = "mainpll_d7";    /* 312 MHz -> /4 = 78 MHz */
-	else if (timing == MMC_TIMING_SD_HS && hz == 52000000)
-		parent_name = "univpll_d3_d2"; /* 208 MHz -> /4 = 52 MHz */
-	else
-		parent_name = "msdcpll_d2";    /* 192 MHz -> /4=48M, /2=96M, /1=192M */
+	/*
+	 * Dynamic, zero-hardcode parent + Integer-N MSDCPLL selector.
+	 * APMIXED_MSDCPLL is exclusive to msdc1 on UFS-only MT6781 boards:
+	 *   442 MHz (N=68) -> msdcpll_d2=221M -> /1=221M (SDR104 OC)
+	 *   520 MHz (N=80) -> msdcpll_d2=260M -> /2=130M (SDR104), /4=65M (SD_HS)
+	 *   384 MHz (std)  -> msdcpll_d2=192M -> /1=192M, /2=96M, /4=48M, /8=24M
+	 */
+	if (hz == 221000000 && timing == MMC_TIMING_UHS_SDR104) {
+		parent_name = "msdcpll_d2";
+		want_pll_rate = 442000000UL;
+	} else if (hz == 208000000 || hz == 104000000 || hz == 52000000) {
+		parent_name = "univpll_d3_d2"; /* 208 MHz -> /1=208M, /2=104M, /4=52M */
+	} else if (hz == 182000000 || hz == 91000000 || hz == 45500000) {
+		parent_name = "mainpll_d3_d2"; /* 364 MHz -> /2=182M, /4=91M, /8=45.5M */
+	} else if (hz == 156000000 || hz == 78000000 || hz == 39000000) {
+		parent_name = "mainpll_d7";    /* 312 MHz -> /2=156M, /4=78M, /8=39.0M */
+	} else if (hz == 130000000 || hz == 65000000) {
+		parent_name = "msdcpll_d2";
+		want_pll_rate = 520000000UL;
+	} else {
+		parent_name = "msdcpll_d2";
+		want_pll_rate = 384000000UL;
+	}
 
 	mux_clk = clk_get_parent(host->clk_ctl);
 	if (IS_ERR_OR_NULL(mux_clk))
@@ -658,6 +677,26 @@ void msdc1_select_oc_parent(struct msdc_host *host, unsigned char timing, u32 hz
 	target_parent = __clk_lookup(parent_name);
 	if (IS_ERR_OR_NULL(mux_clk) || IS_ERR_OR_NULL(target_parent))
 		return;
+
+	if (want_pll_rate) {
+		msdcpll_clk = __clk_lookup("msdcpll");
+		if (!IS_ERR_OR_NULL(msdcpll_clk)) {
+			cur_pll_rate = clk_get_rate(msdcpll_clk);
+			if (cur_pll_rate != want_pll_rate) {
+				/* Park mux on glitch-free parent while relocking MSDCPLL */
+				if (clk_get_parent(mux_clk) == target_parent) {
+					safe_parent = __clk_lookup("univpll_d3_d2");
+					if (IS_ERR_OR_NULL(safe_parent))
+						safe_parent = __clk_lookup("clk26m");
+					if (!IS_ERR_OR_NULL(safe_parent))
+						(void)clk_set_parent(mux_clk, safe_parent);
+				}
+				if (clk_set_rate(msdcpll_clk, want_pll_rate) == 0)
+					pr_info("[msdc%d] MSDCPLL -> %lu Hz (req=%u Hz)\n",
+						host->id, clk_get_rate(msdcpll_clk), hz);
+			}
+		}
+	}
 
 	if (clk_get_parent(mux_clk) != target_parent) {
 		if (clk_set_parent(mux_clk, target_parent) == 0) {
@@ -1375,26 +1414,8 @@ static int msdc_get_pinctl_settings(struct msdc_host *host,
 	}
 
 	if (host->id == 1) {
-		struct msdc_hw_driving *uhs_drv[] = {
-			&host->hw->driving_sdr104,
-			&host->hw->driving_sdr50,
-			&host->hw->driving_ddr50,
-		};
-		if (host->hw->driving.clk_drv < 5)
-			host->hw->driving.clk_drv = 5;
-		if (host->hw->driving.cmd_drv < 5)
-			host->hw->driving.cmd_drv = 5;
-		if (host->hw->driving.dat_drv < 5)
-			host->hw->driving.dat_drv = 5;
-		for (i = 0; i < ARRAY_SIZE(uhs_drv); i++) {
-			if (uhs_drv[i]->clk_drv < 6)
-				uhs_drv[i]->clk_drv = 6;
-			if (uhs_drv[i]->cmd_drv < 6)
-				uhs_drv[i]->cmd_drv = 6;
-			if (uhs_drv[i]->dat_drv < 6)
-				uhs_drv[i]->dat_drv = 6;
-		}
-		pr_info("[msdc1] driving tuned: 3.0V=%u/%u/%u, 1.8V=%u/%u/%u\n",
+		/* Preserve X698 stock PCB-calibrated DTS driving ([03]) to prevent DAT3 ringing */
+		pr_info("[msdc1] driving DTS: 3.0V=%u/%u/%u, 1.8V=%u/%u/%u\n",
 			host->hw->driving.clk_drv,
 			host->hw->driving.cmd_drv,
 			host->hw->driving.dat_drv,

@@ -122,7 +122,7 @@
 
 
 #define EMMC_VOL_ACTUAL         VOL_3000
-#define SD_VOL_ACTUAL           VOL_3000
+#define SD_VOL_ACTUAL           VOL_3300
 
 
 /**************************************************************/
@@ -490,14 +490,14 @@
 #ifdef CONFIG_PWR_LOSS_MTK_TEST
 #define MAX_REQ_SZ              (512 * 65536)
 #else
-#define MAX_REQ_SZ              (512 * 1024)
+#define MAX_REQ_SZ              (1024 * 1024)
 #endif
 
 #ifdef FPGA_PLATFORM
 #define HOST_MAX_MCLK           (200000000)
 #define HOST_MIN_MCLK           (100000)
 #else
-#define HOST_MAX_MCLK           (200000000)
+#define HOST_MAX_MCLK           (221000000)
 #define HOST_MIN_MCLK           (260000)
 #endif
 

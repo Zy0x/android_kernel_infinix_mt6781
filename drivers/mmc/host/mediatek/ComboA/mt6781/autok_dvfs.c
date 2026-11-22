@@ -439,6 +439,7 @@ int sd_execute_dvfs_autok(struct msdc_host *host, u32 opcode)
 	    (host->mmc->ios.timing == MMC_TIMING_SD_HS &&
 	     host->mmc->ios.clock >= 39000000)) {
 		if (host->is_autok_done == 0) {
+			memset(host->autok_res, 0, sizeof(host->autok_res));
 			pr_notice("[AUTOK]SDcard autok timing=%u clk=%u\n",
 				host->mmc->ios.timing, host->mmc->ios.clock);
 			if (host->mmc->ios.timing == MMC_TIMING_UHS_DDR50 ||

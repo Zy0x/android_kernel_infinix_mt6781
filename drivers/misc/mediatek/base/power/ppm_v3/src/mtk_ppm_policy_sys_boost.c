@@ -653,11 +653,7 @@ static int __init ppm_sysboost_policy_init(void)
 	ppm_info("@%s: register %s done!\n", __func__, sysboost_policy.name);
 
 out:
-#if defined(OPLUS_FEATURE_CHG_BASIC)
 	sysboost_policy.is_enabled = true;
-#else
-        sysboost_policy.is_enabled = false;
-#endif
 	FUNC_EXIT(FUNC_LV_POLICY);
 
 	return ret;

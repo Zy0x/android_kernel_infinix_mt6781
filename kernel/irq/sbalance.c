@@ -31,11 +31,11 @@ static bool enabled = true;
 module_param(enabled, bool, 0644);
 MODULE_PARM_DESC(enabled, "Enable or pause runtime IRQ balancing");
 
-static unsigned int interval_ms = 3000;
+static unsigned int interval_ms = 2000;
 module_param(interval_ms, uint, 0644);
 MODULE_PARM_DESC(interval_ms, "Sampling interval in milliseconds (500-30000)");
 
-static unsigned int irq_threshold = 50;
+static unsigned int irq_threshold = 30;
 module_param(irq_threshold, uint, 0644);
 MODULE_PARM_DESC(irq_threshold, "Minimum per-interval IRQ count before moving");
 
@@ -47,7 +47,7 @@ static unsigned int big_cpu_start = 6;
 module_param(big_cpu_start, uint, 0644);
 MODULE_PARM_DESC(big_cpu_start, "First CPU index considered a big core (0-N)");
 
-static unsigned int rebalance_diff = 150;
+static unsigned int rebalance_diff = 100;
 module_param(rebalance_diff, uint, 0644);
 MODULE_PARM_DESC(rebalance_diff, "Min load delta before rebalancing little CPUs");
 

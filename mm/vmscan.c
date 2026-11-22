@@ -554,7 +554,7 @@ int vm_swappiness = 60;
 /*
  * Direct reclaim swappiness, exptct 0 - 60. Higher means more swappy and slower.
  */
-int direct_vm_swappiness = 60;
+int direct_vm_swappiness = 20;
 #endif /*OPLUS_FEATURE_ZRAM_OPT*/
 
 #ifdef CONFIG_DYNAMIC_TUNNING_SWAPPINESS

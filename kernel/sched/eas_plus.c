@@ -302,7 +302,7 @@ void set_sched_turn_point_cap(void)
 	sge_core = cpu_core_energy(cpu);
 
 	turn_point_idx = max(upower_get_turn_point() - 1, 0);
-	cpu_eff_tp = sge_core->cap_states[turn_point_idx].cap;
+	cpu_eff_tp = min(sge_core->cap_states[turn_point_idx].cap, 320UL);
 }
 #else
 void set_sched_turn_point_cap(void)

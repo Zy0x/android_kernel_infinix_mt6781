@@ -5159,11 +5159,11 @@ void __exit fbt_cpu_exit(void)
 
 int __init fbt_cpu_init(void)
 {
-	bhr = 15;
+	bhr = 20;
 	bhr_opp = 2;
 	bhr_opp_l = fbt_get_l_min_bhropp();
 	rescue_opp_c = (NR_FREQ_CPU - 1);
-	rescue_opp_f = 5;
+	rescue_opp_f = 8;
 	rescue_percent = DEF_RESCUE_PERCENT;
 	min_rescue_percent = 10;
 	short_rescue_ns = DEF_RESCUE_NS_TH;
@@ -5184,8 +5184,10 @@ int __init fbt_cpu_init(void)
 	fps_level_range = 10;
 	check_running = 1;
 	uboost_enhance_f = fbt_get_default_uboost();
-	cm_big_cap = 95;
+	boost_affinity = 1;
+	cm_big_cap = 80;
 	cm_tdiff = TIME_1MS;
+	rescue_second_enable = 1;
 	rescue_second_time = 2;
 	rescue_second_copp = NR_FREQ_CPU - 1;
 

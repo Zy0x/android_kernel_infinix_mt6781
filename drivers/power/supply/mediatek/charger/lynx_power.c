@@ -364,6 +364,11 @@ __weak int mt_cpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int 
 	return scnprintf(buf, sz, "cpu_probe_weak\n");
 }
 
+__weak int mt_cpufreq_lynx_probe_ll(unsigned int khz, int mode, char *buf, int sz)
+{
+	return scnprintf(buf, sz, "cpull_probe_weak\n");
+}
+
 __weak int mt_cpufreq_lynx_probe_cci(unsigned int khz, int mode, char *buf, int sz)
 {
 	return scnprintf(buf, sz, "cci_probe_weak\n");
@@ -404,6 +409,9 @@ static ssize_t lynx_pll_probe_write(struct file *file, const char __user *buf,
 		else if (!strcmp(target, "cpu"))
 			mt_cpufreq_lynx_probe_pll(khz, mode, lynx_pll_probe_buf,
 						  sizeof(lynx_pll_probe_buf));
+		else if (!strcmp(target, "cpull"))
+			mt_cpufreq_lynx_probe_ll(khz, mode, lynx_pll_probe_buf,
+						 sizeof(lynx_pll_probe_buf));
 		else if (!strcmp(target, "cci"))
 			mt_cpufreq_lynx_probe_cci(khz, mode, lynx_pll_probe_buf,
 						  sizeof(lynx_pll_probe_buf));

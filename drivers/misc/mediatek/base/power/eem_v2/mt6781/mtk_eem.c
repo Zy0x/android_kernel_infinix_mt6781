@@ -1647,9 +1647,9 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			ndet->volt_tbl_pmic[i] = min(
 			(unsigned int)(clamp(
 			ndet->ops->eem_2_pmic(ndet,
-			((int)ndet->volt_tbl[i] + ndet->volt_offset +
+			max(0, ((int)ndet->volt_tbl[i] + ndet->volt_offset +
 			low_temp_offset + ndet->volt_aging[i]) +
-			rm_dvtfix_offset),
+			rm_dvtfix_offset)),
 			ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
 			ndet->ops->eem_2_pmic(ndet, ndet->VMAX))),
 			ndet->volt_tbl_orig[i] + ndet->volt_clamp);
@@ -1659,9 +1659,9 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			ndet->volt_tbl_pmic[i] = min(
 			(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
-				((int)ndet->volt_tbl[i] + ndet->volt_offset +
+				max(0, ((int)ndet->volt_tbl[i] + ndet->volt_offset +
 				low_temp_offset + ndet->volt_aging[i]) +
-				rm_dvtfix_offset),
+				rm_dvtfix_offset)),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMAX))),
 				ndet->volt_tbl_orig[i] + ndet->volt_clamp);
@@ -1684,9 +1684,9 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			ndet->volt_tbl_pmic[i] = min(
 			(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
-				((int)ndet->volt_tbl[i] + ndet->volt_offset +
+				max(0, ((int)ndet->volt_tbl[i] + ndet->volt_offset +
 				low_temp_offset + ndet->volt_aging[i]) +
-				rm_dvtfix_offset),
+				rm_dvtfix_offset)),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMAX))),
 				ndet->volt_tbl_orig[i] + ndet->volt_clamp);
@@ -1708,9 +1708,9 @@ static void get_volt_table_in_thread(struct eem_det *det)
 				ndet->volt_tbl_pmic[i] = min(
 				(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
-				((int)ndet->volt_tbl[i] + ndet->volt_offset +
+				max(0, ((int)ndet->volt_tbl[i] + ndet->volt_offset +
 				ndet->volt_aging[i]) +
-				rm_dvtfix_offset),
+				rm_dvtfix_offset)),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
 				ndet->ops->eem_2_pmic(ndet, VMAX_VAL_GPU)) +
 				low_temp_offset - extra_aging),
@@ -1722,9 +1722,9 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			ndet->volt_tbl_pmic[i] = min(
 			(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
-				((int)ndet->volt_tbl[i] + ndet->volt_offset +
+				max(0, ((int)ndet->volt_tbl[i] + ndet->volt_offset +
 				low_temp_offset + ndet->volt_aging[i]) +
-				rm_dvtfix_offset),
+				rm_dvtfix_offset)),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
 				ndet->ops->eem_2_pmic(ndet, ndet->VMAX))),
 				ndet->volt_tbl_orig[i] + ndet->volt_clamp);
@@ -2334,7 +2334,12 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 	if (det->ops->get_freq_table)
 		det->ops->get_freq_table(det);
 
-	/* Empirical Sol-Kernel R1.081 safe undervolt margin (active only when sol_perf=1) */
+	/* Empirical Sol-Kernel R1.104 tapered silicon UV curves (active only when sol_perf=1)
+	 * Calibrated on MT6781 Helio G96 FMETER + 8-core SHA256 floor sweeps:
+	 *   Big A76 (2050M): cliff 806.25mV -> -9..-1 (~868.75mV OPP0, +62.5mV margin)
+	 *   Little A55 (2000M): pass <=837.50mV -> -9..-1 (~887.50mV OPP0, >=+50.0mV margin)
+	 *   CCI (1700M OC): cliff 931.25mV -> -17..-1 (~975.00mV OPP0, +43.75mV margin)
+	 */
 	{
 		extern int sol_perf_mode;
 		if (!sol_perf_mode) {
@@ -2345,6 +2350,8 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 #if ENABLE_LOO_B
 	case EEM_DET_B_HI:
 #endif
+		eem_calculate_aging_margin(det, -9, -1);
+		break;
 	case EEM_DET_GPU:
 #if ENABLE_LOO_G
 	case EEM_DET_GPU_HI:
@@ -2352,7 +2359,7 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 		eem_calculate_aging_margin(det, -1, 0);
 		break;
 	case EEM_DET_CCI:
-		eem_calculate_aging_margin(det, -2, -1);
+		eem_calculate_aging_margin(det, -17, -1);
 		break;
 	default:
 		break;

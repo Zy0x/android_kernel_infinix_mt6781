@@ -780,6 +780,23 @@ int mt_cpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
 		mt_dfs_armpll(FH_PLL1, dds);
 		udelay(50);
 #endif
+	} else if (mode == 1) {
+		unsigned int cur_sel = _GET_BITS_VAL_(26:24, con1_b);
+		unsigned int cur_posdiv = (cur_sel == 0 ? 1 : cur_sel == 1 ? 2 : cur_sel == 2 ? 4 : 1);
+		unsigned int dds_pd = _GET_BITS_VAL_(21:0, _cpu_dds_calc(khz * cur_posdiv));
+		unsigned int pll_pd = 0x80000000U | (cur_sel << 24) | dds_pd;
+
+		dds = dds_pd;
+		pll = pll_pd;
+		if (fh) {
+			writel(fh_hp_b & ~(1U << 1), fh + 0x0000);
+			writel(0, fh + 0x004c);
+			wmb();
+		}
+		cpufreq_write(ARMPLL_L_CON1, pll_pd & ~0x80000000U);
+		udelay(2);
+		cpufreq_write(ARMPLL_L_CON1, pll_pd);
+		udelay(30);
 	} else if (mode == 3 && fh) {
 		writel(fh_hp_b | (1U << 1), fh + 0x0000);
 	}
@@ -810,6 +827,78 @@ int mt_cpufreq_lynx_probe_pll(unsigned int khz, int mode, char *buf, int sz)
 		fh_hp_b, fh_hp_a, fh_cfg_b, fh_cfg_a, fh_mon_a);
 }
 EXPORT_SYMBOL(mt_cpufreq_lynx_probe_pll);
+
+int mt_cpufreq_lynx_probe_ll(unsigned int khz, int mode, char *buf, int sz)
+{
+	void __iomem *fh = NULL;
+	unsigned int con0_b, con1_b, ckdiv_b, fh_hp_b = 0, fh_cfg_b = 0;
+	unsigned int con0_a, con1_a, ckdiv_a, fh_hp_a = 0, fh_cfg_a = 0, fh_mon_a = 0;
+	unsigned int ab9_b, ab9_a, ab9_50, ab8_a, con1_50;
+	unsigned int cur_sel, cur_posdiv, dds, pll;
+
+	if (apmixed_base == 0x1000c000UL || mcucfg_base == 0x0c530000UL)
+		return scnprintf(buf, sz, "cpull_probe_err unmapped\n");
+
+	fh = ioremap(0x1000ce00, 0x200);
+	con0_b = cpufreq_read(apmixed_base + 0x200);
+	con1_b = cpufreq_read(ARMPLL_LL_CON1);
+	ckdiv_b = cpufreq_read(CKDIV1_LL_CFG);
+	ab9_b = mt_get_abist_freq(9);
+	if (fh) {
+		fh_hp_b = readl(fh + 0x0000);
+		fh_cfg_b = readl(fh + 0x0038);
+	}
+
+	cur_sel = _GET_BITS_VAL_(26:24, con1_b);
+	cur_posdiv = (cur_sel == 0 ? 1 : cur_sel == 1 ? 2 : cur_sel == 2 ? 4 : 1);
+	dds = _GET_BITS_VAL_(21:0, _cpu_dds_calc(khz * cur_posdiv));
+	pll = 0x80000000U | (cur_sel << 24) | dds;
+
+	if (mode == 0) {
+#ifdef CONFIG_MTK_FREQ_HOPPING
+		mt_dfs_armpll(FH_PLL0, dds);
+		udelay(50);
+#endif
+	} else if (mode == 1) {
+		if (fh) {
+			writel(fh_hp_b & ~(1U << 0), fh + 0x0000);
+			writel(0, fh + 0x0038);
+			wmb();
+		}
+		cpufreq_write(ARMPLL_LL_CON1, pll & ~0x80000000U);
+		udelay(2);
+		cpufreq_write(ARMPLL_LL_CON1, pll);
+		udelay(30);
+	} else if (mode == 3 && fh) {
+		writel(fh_hp_b | (1U << 0), fh + 0x0000);
+	}
+
+	con0_a = cpufreq_read(apmixed_base + 0x200);
+	con1_a = cpufreq_read(ARMPLL_LL_CON1);
+	ckdiv_a = cpufreq_read(CKDIV1_LL_CFG);
+	ab9_a = mt_get_abist_freq(9);
+	ab8_a = mt_get_abist_freq(8);
+	if (fh) {
+		fh_hp_a = readl(fh + 0x0000);
+		fh_cfg_a = readl(fh + 0x0038);
+		fh_mon_a = readl(fh + 0x0048);
+		iounmap(fh);
+	}
+
+	msleep(50);
+	ab9_50 = mt_get_abist_freq(9);
+	con1_50 = cpufreq_read(ARMPLL_LL_CON1);
+
+	return scnprintf(buf, sz,
+		"cpull req=%u mode=%d posdiv=%u dds=0x%x pll=0x%08x "
+		"con0=0x%08x->0x%08x con1=0x%08x->0x%08x->0x%08x ckdiv=0x%08x->0x%08x "
+		"ab9=%u->%u->%u ab8=%u fhhp=0x%x->0x%x fhcfg=0x%x->0x%x fhmon=0x%08x\n",
+		khz, mode, cur_posdiv, dds, pll,
+		con0_b, con0_a, con1_b, con1_a, con1_50, ckdiv_b, ckdiv_a,
+		ab9_b, ab9_a, ab9_50, ab8_a,
+		fh_hp_b, fh_hp_a, fh_cfg_b, fh_cfg_a, fh_mon_a);
+}
+EXPORT_SYMBOL(mt_cpufreq_lynx_probe_ll);
 
 int mt_cpufreq_lynx_probe_cci(unsigned int khz, int mode, char *buf, int sz)
 {

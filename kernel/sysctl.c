@@ -292,7 +292,7 @@ static int bpf_unpriv_handler(struct ctl_table *table, int write,
                              void *buffer, size_t *lenp, loff_t *ppos)
 {
 	int ret, unpriv_enable = *(int *)table->data;
-	bool locked_state = unpriv_enable == 1;
+	bool locked_state = unpriv_enable >= 1;
 	struct ctl_table tmp = *table;
 
 	if (write && !capable(CAP_SYS_ADMIN))

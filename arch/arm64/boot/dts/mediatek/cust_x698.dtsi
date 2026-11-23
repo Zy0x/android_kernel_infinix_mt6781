@@ -94,3 +94,6 @@
 		novatek,mp-support-dt;
 	};
 };
+
+mt_pmic_vtp_ldo_reg: &mt_pmic_vio28_ldo_reg {
+};

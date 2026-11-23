@@ -170,7 +170,7 @@ struct mt_charger {
 	int apdo_max;
 };
 
-extern int charger_notifier_call_chain(unsigned long val, void *v);/* notifier tp charger mode */
+int __attribute__((weak)) charger_notifier_call_chain(unsigned long val, void *v) { return 0; }
 extern int mtk_charger_get_prop_pd_verify_process(union power_supply_propval *val);
 extern int mtk_charger_set_prop_pd_verify_process(const union power_supply_propval *val);
 

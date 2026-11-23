@@ -1251,7 +1251,7 @@ static void dis_micbias_work_callback(struct work_struct *work)
 }
 #endif /* end of #if PMIC_ACCDET_KERNEL */
 
-extern int earjack_notifier_call_chain(unsigned long val, void *v);
+int __attribute__((weak)) earjack_notifier_call_chain(unsigned long val, void *v) { return 0; }
 #if PMIC_ACCDET_KERNEL
 static void eint_work_callback(struct work_struct *work)
 #else

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-export PATH="/opt/toolchains/clang-23/bin:$PATH"
+export PATH="/opt/toolchains/clang-23/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export ARCH=arm64
 export SUBARCH=arm64
 export CC=clang
@@ -28,6 +28,9 @@ cd /opt/kernel_x698_4.19
 if [ "$1" == "defconfig" ]; then
     make arise_x698_419_defconfig
 fi
+
+# Always resolve default answers for any new Kconfig options
+make olddefconfig
 
 # Build Kernel Image.gz and DTBs
 make -j$(nproc) Image.gz dtbs

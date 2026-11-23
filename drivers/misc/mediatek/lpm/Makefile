@@ -1,0 +1,20 @@
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/inc
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/mtk_lpm_fs
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/mtk_lpm_trace_event
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/include
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/include/mt6781
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/debug/common
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/debug/mt6781
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/platform/mt6781
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/modules/debug/common
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/lpm/inc/
+
+obj-y += mtk_lpm_module.o
+obj-y += mtk_lpm_call.o
+obj-y += mtk_lpm_registry.o
+obj-y += mtk_lpm_fs/
+obj-y += mtk_lpm_trace_event/
+obj-y += platform/
+obj-y += modules/
